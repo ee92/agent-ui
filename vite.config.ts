@@ -1,8 +1,21 @@
-import { defineConfig } from "vite";
+import { defineConfig, type UserConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
-export default defineConfig({
+type TestConfig = {
+  test: {
+    environment: "node";
+    setupFiles: string[];
+  };
+};
+
+const config = {
   plugins: [react(), tailwindcss()],
-  server: { host: "127.0.0.1", port: 5173 }
-});
+  server: { host: "127.0.0.1", port: 5173 },
+  test: {
+    environment: "node",
+    setupFiles: ["./src/test/setup.ts"]
+  }
+} satisfies UserConfig & TestConfig;
+
+export default defineConfig(config);

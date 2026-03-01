@@ -1,14 +1,28 @@
 import { createServer } from "node:http";
-import { readFileSync, existsSync, statSync, readdirSync } from "node:fs";
-import { join, extname, relative } from "node:path";
+import { readFileSync, existsSync, statSync, readdirSync, realpathSync } from "node:fs";
+import { join, extname, relative, resolve } from "node:path";
+import { homedir } from "node:os";
 import { createConnection } from "node:net";
 
-const DIST = join(import.meta.dirname, "dist");
+const DIST = resolve(import.meta.dirname, "dist");
 const GATEWAY = { host: "127.0.0.1", port: 18790 };
 const PORT = 18789;
 const LOCAL_ORIGIN = `http://localhost:${GATEWAY.port}`;
-const WORKSPACE = "/home/clawd/.openclaw/workspace";
-const TOKEN = "e1d47ce3c80c897bb9f6c969f077886d5e5fc0266a3916cf";
+const WORKSPACE = resolve(homedir(), ".openclaw", "workspace");
+const CONFIG_PATH = resolve(homedir(), ".openclaw", "openclaw.json");
+const CONFIG = (() => {
+  try {
+    return JSON.parse(readFileSync(CONFIG_PATH, "utf8"));
+  } catch {
+    return {};
+  }
+})();
+const TOKEN =
+  process.env.OPENCLAW_TOKEN ||
+  CONFIG.token ||
+  CONFIG.gatewayToken ||
+  CONFIG.authToken ||
+  "openclaw";
 
 const MIME_MAP = {
   ".html": "text/html", ".js": "application/javascript", ".css": "text/css",
@@ -75,6 +89,22 @@ function checkAuth(req) {
   return req.headers.authorization === `Bearer ${TOKEN}`;
 }
 
+function resolveWorkspacePath(inputPath = "") {
+  const requested = resolve(WORKSPACE, inputPath);
+  if (!requested.startsWith(WORKSPACE)) {
+    return null;
+  }
+  try {
+    const existing = existsSync(requested) ? realpathSync(requested) : requested;
+    if (!existing.startsWith(WORKSPACE)) {
+      return null;
+    }
+    return existing;
+  } catch {
+    return null;
+  }
+}
+
 function jsonResponse(res, data, status = 200) {
   res.writeHead(status, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
   res.end(JSON.stringify(data));
@@ -83,12 +113,21 @@ function jsonResponse(res, data, status = 200) {
 const server = createServer((req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
 
+  if (url.pathname === "/api/health") {
+    return jsonResponse(res, {
+      ok: true,
+      gateway: `${GATEWAY.host}:${GATEWAY.port}`,
+      workspace: WORKSPACE,
+      time: new Date().toISOString()
+    });
+  }
+
   // API: list directory children (lazy)
   if (url.pathname === "/api/files/list") {
     if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);
     const subpath = url.searchParams.get("path") || "";
-    const dir = join(WORKSPACE, subpath);
-    if (!dir.startsWith(WORKSPACE)) return jsonResponse(res, { error: "invalid path" }, 400);
+    const dir = resolveWorkspacePath(subpath);
+    if (!dir) return jsonResponse(res, { error: "invalid path" }, 400);
     return jsonResponse(res, { path: subpath, entries: listDir(dir) });
   }
 
@@ -104,8 +143,8 @@ const server = createServer((req, res) => {
   if (url.pathname === "/api/files/read") {
     if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);
     const filePath = url.searchParams.get("path") || "";
-    const fullPath = join(WORKSPACE, filePath);
-    if (!fullPath.startsWith(WORKSPACE)) return jsonResponse(res, { error: "invalid path" }, 400);
+    const fullPath = resolveWorkspacePath(filePath);
+    if (!fullPath) return jsonResponse(res, { error: "invalid path" }, 400);
     if (!existsSync(fullPath) || statSync(fullPath).isDirectory()) return jsonResponse(res, { error: "not found" }, 404);
     const stat = statSync(fullPath);
     if (stat.size > 2 * 1024 * 1024) return jsonResponse(res, { error: "file too large", size: stat.size }, 413);
@@ -116,8 +155,10 @@ const server = createServer((req, res) => {
   }
 
   // Static files
-  let filePath = join(DIST, url.pathname === "/" ? "index.html" : url.pathname.split("?")[0]);
-  if (!existsSync(filePath) || statSync(filePath).isDirectory()) filePath = join(DIST, "index.html");
+  let filePath = resolve(DIST, url.pathname === "/" ? "index.html" : url.pathname.split("?")[0].replace(/^\/+/, ""));
+  if (!filePath.startsWith(DIST) || !existsSync(filePath) || statSync(filePath).isDirectory()) {
+    filePath = resolve(DIST, "index.html");
+  }
   const ext = extname(filePath);
   res.writeHead(200, { "Content-Type": MIME_MAP[ext] || "application/octet-stream", "Cache-Control": ext === ".html" ? "no-cache" : "public, max-age=31536000, immutable" });
   res.end(readFileSync(filePath));

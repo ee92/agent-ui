@@ -47,7 +47,6 @@ export type GatewayClientOptions = {
 };
 
 const CONNECT_PROTOCOLS = [
-  { minProtocol: 3, maxProtocol: 3 },
   { minProtocol: 3, maxProtocol: 3 }
 ];
 
@@ -182,7 +181,8 @@ export class GatewayClient {
       this.pending.delete(parsed.id);
 
       if (parsed.ok) {
-        pending.resolve((parsed.result ?? parsed?.payload ?? (parsed as any).data ?? {}) as unknown);
+        const payload = parsed.result ?? parsed.payload ?? {};
+        pending.resolve(payload as unknown);
         return;
       }
 
@@ -193,7 +193,7 @@ export class GatewayClient {
     if (parsed.type === "evt" || parsed.type === "event") {
       this.options.onEvent({
         event: parsed.event,
-        data: (parsed as any).data ?? (parsed as any).payload
+        data: parsed.type === "evt" ? parsed.data : parsed.payload
       });
     }
   }
