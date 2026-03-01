@@ -1,5 +1,5 @@
 import { createServer } from "node:http";
-import { readFileSync, existsSync, statSync, readdirSync, realpathSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, existsSync, statSync, readdirSync, realpathSync } from "node:fs";
 import { join, extname, relative, resolve } from "node:path";
 import { homedir } from "node:os";
 import { createConnection } from "node:net";
@@ -152,6 +152,32 @@ const server = createServer((req, res) => {
       const content = readFileSync(fullPath, "utf-8");
       return jsonResponse(res, { path: filePath, content, size: stat.size });
     } catch { return jsonResponse(res, { error: "read error" }, 500); }
+  }
+
+  // API: write file
+  if (url.pathname === "/api/files/write" && req.method === "POST") {
+    if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);
+    let body = "";
+    req.on("data", (chunk) => { body += chunk; if (body.length > 5 * 1024 * 1024) { req.destroy(); } });
+    req.on("end", () => {
+      try {
+        const { path: filePath, content } = JSON.parse(body);
+        if (!filePath || typeof content !== "string") return jsonResponse(res, { error: "missing path or content" }, 400);
+        const fullPath = resolveWorkspacePath(filePath);
+        if (!fullPath) return jsonResponse(res, { error: "invalid path" }, 400);
+        const dir = fullPath.substring(0, fullPath.lastIndexOf("/"));
+        mkdirSync(dir, { recursive: true });
+        writeFileSync(fullPath, content, "utf-8");
+        return jsonResponse(res, { ok: true, path: filePath });
+      } catch (e) { return jsonResponse(res, { error: "write error", detail: e.message }, 500); }
+    });
+    return;
+  }
+
+  // CORS preflight
+  if (req.method === "OPTIONS") {
+    res.writeHead(204, { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, POST, OPTIONS", "Access-Control-Allow-Headers": "Content-Type, Authorization" });
+    return res.end();
   }
 
   // Static files

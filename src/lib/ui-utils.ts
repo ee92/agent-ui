@@ -1,10 +1,4 @@
-import type { ChatMessage, Conversation, FileEntry, TaskStatus } from "./types";
-
-export const TASK_COLUMNS: Array<{ status: TaskStatus; label: string; description: string }> = [
-  { status: "queue", label: "Queue", description: "Things to do" },
-  { status: "active", label: "Active", description: "In progress now" },
-  { status: "done", label: "Done", description: "Completed recently" }
-];
+import type { ChatMessage, Conversation, FileEntry } from "./types";
 
 export function formatRelative(timestamp: string) {
   const ms = Date.now() - Date.parse(timestamp);

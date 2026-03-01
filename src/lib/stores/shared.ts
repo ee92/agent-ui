@@ -9,11 +9,7 @@ import type {
   FileEntry,
   FilePreview,
   PendingSend,
-  SessionsListEntry,
-  Task,
-  TaskPriority,
-  TaskStatus,
-  TasksFile
+  SessionsListEntry
 } from "../types";
 
 export type PanelMode = "tasks" | "files";
@@ -58,19 +54,6 @@ export type ChatStoreState = {
   handleChatEvent: (payload: unknown) => void;
 };
 
-export type TasksStoreState = {
-  tasks: Task[];
-  tasksReady: boolean;
-  tasksFallback: boolean;
-  activeTaskId: string | null;
-  addTask: (title: string) => Promise<void>;
-  updateTask: (id: string, patch: Partial<Omit<Task, "id" | "createdAt">>) => Promise<void>;
-  moveTask: (id: string, status: TaskStatus, index: number) => Promise<void>;
-  setActiveTaskId: (id: string | null) => void;
-  loadTasks: () => Promise<void>;
-  createTaskFromMessage: (text: string) => Promise<void>;
-};
-
 export type FilesStoreState = {
   fileEntries: FileEntry[];
   filePreview: FilePreview | null;
@@ -112,7 +95,6 @@ export type UiStoreState = {
 
 export type AppStoreState = GatewayStoreState &
   ChatStoreState &
-  TasksStoreState &
   FilesStoreState &
   AgentsStoreState &
   UiStoreState;
@@ -120,10 +102,7 @@ export type AppStoreState = GatewayStoreState &
 export type BoundStore<T> = UseBoundStore<StoreApi<T>>;
 
 const SETTINGS_KEY = "openclaw-ui-settings-v1";
-const TASKS_FALLBACK_KEY = "openclaw-ui-tasks-v1";
 const HIDDEN_MESSAGES_KEY = "openclaw-ui-hidden-messages-v1";
-
-export const TASKS_PATH = "workspace/tasks.json";
 export const DEFAULT_GATEWAY_URL =
   typeof window !== "undefined" && window.location.host
     ? `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}`
@@ -217,13 +196,42 @@ export function messageTextFromUnknown(value: unknown): string {
   return "";
 }
 
+function cleanSessionTitle(raw: string): string {
+  let t = raw.trim();
+  // Strip "telegram:g-" prefixes
+  t = t.replace(/^telegram:g-/, "").replace(/^agent:main:/, "");
+  // Strip "[cron:uuid..." prefixes
+  t = t.replace(/^\[cron:[a-f0-9-]+\.{3}$/, "");
+  // Strip "System: [date] Cron: HEARTBEAT_OK..." noise
+  if (/^System:\s*\[/.test(t) || /^HEARTBEAT/i.test(t)) return "";
+  // Clean up telegram session keys
+  t = t.replace(/^telegram:(slash|group):/, "").replace(/:[0-9-]+(:topic:[0-9]+)?$/, "");
+  // Capitalize first letter
+  if (t.length > 0) t = t.charAt(0).toUpperCase() + t.slice(1);
+  return t;
+}
+
+function humanizeSessionKey(key: string): string {
+  if (key.includes("cron:")) {
+    const label = key.split(":").pop() || "Cron job";
+    return "Cron: " + label.replace(/-/g, " ");
+  }
+  if (key.includes("telegram:group:")) return "Group chat";
+  if (key.includes("telegram:slash:")) return "Telegram DM";
+  if (key === "agent:main:main") return "Main session";
+  return key.replace(/^agent:main:/, "").replace(/[-_]/g, " ");
+}
+
 export function normalizeSession(entry: SessionsListEntry): Conversation {
-  const title =
-    entry.label?.trim() ||
-    entry.displayName?.trim() ||
-    entry.title?.trim() ||
-    entry.derivedTitle?.trim() ||
-    "Untitled conversation";
+  // Priority: explicit label > cleaned derivedTitle > cleaned displayName > humanized key
+  const candidates = [
+    entry.label?.trim(),
+    entry.title?.trim(),
+    entry.derivedTitle ? cleanSessionTitle(entry.derivedTitle) : "",
+    entry.displayName ? cleanSessionTitle(entry.displayName) : "",
+  ].filter((s): s is string => Boolean(s && s.length > 2));
+  
+  const title = candidates[0] || humanizeSessionKey(entry.key);
   return {
     key: entry.key,
     title,
@@ -299,42 +307,6 @@ export function readHiddenMessages() {
 
 export function persistHiddenMessages(ids: string[]) {
   localStorage.setItem(HIDDEN_MESSAGES_KEY, JSON.stringify(ids));
-}
-
-export function persistFallbackTasks(tasks: Task[]) {
-  localStorage.setItem(
-    TASKS_FALLBACK_KEY,
-    JSON.stringify({ version: 1, tasks } satisfies TasksFile)
-  );
-}
-
-export function readFallbackTasks() {
-  return safeJsonParse<TasksFile>(localStorage.getItem(TASKS_FALLBACK_KEY), { version: 1, tasks: [] }).tasks;
-}
-
-export function serializeTasks(tasks: Task[]) {
-  return JSON.stringify({ version: 1, tasks } satisfies TasksFile, null, 2);
-}
-
-export function sortTasks(tasks: Task[]) {
-  const weight: Record<TaskStatus, number> = { queue: 0, active: 1, done: 2 };
-  return [...tasks].sort((left, right) => {
-    const statusDiff = weight[left.status] - weight[right.status];
-    if (statusDiff !== 0) {
-      return statusDiff;
-    }
-    return Date.parse(right.updatedAt) - Date.parse(left.updatedAt);
-  });
-}
-
-export function priorityFromText(text: string): TaskPriority {
-  if (/urgent|critical|high/i.test(text)) {
-    return "high";
-  }
-  if (/soon|follow|medium/i.test(text)) {
-    return "medium";
-  }
-  return "low";
 }
 
 export async function fileToDraft(file: File): Promise<AttachmentDraft> {

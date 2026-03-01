@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import type { AgentRun, Conversation, FileEntry } from "../../lib/types";
 import { formatAbsolute, formatRelative, groupConversations } from "../../lib/ui-utils";
 import { FolderIcon, PlusIcon } from "../ui/icons";
@@ -42,6 +42,9 @@ export function ConversationSidebar({
 }) {
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [titleDraft, setTitleDraft] = useState("");
+  const [actionsKey, setActionsKey] = useState<string | null>(null);
+  const revealTimerRef = useRef<number | null>(null);
+  const longPressKeyRef = useRef<string | null>(null);
   const filtered = useDeferredValue(
     conversations.filter((conversation) => {
       const query = search.trim().toLowerCase();
@@ -61,6 +64,12 @@ export function ConversationSidebar({
     input?.select();
   }, [focusSearchVersion]);
 
+  useEffect(() => () => {
+    if (revealTimerRef.current) {
+      window.clearTimeout(revealTimerRef.current);
+    }
+  }, []);
+
   const commitRename = () => {
     if (!editingKey) {
       return;
@@ -69,8 +78,25 @@ export function ConversationSidebar({
     setEditingKey(null);
   };
 
+  const startRevealTimer = (key: string) => {
+    if (revealTimerRef.current) {
+      window.clearTimeout(revealTimerRef.current);
+    }
+    revealTimerRef.current = window.setTimeout(() => {
+      longPressKeyRef.current = key;
+      setActionsKey(key);
+    }, 420);
+  };
+
+  const clearRevealTimer = () => {
+    if (revealTimerRef.current) {
+      window.clearTimeout(revealTimerRef.current);
+      revealTimerRef.current = null;
+    }
+  };
+
   return (
-    <aside className="flex h-full min-w-0 flex-col overflow-hidden rounded-[2rem] border border-white/8 bg-white/[0.03] p-4 backdrop-blur-xl">
+    <aside className="flex h-full min-w-0 flex-col overflow-hidden rounded-[1.75rem] bg-white/[0.03] p-3 backdrop-blur-xl xl:rounded-[2rem] xl:border xl:border-white/8 xl:p-4">
       <div className="mb-4 hidden items-center justify-between gap-3 xl:flex">
         <div>
           <p className="text-xs uppercase tracking-[0.28em] text-zinc-500">OpenClaw</p>
@@ -127,9 +153,9 @@ export function ConversationSidebar({
             value={search}
             onChange={(event) => onSearch(event.target.value)}
             placeholder="Search conversations"
-            className="mb-4 h-12 rounded-2xl border border-white/8 bg-black/20 px-4 text-base text-white outline-none placeholder:text-zinc-600 focus:border-blue-500/40 sm:h-11 sm:text-sm"
+            className="mb-3 h-10 rounded-2xl bg-black/20 px-3 text-sm text-white outline-none placeholder:text-zinc-600 focus:ring-1 focus:ring-blue-500/40"
           />
-          <div className="scroll-soft min-h-0 flex-1 space-y-5 overflow-x-hidden overflow-y-auto pr-1">
+          <div className="scroll-soft min-h-0 flex-1 space-y-4 overflow-x-hidden overflow-y-auto pr-1">
             {!ready ? <LoadingSkeleton rows={5} /> : null}
             {ready
               ? Object.entries(grouped).map(([label, items]) =>
@@ -138,71 +164,104 @@ export function ConversationSidebar({
                       <p className="px-2 text-[11px] uppercase tracking-[0.26em] text-zinc-500">{label}</p>
                       <div className="space-y-1">
                         {items.map((conversation) => (
-                          <button
+                          <div
                             key={conversation.key}
-                            type="button"
-                            onClick={() => onSelect(conversation.key)}
-                            className={`w-full min-w-0 rounded-2xl px-3 py-3 text-left transition ${
+                            className={`w-full min-w-0 overflow-hidden rounded-2xl transition ${
                               selectedConversationKey === conversation.key
                                 ? "bg-blue-500/12 text-white"
                                 : "text-zinc-300 hover:bg-white/[0.04]"
                             }`}
                           >
-                            <div className="mb-1 flex items-center justify-between gap-2">
-                              {editingKey === conversation.key ? (
-                                <input
-                                  autoFocus
-                                  value={titleDraft}
-                                  onBlur={commitRename}
-                                  onChange={(event) => setTitleDraft(event.target.value)}
-                                  onKeyDown={(event) => {
-                                    if (event.key === "Enter") {
-                                      commitRename();
-                                    }
-                                    if (event.key === "Escape") {
-                                      setEditingKey(null);
-                                    }
-                                  }}
-                                  className="h-8 w-full rounded-xl border border-white/8 bg-black/20 px-2 text-sm text-white outline-none"
-                                />
-                              ) : (
-                                <span
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    setEditingKey(conversation.key);
-                                    setTitleDraft(conversation.title);
-                                  }}
-                                  className="truncate text-base font-medium sm:text-sm"
-                                >
-                                  {conversation.title}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (longPressKeyRef.current === conversation.key) {
+                                  longPressKeyRef.current = null;
+                                  return;
+                                }
+                                onSelect(conversation.key);
+                              }}
+                              onContextMenu={(event) => {
+                                event.preventDefault();
+                                setActionsKey((current) => (current === conversation.key ? null : conversation.key));
+                              }}
+                              onTouchStart={() => startRevealTimer(conversation.key)}
+                              onTouchEnd={clearRevealTimer}
+                              onTouchMove={clearRevealTimer}
+                              className="w-full min-w-0 px-3 py-3 text-left"
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-2">
+                                    {(selectedConversationKey === conversation.key || conversation.isStreaming) ? (
+                                      <span className={`h-2 w-2 shrink-0 rounded-full ${conversation.isStreaming ? "animate-pulse bg-blue-400" : "bg-blue-300/80"}`} />
+                                    ) : null}
+                                    {editingKey === conversation.key ? (
+                                      <input
+                                        autoFocus
+                                        value={titleDraft}
+                                        onBlur={commitRename}
+                                        onChange={(event) => setTitleDraft(event.target.value)}
+                                        onKeyDown={(event) => {
+                                          if (event.key === "Enter") {
+                                            commitRename();
+                                          }
+                                          if (event.key === "Escape") {
+                                            setEditingKey(null);
+                                          }
+                                        }}
+                                        className="h-8 w-full rounded-xl bg-black/20 px-2 text-sm font-medium text-white outline-none"
+                                      />
+                                    ) : (
+                                      <span
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          setEditingKey(conversation.key);
+                                          setTitleDraft(conversation.title);
+                                        }}
+                                        className="truncate text-sm font-semibold text-white sm:text-base"
+                                      >
+                                        {conversation.title}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="mt-1 line-clamp-1 text-xs text-zinc-500 sm:text-sm">
+                                    {(conversation.preview.split("\n").find((line) => line.trim()) || "No messages yet").trim()}
+                                  </p>
+                                </div>
+                                <span className="shrink-0 pt-0.5 text-[11px] font-medium text-zinc-500">
+                                  {formatRelative(conversation.updatedAt)}
                                 </span>
-                              )}
-                              <span className="text-[11px] text-zinc-500">{formatRelative(conversation.updatedAt)}</span>
-                            </div>
-                            <p className="line-clamp-2 text-sm text-zinc-500">
-                              {conversation.preview || "No messages yet"}
-                            </p>
-                            <div className="mt-2 flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                {conversation.isStreaming ? (
-                                  <span className="inline-flex items-center gap-1 text-[11px] text-blue-300">
-                                    <span className="h-2 w-2 animate-pulse rounded-full bg-blue-400" />
-                                    Live
-                                  </span>
-                                ) : null}
-                                <span className="text-[11px] text-zinc-600">{formatAbsolute(conversation.updatedAt)}</span>
                               </div>
-                              <span
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  onDelete(conversation.key);
-                                }}
-                                className="rounded-full px-2 py-1 text-[11px] text-zinc-500 hover:bg-black/20 hover:text-zinc-200"
-                              >
-                                Delete
-                              </span>
+                              <div className="mt-2 flex items-center justify-between gap-2">
+                                <span className="truncate text-[11px] text-zinc-600">{formatAbsolute(conversation.updatedAt)}</span>
+                                <span className="text-[11px] text-zinc-600">
+                                  Hold to delete
+                                </span>
+                              </div>
+                            </button>
+                            <div
+                              className={`grid transition-[grid-template-rows,opacity] duration-200 ${
+                                actionsKey === conversation.key ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+                              }`}
+                            >
+                              <div className="overflow-hidden">
+                                <div className="flex items-center justify-end px-3 pb-3">
+                                  <button
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      onDelete(conversation.key);
+                                      setActionsKey(null);
+                                    }}
+                                    className="min-h-11 rounded-2xl bg-rose-500/12 px-3 text-sm font-medium text-rose-200"
+                                  >
+                                    Delete conversation
+                                  </button>
+                                </div>
+                              </div>
                             </div>
-                          </button>
+                          </div>
                         ))}
                       </div>
                     </section>
@@ -210,7 +269,7 @@ export function ConversationSidebar({
                 )
               : null}
             {ready && conversations.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-white/8 px-3 py-4 text-sm text-zinc-500">
+              <div className="rounded-2xl bg-black/10 px-3 py-4 text-sm text-zinc-500">
                 No conversations yet. Start a new chat to create your first session.
               </div>
             ) : null}

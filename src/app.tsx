@@ -1,11 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AgentTranscript } from "./components/agents/agent-transcript";
 import { ChatComposer } from "./components/chat/chat-composer";
 import { ConversationSidebar } from "./components/chat/conversation-sidebar";
 import { MessageCard } from "./components/chat/message-card";
 import { FileBrowser } from "./components/files/file-browser";
 import { MobileNav } from "./components/layout/mobile-nav";
-import { TaskBoard } from "./components/tasks/task-board";
+import { TaskList } from "./components/tasks/task-list";
 import { ErrorBoundary } from "./components/ui/error-boundary";
 import { IconButton } from "./components/ui/icon-button";
 import { MenuIcon, PlusIcon } from "./components/ui/icons";
@@ -16,11 +16,10 @@ import {
   useChatStore,
   useFilesStore,
   useGatewayStore,
-  useTasksStore,
   useUiStore
 } from "./lib/store";
 import { processGatewayEvent } from "./lib/stores/process-gateway-event";
-import type { Task } from "./lib/types";
+import { useTaskStore, useVisibleTasks } from "./lib/stores/task-store-v2";
 import { extractText } from "./lib/ui-utils";
 
 function ChatSection({
@@ -40,6 +39,13 @@ function ChatSection({
   onHide: (id: string) => void;
   onTask: (id: string) => void;
 }) {
+  const endRef = useRef<HTMLDivElement | null>(null);
+  const lastMessage = messages[messages.length - 1];
+
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ block: "end" });
+  }, [lastMessage?.id, lastMessage?.pending, loading, messages.length]);
+
   return (
     <section className="flex min-h-0 flex-1 flex-col xl:rounded-[2rem] xl:border xl:border-white/8 xl:bg-white/[0.03] xl:p-4">
       <div className="mb-4 hidden items-center justify-between gap-3 xl:flex">
@@ -55,11 +61,14 @@ function ChatSection({
           New Chat
         </button>
       </div>
-      <div className="scroll-soft min-h-0 flex-1 space-y-4 overflow-x-hidden overflow-y-auto pr-1">
+      <div className="scroll-soft min-h-0 flex-1 space-y-5 overflow-x-hidden overflow-y-auto px-1 pb-2 xl:pr-1 xl:pl-0">
         {loading ? <LoadingSkeleton rows={4} className="h-24 rounded-3xl" /> : null}
         {!loading && messages.length === 0 ? (
-          <div className="flex h-full items-center justify-center rounded-[2rem] border border-dashed border-white/8 bg-black/10 p-8 text-center text-base text-zinc-500">
-            Start a chat, drop in a file, or reference a task with <span className="mx-1 text-zinc-300">#</span>.
+          <div className="flex h-full min-h-[40svh] flex-col items-center justify-center rounded-[2rem] bg-gradient-to-b from-white/[0.05] to-white/[0.02] px-8 text-center">
+            <p className="text-lg font-medium text-white">Start something new</p>
+            <p className="mt-2 max-w-xs text-sm leading-6 text-zinc-400">
+              Send a message, drop in a file, or reference a task with <span className="text-zinc-200">#</span>.
+            </p>
           </div>
         ) : null}
         {messages.map((message) => (
@@ -72,6 +81,7 @@ function ChatSection({
             onTask={() => onTask(message.id)}
           />
         ))}
+        <div ref={endRef} />
       </div>
     </section>
   );
@@ -104,13 +114,8 @@ export function App() {
   const hideMessage = useChatStore((state) => state.hideMessage);
   const addTaskFromMessage = useChatStore((state) => state.addTaskFromMessage);
 
-  const tasks = useTasksStore((state) => state.tasks);
-  const activeTaskId = useTasksStore((state) => state.activeTaskId);
-  const addTask = useTasksStore((state) => state.addTask);
-  const updateTask = useTasksStore((state) => state.updateTask);
-  const moveTask = useTasksStore((state) => state.moveTask);
-  const setActiveTaskId = useTasksStore((state) => state.setActiveTaskId);
-  const loadTasks = useTasksStore((state) => state.loadTasks);
+  const tasks = useTaskStore((state) => state.tasks);
+  const visibleTasks = useVisibleTasks();
 
   const fileEntries = useFilesStore((state) => state.fileEntries);
   const filePreview = useFilesStore((state) => state.filePreview);
@@ -150,6 +155,10 @@ export function App() {
   }, [connect]);
 
   useEffect(() => {
+    void useTaskStore.getState().load();
+  }, []);
+
+  useEffect(() => {
     setUrlDraft(gatewayUrl);
     setTokenDraft(gatewayToken);
   }, [gatewayToken, gatewayUrl]);
@@ -157,13 +166,12 @@ export function App() {
   useEffect(() => {
     if (connectionState === "connected") {
       void refreshSessions();
-      void loadTasks();
       void loadFiles();
       if (queuedMessages.length > 0) {
         void flushQueuedMessages();
       }
     }
-  }, [connectionState, flushQueuedMessages, loadFiles, loadTasks, queuedMessages.length, refreshSessions]);
+  }, [connectionState, flushQueuedMessages, loadFiles, queuedMessages.length, refreshSessions]);
 
   useEffect(() => {
     processGatewayEvent({ lastGatewayEvent });
@@ -193,18 +201,11 @@ export function App() {
     conversations.find((conversation) => conversation.key === selectedConversationKey)?.title || "New Chat";
   const selectedAgent = agents.find((agent) => agent.id === selectedAgentId) ?? null;
 
-  const startChatFromTask = (task: Task, mobile = false) => {
-    void (async () => {
-      const key = await createConversation();
-      if (!key) {
-        return;
-      }
-      await selectConversation(key);
-      if (mobile) {
-        setMobileTab("chat");
-      }
-      setDraft(`#${task.title.replace(/\s+/g, "-")}\n\n${task.description}`);
-    })();
+  const openTaskSession = (key: string, mobile = false) => {
+    void selectConversation(key);
+    if (mobile) {
+      setMobileTab("chat");
+    }
   };
 
   const sidebar = (
@@ -243,14 +244,11 @@ export function App() {
 
   const panel = currentPanel === "tasks"
     ? (
-        <TaskBoard
+        <TaskList
           tasks={tasks}
-          activeTaskId={activeTaskId}
-          onAdd={(title) => void addTask(title)}
-          onOpen={setActiveTaskId}
-          onUpdate={(id, patch) => void updateTask(id, patch)}
-          onMove={(id, status, index) => void moveTask(id, status, index)}
-          onStartChat={(task) => startChatFromTask(task)}
+          visibleTasks={visibleTasks}
+          currentSessionKey={selectedConversationKey}
+          onOpenSession={(key) => openTaskSession(key)}
         />
       )
     : <FileBrowser entries={fileEntries} ready={filesReady} fallback={filesFallback} preview={filePreview} onOpen={openFile} />;
@@ -258,21 +256,15 @@ export function App() {
   return (
     <div className="min-h-[100dvh] overflow-x-hidden bg-canvas text-white">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.18),transparent_34%),radial-gradient(circle_at_80%_20%,rgba(14,165,233,0.12),transparent_24%)]" />
-      <div className="relative mx-auto flex h-[100dvh] max-w-[1800px] flex-col gap-3 overflow-hidden p-3 md:p-4 xl:h-auto xl:min-h-[100dvh] xl:flex-row xl:gap-4">
+      <div className="relative mx-auto flex h-[100dvh] max-w-[1800px] flex-col gap-3 overflow-hidden px-3 pb-0 pt-3 md:p-4 xl:h-auto xl:min-h-[100dvh] xl:flex-row xl:gap-4">
         <div className="hidden w-[300px] shrink-0 xl:block">{sidebar}</div>
         <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden xl:gap-4">
-          <div className="flex min-h-12 items-center justify-between gap-3 rounded-[1.5rem] border border-white/8 bg-white/[0.03] px-3 py-2 xl:hidden">
-            <div className="flex items-center gap-2">
+          <div className="flex min-h-12 items-center justify-between gap-3 px-1 py-1 xl:hidden">
+            <div className="flex min-w-0 items-center gap-2">
               <IconButton label="Open sidebar" onClick={toggleMobileSidebar}>
                 <MenuIcon />
               </IconButton>
-              <div>
-                <p className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">OpenClaw</p>
-                <div className="flex items-center gap-2">
-                  <p className="text-sm font-medium text-white">Web UI</p>
-                  <span className={`h-2 w-2 rounded-full ${connectionState === "connected" ? "bg-emerald-400" : connectionState === "disconnected" ? "bg-rose-400" : "bg-amber-400"}`} />
-                </div>
-              </div>
+              <p className="truncate text-base font-semibold text-white">OpenClaw</p>
             </div>
             <IconButton label="New chat" onClick={() => void createConversation()}>
               <PlusIcon />
@@ -337,7 +329,7 @@ export function App() {
             </div>
             <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden xl:hidden">
               {mobileTab === "chat" ? (
-                <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden pb-[calc(5.5rem+env(safe-area-inset-bottom))]">
+                <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden pb-[calc(5.25rem+env(safe-area-inset-bottom))]">
                   <ErrorBoundary label="Chat">
                     <ChatSection
                       title={selectedTitle}
@@ -357,22 +349,19 @@ export function App() {
               ) : null}
               {mobileTab === "tasks" ? (
                 <ErrorBoundary label="Tasks">
-                  <div className="min-h-0 flex-1 overflow-hidden pb-[calc(5.5rem+env(safe-area-inset-bottom))]">
-                    <TaskBoard
+                  <div className="min-h-0 flex-1 overflow-hidden pb-[calc(5.25rem+env(safe-area-inset-bottom))]">
+                    <TaskList
                       tasks={tasks}
-                      activeTaskId={activeTaskId}
-                      onAdd={(title) => void addTask(title)}
-                      onOpen={setActiveTaskId}
-                      onUpdate={(id, patch) => void updateTask(id, patch)}
-                      onMove={(id, status, index) => void moveTask(id, status, index)}
-                      onStartChat={(task) => startChatFromTask(task, true)}
+                      visibleTasks={visibleTasks}
+                      currentSessionKey={selectedConversationKey}
+                      onOpenSession={(key) => openTaskSession(key, true)}
                     />
                   </div>
                 </ErrorBoundary>
               ) : null}
               {mobileTab === "files" ? (
                 <ErrorBoundary label="Files">
-                  <div className="min-h-0 flex-1 overflow-hidden pb-[calc(5.5rem+env(safe-area-inset-bottom))]">
+                  <div className="min-h-0 flex-1 overflow-hidden pb-[calc(5.25rem+env(safe-area-inset-bottom))]">
                     <FileBrowser entries={fileEntries} ready={filesReady} fallback={filesFallback} preview={filePreview} onOpen={openFile} />
                   </div>
                 </ErrorBoundary>
@@ -385,7 +374,7 @@ export function App() {
         className={`fixed inset-0 z-30 bg-black/60 p-3 transition xl:hidden ${mobileSidebarOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"}`}
         onClick={closeMobileSidebar}
       >
-        <div className="h-full w-full max-w-[340px]" onClick={(event) => event.stopPropagation()}>
+        <div className="h-full w-full max-w-[340px] overflow-hidden" onClick={(event) => event.stopPropagation()}>
           {sidebar}
         </div>
       </div>

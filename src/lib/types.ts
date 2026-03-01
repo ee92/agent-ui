@@ -29,22 +29,6 @@ export type Conversation = {
   runId?: string | null;
 };
 
-export type TaskStatus = "queue" | "active" | "done";
-export type TaskPriority = "low" | "medium" | "high";
-
-export type Task = {
-  id: string;
-  title: string;
-  description: string;
-  status: TaskStatus;
-  priority: TaskPriority;
-  tags: string[];
-  agentSession: string | null;
-  createdAt: string;
-  updatedAt: string;
-  completedAt: string | null;
-};
-
 export type AgentStatus = "running" | "idle" | "waiting" | "error" | "done";
 
 export type AgentRun = {
@@ -97,9 +81,4 @@ export type SessionsListEntry = {
   createdAt?: string | number | null;
   lastMessage?: unknown;
   activeRunId?: string | null;
-};
-
-export type TasksFile = {
-  version: 1;
-  tasks: Task[];
 };

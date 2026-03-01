@@ -58,3 +58,25 @@ export function TrashIcon() {
     </svg>
   );
 }
+
+export function ChatIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <path d="M6 18.5 3.5 20V6.5A2.5 2.5 0 0 1 6 4h12A2.5 2.5 0 0 1 20.5 6.5v8A2.5 2.5 0 0 1 18 17H9z" />
+      <path d="M8 8h8M8 12h5" />
+    </svg>
+  );
+}
+
+export function TaskIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <path d="M9 6h10" />
+      <path d="M9 12h10" />
+      <path d="M9 18h10" />
+      <path d="m4.5 6 1.5 1.5L8.5 5" />
+      <path d="m4.5 12 1.5 1.5L8.5 11" />
+      <path d="m4.5 18 1.5 1.5L8.5 17" />
+    </svg>
+  );
+}

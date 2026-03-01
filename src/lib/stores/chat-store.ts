@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import type { ChatMessage, SessionsListEntry } from "../types";
 import { useGatewayStore } from "./gateway-store";
-import { useTasksStore } from "./tasks-store";
+import { useTaskStore } from "./task-store-v2";
 import { useUiStore } from "./ui-store";
 import {
   applyConversationUpdate,
@@ -323,7 +323,9 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
     if (!message) {
       return;
     }
-    await useTasksStore.getState().createTaskFromMessage(extractMessageText(message.parts));
+    const text = extractMessageText(message.parts);
+    const title = text.split("\n")[0]?.trim() || "New task";
+    await useTaskStore.getState().add(title, null, { notes: text, sessionKey: key });
   },
   handleChatEvent: (payload) => {
     if (!payload || typeof payload !== "object") {
