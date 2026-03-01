@@ -4,7 +4,9 @@
  * Handles persistence to workspace/tasks.json via gateway or local API.
  */
 
+import { useMemo } from "react";
 import { create } from "zustand";
+import { useShallow } from "zustand/shallow";
 import {
   createTask,
   deleteTask,
@@ -204,10 +206,12 @@ export const useTaskStore = create<TaskStoreState>((set, get) => {
 
 /** Get the visible flat list for rendering */
 export function useVisibleTasks() {
-  return useTaskStore((s) => {
-    const filtered = s.statusFilter ? filterByStatus(s.tasks, s.statusFilter) : s.tasks;
+  const tasks = useTaskStore((s) => s.tasks);
+  const statusFilter = useTaskStore((s) => s.statusFilter);
+  return useMemo(() => {
+    const filtered = statusFilter ? filterByStatus(tasks, statusFilter) : tasks;
     return flattenVisible(filtered);
-  });
+  }, [tasks, statusFilter]);
 }
 
 /** Get count of tasks needing review */
