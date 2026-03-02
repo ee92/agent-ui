@@ -24,7 +24,7 @@ import {
 import type { TaskNode, TaskStatus } from "../task-types";
 import { useGatewayStore } from "./gateway-store";
 
-const TASKS_PATH = "workspace/tasks.json";
+const TASKS_PATH = "tasks.json";
 const LOCAL_KEY = "openclaw-ui-tasks-v2";
 const DONE_RETENTION_MS = 14 * 24 * 60 * 60 * 1000; // 14 days
 
@@ -84,7 +84,7 @@ function loadLocal(): TaskNode[] {
 
 async function saveRemote(tasks: TaskNode[]): Promise<boolean> {
   try {
-    const token = useGatewayStore.getState().gatewayToken;
+    const token = await getToken();
     const res = await fetch("/api/files/write", {
       method: "POST",
       headers: {
@@ -99,9 +99,22 @@ async function saveRemote(tasks: TaskNode[]): Promise<boolean> {
   }
 }
 
+async function getToken(): Promise<string> {
+  const storeToken = useGatewayStore.getState().gatewayToken;
+  if (storeToken && storeToken !== 'openclaw') return storeToken;
+  try {
+    const res = await fetch('/api/config');
+    if (res.ok) {
+      const data = (await res.json()) as { token?: string };
+      if (data.token) return data.token;
+    }
+  } catch {}
+  return storeToken;
+}
+
 async function loadRemote(): Promise<TaskNode[] | null> {
   try {
-    const token = useGatewayStore.getState().gatewayToken;
+    const token = await getToken();
     const res = await fetch(`/api/files/read?path=${encodeURIComponent(TASKS_PATH)}`, {
       headers: { Authorization: `Bearer ${token}` },
     });

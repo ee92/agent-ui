@@ -19,9 +19,10 @@ const CONFIG = (() => {
 })();
 const TOKEN =
   process.env.OPENCLAW_TOKEN ||
-  CONFIG.token ||
-  CONFIG.gatewayToken ||
-  CONFIG.authToken ||
+  CONFIG?.gateway?.auth?.token ||
+  CONFIG?.token ||
+  CONFIG?.gatewayToken ||
+  CONFIG?.authToken ||
   "openclaw";
 
 const MIME_MAP = {
@@ -112,6 +113,10 @@ function jsonResponse(res, data, status = 200) {
 
 const server = createServer((req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
+
+  if (url.pathname === "/api/config") {
+    return jsonResponse(res, { token: TOKEN });
+  }
 
   if (url.pathname === "/api/health") {
     return jsonResponse(res, {

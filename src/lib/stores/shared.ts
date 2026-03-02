@@ -109,6 +109,17 @@ export const DEFAULT_GATEWAY_URL =
     : "ws://127.0.0.1:18789";
 export const DEFAULT_GATEWAY_TOKEN = "openclaw";
 
+export async function fetchServerToken(): Promise<string | null> {
+  try {
+    const res = await fetch("/api/config");
+    if (!res.ok) return null;
+    const data = (await res.json()) as { token?: string };
+    return data.token?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 export const FILE_METHODS: Record<FileMethodKind, MethodVariant[]> = {
   list: [
     { method: "workspace.tree", params: (path) => ({ path }) },

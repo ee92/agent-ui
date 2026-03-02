@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { GatewayClient } from "../gateway";
-import { getInitialSettings, persistSettings, type GatewayStoreState } from "./shared";
+import { fetchServerToken, getInitialSettings, persistSettings, type GatewayStoreState } from "./shared";
 
 const initialSettings = getInitialSettings();
 
@@ -12,8 +12,16 @@ export const useGatewayStore = create<GatewayStoreState>((set, get) => ({
   gatewayClient: null,
   lastGatewayEvent: null,
   gatewayEventVersion: 0,
-  connect: () => {
+  connect: async () => {
     get().gatewayClient?.disconnect();
+    // Auto-fetch server token if using default
+    if (get().gatewayToken === "openclaw" || !get().gatewayToken) {
+      const serverToken = await fetchServerToken();
+      if (serverToken) {
+        set({ gatewayToken: serverToken });
+        persistSettings(get().gatewayUrl, serverToken);
+      }
+    }
     const client = new GatewayClient({
       url: get().gatewayUrl,
       token: get().gatewayToken,
