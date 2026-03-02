@@ -18,6 +18,16 @@ import {
 } from "./shared";
 
 const hiddenMessageIds = readHiddenMessages();
+const SELECTED_KEY = "openclaw-ui-selected-conversation";
+
+function saveSelectedKey(key: string | null) {
+  if (key) localStorage.setItem(SELECTED_KEY, key);
+  else localStorage.removeItem(SELECTED_KEY);
+}
+
+function loadSelectedKey(): string | null {
+  return localStorage.getItem(SELECTED_KEY);
+}
 
 export const useChatStore = create<ChatStoreState>((set, get) => ({
   conversations: [],
@@ -39,7 +49,8 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
         includeLastMessage: true
       });
       const sessions = Array.isArray(response.sessions) ? response.sessions.flatMap(normalizeSession) : [];
-      const selectedConversationKey = get().selectedConversationKey ?? sessions[0]?.key ?? null;
+      const selectedConversationKey = get().selectedConversationKey ?? loadSelectedKey() ?? sessions[0]?.key ?? null;
+      saveSelectedKey(selectedConversationKey);
       set({ conversations: sessions, selectedConversationKey, sessionsReady: true });
       if (selectedConversationKey) {
         await get().selectConversation(selectedConversationKey);
@@ -97,6 +108,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
     }
   },
   selectConversation: async (key) => {
+    saveSelectedKey(key);
     const client = useGatewayStore.getState().gatewayClient;
     set({
       selectedConversationKey: key,

@@ -1,0 +1,808 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e3]:
+  - generic [ref=e5]:
+    - generic [ref=e6]:
+      - generic [ref=e7]:
+        - button "Open sidebar" [ref=e8] [cursor=pointer]:
+          - img [ref=e9]
+        - paragraph [ref=e11]: Agent-main-main
+      - button "New chat" [ref=e12] [cursor=pointer]:
+        - img [ref=e13]
+    - generic [ref=e17]:
+      - generic [ref=e18]:
+        - generic [ref=e19]:
+          - button "All" [ref=e20] [cursor=pointer]:
+            - generic [ref=e21]: All
+          - button "Review 1" [ref=e22] [cursor=pointer]:
+            - generic [ref=e23]: Review
+            - generic [ref=e24]: "1"
+          - button "Blocked 0" [ref=e25] [cursor=pointer]:
+            - generic [ref=e26]: Blocked
+            - generic [ref=e27]: "0"
+          - button "Active" [ref=e28] [cursor=pointer]:
+            - generic [ref=e29]: Active
+          - button "Done" [ref=e30] [cursor=pointer]:
+            - generic [ref=e31]: Done
+        - textbox "Add a task..." [ref=e33]
+      - generic [ref=e35]:
+        - generic [ref=e37]:
+          - button "Set task status, currently Review" [ref=e39] [cursor=pointer]
+          - button "Clean up orphan processes on claudesworth" [ref=e42] [cursor=pointer]
+        - generic [ref=e44]:
+          - button "Set task status, currently To Do" [ref=e46] [cursor=pointer]
+          - generic [ref=e48]:
+            - button "Compaction" [ref=e49] [cursor=pointer]
+            - button "agent:main:main" [ref=e51] [cursor=pointer]:
+              - img [ref=e52]
+              - generic [ref=e55]: agent:main:main
+  - generic:
+    - generic:
+      - generic:
+        - complementary:
+          - textbox "Search conversations"
+          - generic:
+            - generic:
+              - paragraph: Today
+              - generic:
+                - generic:
+                  - button "Agent-main-main No messages yet 1m Mar 2, 12:31 AM Hold to delete":
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: Agent-main-main
+                        - paragraph: No messages yet
+                      - generic: 1m
+                    - generic:
+                      - generic: Mar 2, 12:31 AM
+                      - generic: Hold to delete
+                  - generic:
+                    - generic:
+                      - generic:
+                        - button "Delete conversation"
+                - generic:
+                  - 'button "Cron: swap-win-health-check No messages yet 3m Mar 2, 12:30 AM Hold to delete"':
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: "Cron: swap-win-health-check"
+                        - paragraph: No messages yet
+                      - generic: 3m
+                    - generic:
+                      - generic: Mar 2, 12:30 AM
+                      - generic: Hold to delete
+                  - generic:
+                    - generic:
+                      - generic:
+                        - button "Delete conversation"
+                - generic:
+                  - button "The-lab No messages yet 5m Mar 2, 12:27 AM Hold to delete":
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: The-lab
+                        - paragraph: No messages yet
+                      - generic: 5m
+                    - generic:
+                      - generic: Mar 2, 12:27 AM
+                      - generic: Hold to delete
+                  - generic:
+                    - generic:
+                      - generic:
+                        - button "Delete conversation"
+            - generic:
+              - paragraph: Yesterday
+              - generic:
+                - generic:
+                  - button "The-lab No messages yet 2h Mar 1, 10:49 PM Hold to delete":
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: The-lab
+                        - paragraph: No messages yet
+                      - generic: 2h
+                    - generic:
+                      - generic: Mar 1, 10:49 PM
+                      - generic: Hold to delete
+                  - generic:
+                    - generic:
+                      - generic:
+                        - button "Delete conversation"
+                - generic:
+                  - button "The-lab No messages yet 6h Mar 1, 6:45 PM Hold to delete":
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: The-lab
+                        - paragraph: No messages yet
+                      - generic: 6h
+                    - generic:
+                      - generic: Mar 1, 6:45 PM
+                      - generic: Hold to delete
+                  - generic:
+                    - generic:
+                      - generic:
+                        - button "Delete conversation"
+                - generic:
+                  - 'button "Cron: portfolio-morning-briefing No messages yet 7h Mar 1, 5:18 PM Hold to delete"':
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: "Cron: portfolio-morning-briefing"
+                        - paragraph: No messages yet
+                      - generic: 7h
+                    - generic:
+                      - generic: Mar 1, 5:18 PM
+                      - generic: Hold to delete
+                  - generic:
+                    - generic:
+                      - generic:
+                        - button "Delete conversation"
+                - generic:
+                  - 'button "Cron: openclaw-update-check No messages yet 7h Mar 1, 5:18 PM Hold to delete"':
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: "Cron: openclaw-update-check"
+                        - paragraph: No messages yet
+                      - generic: 7h
+                    - generic:
+                      - generic: Mar 1, 5:18 PM
+                      - generic: Hold to delete
+                  - generic:
+                    - generic:
+                      - generic:
+                        - button "Delete conversation"
+                - generic:
+                  - 'button "Cron: nightly-build No messages yet 7h Mar 1, 5:17 PM Hold to delete"':
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: "Cron: nightly-build"
+                        - paragraph: No messages yet
+                      - generic: 7h
+                    - generic:
+                      - generic: Mar 1, 5:17 PM
+                      - generic: Hold to delete
+                  - generic:
+                    - generic:
+                      - generic:
+                        - button "Delete conversation"
+                - generic:
+                  - 'button "Cron: weekly-review No messages yet 7h Mar 1, 5:15 PM Hold to delete"':
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: "Cron: weekly-review"
+                        - paragraph: No messages yet
+                      - generic: 7h
+                    - generic:
+                      - generic: Mar 1, 5:15 PM
+                      - generic: Hold to delete
+                  - generic:
+                    - generic:
+                      - generic:
+                        - button "Delete conversation"
+                - generic:
+                  - button "1003892090146 No messages yet 14h Mar 1, 10:21 AM Hold to delete":
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: "1003892090146"
+                        - paragraph: No messages yet
+                      - generic: 14h
+                    - generic:
+                      - generic: Mar 1, 10:21 AM
+                      - generic: Hold to delete
+                  - generic:
+                    - generic:
+                      - generic:
+                        - button "Delete conversation"
+                - generic:
+                  - 'button "Cron: workspace-autocommit No messages yet 18h Mar 1, 7:00 AM Hold to delete"':
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: "Cron: workspace-autocommit"
+                        - paragraph: No messages yet
+                      - generic: 18h
+                    - generic:
+                      - generic: Mar 1, 7:00 AM
+                      - generic: Hold to delete
+                  - generic:
+                    - generic:
+                      - generic:
+                        - button "Delete conversation"
+                - generic:
+                  - button "[Sun 2026-03-01 04:08 UTC] review again with codex subagent No messages yet 18h Mar 1, 6:58 AM Hold to delete":
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: "[Sun 2026-03-01 04:08 UTC] review again with codex subagent"
+                        - paragraph: No messages yet
+                      - generic: 18h
+                    - generic:
+                      - generic: Mar 1, 6:58 AM
+                      - generic: Hold to delete
+                  - generic:
+                    - generic:
+                      - generic:
+                        - button "Delete conversation"
+                - generic:
+                  - 'button "Cron: pulsechain-nightly-exploration No messages yet 19h Mar 1, 6:00 AM Hold to delete"':
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: "Cron: pulsechain-nightly-exploration"
+                        - paragraph: No messages yet
+                      - generic: 19h
+                    - generic:
+                      - generic: Mar 1, 6:00 AM
+                      - generic: Hold to delete
+                  - generic:
+                    - generic:
+                      - generic:
+                        - button "Delete conversation"
+                - generic:
+                  - 'button "Cron: evening-summary No messages yet 19h Mar 1, 5:50 AM Hold to delete"':
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: "Cron: evening-summary"
+                        - paragraph: No messages yet
+                      - generic: 19h
+                    - generic:
+                      - generic: Mar 1, 5:50 AM
+                      - generic: Hold to delete
+                  - generic:
+                    - generic:
+                      - generic:
+                        - button "Delete conversation"
+                - generic:
+                  - button "[Sun 2026-03-01 04:22 UTC] Wait, I'm still having a hard… No messages yet 20h Mar 1, 4:29 AM Hold to delete":
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: "[Sun 2026-03-01 04:22 UTC] Wait, I'm still having a hard…"
+                        - paragraph: No messages yet
+                      - generic: 20h
+                    - generic:
+                      - generic: Mar 1, 4:29 AM
+                      - generic: Hold to delete
+                  - generic:
+                    - generic:
+                      - generic:
+                        - button "Delete conversation"
+            - generic:
+              - paragraph: This Week
+              - generic:
+                - generic:
+                  - 'button "Cron: morning-one-thing No messages yet 1d Feb 28, 3:30 PM Hold to delete"':
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: "Cron: morning-one-thing"
+                        - paragraph: No messages yet
+                      - generic: 1d
+                    - generic:
+                      - generic: Feb 28, 3:30 PM
+                      - generic: Hold to delete
+                  - generic:
+                    - generic:
+                      - generic:
+                        - button "Delete conversation"
+                - generic:
+                  - button "[Fri 2026-02-27 16:37 UTC] Did we observe any… No messages yet 2d Feb 28, 3:47 AM Hold to delete":
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: "[Fri 2026-02-27 16:37 UTC] Did we observe any…"
+                        - paragraph: No messages yet
+                      - generic: 2d
+                    - generic:
+                      - generic: Feb 28, 3:47 AM
+                      - generic: Hold to delete
+                  - generic:
+                    - generic:
+                      - generic:
+                        - button "Delete conversation"
+                - generic:
+                  - button "The-lab No messages yet 5d Feb 24, 8:08 PM Hold to delete":
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: The-lab
+                        - paragraph: No messages yet
+                      - generic: 5d
+                    - generic:
+                      - generic: Feb 24, 8:08 PM
+                      - generic: Hold to delete
+                  - generic:
+                    - generic:
+                      - generic:
+                        - button "Delete conversation"
+                - generic:
+                  - 'button "Cron: weekly-todo-audit No messages yet 7d Feb 23, 2:00 AM Hold to delete"':
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: "Cron: weekly-todo-audit"
+                        - paragraph: No messages yet
+                      - generic: 7d
+                    - generic:
+                      - generic: Feb 23, 2:00 AM
+                      - generic: Hold to delete
+                  - generic:
+                    - generic:
+                      - generic:
+                        - button "Delete conversation"
+            - generic:
+              - paragraph: Older
+              - generic:
+                - generic:
+                  - button "The-lab No messages yet 8d Feb 21, 8:18 PM Hold to delete":
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: The-lab
+                        - paragraph: No messages yet
+                      - generic: 8d
+                    - generic:
+                      - generic: Feb 21, 8:18 PM
+                      - generic: Hold to delete
+                  - generic:
+                    - generic:
+                      - generic:
+                        - button "Delete conversation"
+                - generic:
+                  - button "The-lab No messages yet 11d Feb 18, 7:47 PM Hold to delete":
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: The-lab
+                        - paragraph: No messages yet
+                      - generic: 11d
+                    - generic:
+                      - generic: Feb 18, 7:47 PM
+                      - generic: Hold to delete
+                  - generic:
+                    - generic:
+                      - generic:
+                        - button "Delete conversation"
+                - generic:
+                  - button "The-lab No messages yet 14d Feb 16, 4:39 AM Hold to delete":
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: The-lab
+                        - paragraph: No messages yet
+                      - generic: 14d
+                    - generic:
+                      - generic: Feb 16, 4:39 AM
+                      - generic: Hold to delete
+                  - generic:
+                    - generic:
+                      - generic:
+                        - button "Delete conversation"
+                - generic:
+                  - button "The-lab No messages yet 15d Feb 14, 11:18 PM Hold to delete":
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: The-lab
+                        - paragraph: No messages yet
+                      - generic: 15d
+                    - generic:
+                      - generic: Feb 14, 11:18 PM
+                      - generic: Hold to delete
+                  - generic:
+                    - generic:
+                      - generic:
+                        - button "Delete conversation"
+                - generic:
+                  - button "The-lab No messages yet 16d Feb 13, 10:57 PM Hold to delete":
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: The-lab
+                        - paragraph: No messages yet
+                      - generic: 16d
+                    - generic:
+                      - generic: Feb 13, 10:57 PM
+                      - generic: Hold to delete
+                  - generic:
+                    - generic:
+                      - generic:
+                        - button "Delete conversation"
+                - generic:
+                  - 'button "Cron: workout-setup-reminder No messages yet 17d Feb 12, 6:00 PM Hold to delete"':
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: "Cron: workout-setup-reminder"
+                        - paragraph: No messages yet
+                      - generic: 17d
+                    - generic:
+                      - generic: Feb 12, 6:00 PM
+                      - generic: Hold to delete
+                  - generic:
+                    - generic:
+                      - generic:
+                        - button "Delete conversation"
+                - generic:
+                  - 'button "Cron: market-intelligence No messages yet 18d Feb 12, 4:00 AM Hold to delete"':
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: "Cron: market-intelligence"
+                        - paragraph: No messages yet
+                      - generic: 18d
+                    - generic:
+                      - generic: Feb 12, 4:00 AM
+                      - generic: Hold to delete
+                  - generic:
+                    - generic:
+                      - generic:
+                        - button "Delete conversation"
+                - generic:
+                  - button "The-lab No messages yet 18d Feb 11, 5:58 PM Hold to delete":
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: The-lab
+                        - paragraph: No messages yet
+                      - generic: 18d
+                    - generic:
+                      - generic: Feb 11, 5:58 PM
+                      - generic: Hold to delete
+                  - generic:
+                    - generic:
+                      - generic:
+                        - button "Delete conversation"
+                - generic:
+                  - 'button "Cron: Polymarket snapshot No messages yet 20d Feb 10, 6:00 AM Hold to delete"':
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: "Cron: Polymarket snapshot"
+                        - paragraph: No messages yet
+                      - generic: 20d
+                    - generic:
+                      - generic: Feb 10, 6:00 AM
+                      - generic: Hold to delete
+                  - generic:
+                    - generic:
+                      - generic:
+                        - button "Delete conversation"
+                - generic:
+                  - button "The-lab No messages yet 20d Feb 9, 9:49 PM Hold to delete":
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: The-lab
+                        - paragraph: No messages yet
+                      - generic: 20d
+                    - generic:
+                      - generic: Feb 9, 9:49 PM
+                      - generic: Hold to delete
+                  - generic:
+                    - generic:
+                      - generic:
+                        - button "Delete conversation"
+                - generic:
+                  - button "The-lab No messages yet 20d Feb 9, 6:19 PM Hold to delete":
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: The-lab
+                        - paragraph: No messages yet
+                      - generic: 20d
+                    - generic:
+                      - generic: Feb 9, 6:19 PM
+                      - generic: Hold to delete
+                  - generic:
+                    - generic:
+                      - generic:
+                        - button "Delete conversation"
+                - generic:
+                  - 'button "Cron: polyquant-morning-report No messages yet 21d Feb 8, 3:00 PM Hold to delete"':
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: "Cron: polyquant-morning-report"
+                        - paragraph: No messages yet
+                      - generic: 21d
+                    - generic:
+                      - generic: Feb 8, 3:00 PM
+                      - generic: Hold to delete
+                  - generic:
+                    - generic:
+                      - generic:
+                        - button "Delete conversation"
+                - generic:
+                  - button "The-lab No messages yet 22d Feb 8, 8:54 AM Hold to delete":
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: The-lab
+                        - paragraph: No messages yet
+                      - generic: 22d
+                    - generic:
+                      - generic: Feb 8, 8:54 AM
+                      - generic: Hold to delete
+                  - generic:
+                    - generic:
+                      - generic:
+                        - button "Delete conversation"
+                - generic:
+                  - button "The-lab No messages yet 22d Feb 8, 7:44 AM Hold to delete":
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: The-lab
+                        - paragraph: No messages yet
+                      - generic: 22d
+                    - generic:
+                      - generic: Feb 8, 7:44 AM
+                      - generic: Hold to delete
+                  - generic:
+                    - generic:
+                      - generic:
+                        - button "Delete conversation"
+                - generic:
+                  - button "[Internal API Access] Reverse-engineer and call internal… No messages yet 22d Feb 7, 5:10 PM Hold to delete":
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: "[Internal API Access] Reverse-engineer and call internal…"
+                        - paragraph: No messages yet
+                      - generic: 22d
+                    - generic:
+                      - generic: Feb 7, 5:10 PM
+                      - generic: Hold to delete
+                  - generic:
+                    - generic:
+                      - generic:
+                        - button "Delete conversation"
+                - generic:
+                  - button "The-lab No messages yet 23d Feb 7, 1:00 AM Hold to delete":
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: The-lab
+                        - paragraph: No messages yet
+                      - generic: 23d
+                    - generic:
+                      - generic: Feb 7, 1:00 AM
+                      - generic: Hold to delete
+                  - generic:
+                    - generic:
+                      - generic:
+                        - button "Delete conversation"
+                - generic:
+                  - button "[Internal API Access] Reverse-engineer and call internal… No messages yet 23d Feb 6, 8:59 PM Hold to delete":
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: "[Internal API Access] Reverse-engineer and call internal…"
+                        - paragraph: No messages yet
+                      - generic: 23d
+                    - generic:
+                      - generic: Feb 6, 8:59 PM
+                      - generic: Hold to delete
+                  - generic:
+                    - generic:
+                      - generic:
+                        - button "Delete conversation"
+                - generic:
+                  - button "[Internal API Access] Reverse-engineer and call internal… No messages yet 23d Feb 6, 8:14 PM Hold to delete":
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: "[Internal API Access] Reverse-engineer and call internal…"
+                        - paragraph: No messages yet
+                      - generic: 23d
+                    - generic:
+                      - generic: Feb 6, 8:14 PM
+                      - generic: Hold to delete
+                  - generic:
+                    - generic:
+                      - generic:
+                        - button "Delete conversation"
+                - generic:
+                  - button "[Internal API Access] Reverse-engineer and call internal… No messages yet 23d Feb 6, 4:09 PM Hold to delete":
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: "[Internal API Access] Reverse-engineer and call internal…"
+                        - paragraph: No messages yet
+                      - generic: 23d
+                    - generic:
+                      - generic: Feb 6, 4:09 PM
+                      - generic: Hold to delete
+                  - generic:
+                    - generic:
+                      - generic:
+                        - button "Delete conversation"
+                - generic:
+                  - button "[Internal API Access] Reverse-engineer and call internal… No messages yet 23d Feb 6, 3:50 PM Hold to delete":
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: "[Internal API Access] Reverse-engineer and call internal…"
+                        - paragraph: No messages yet
+                      - generic: 23d
+                    - generic:
+                      - generic: Feb 6, 3:50 PM
+                      - generic: Hold to delete
+                  - generic:
+                    - generic:
+                      - generic:
+                        - button "Delete conversation"
+                - generic:
+                  - button "The-lab No messages yet 24d Feb 6, 1:01 AM Hold to delete":
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: The-lab
+                        - paragraph: No messages yet
+                      - generic: 24d
+                    - generic:
+                      - generic: Feb 6, 1:01 AM
+                      - generic: Hold to delete
+                  - generic:
+                    - generic:
+                      - generic:
+                        - button "Delete conversation"
+                - generic:
+                  - button "[Internal API Access] Reverse-engineer and call internal… No messages yet 25d Feb 5, 11:00 AM Hold to delete":
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: "[Internal API Access] Reverse-engineer and call internal…"
+                        - paragraph: No messages yet
+                      - generic: 25d
+                    - generic:
+                      - generic: Feb 5, 11:00 AM
+                      - generic: Hold to delete
+                  - generic:
+                    - generic:
+                      - generic:
+                        - button "Delete conversation"
+                - generic:
+                  - button "[cron:3e68e70d-8a8e-438a-92f5-efcee216732d… No messages yet 25d Feb 4, 3:00 PM Hold to delete":
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: "[cron:3e68e70d-8a8e-438a-92f5-efcee216732d…"
+                        - paragraph: No messages yet
+                      - generic: 25d
+                    - generic:
+                      - generic: Feb 4, 3:00 PM
+                      - generic: Hold to delete
+                  - generic:
+                    - generic:
+                      - generic:
+                        - button "Delete conversation"
+                - generic:
+                  - button "[cron:f9fca55c-2961-41ff-b36b-0ebe19c001dc… No messages yet 25d Feb 4, 3:00 PM Hold to delete":
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: "[cron:f9fca55c-2961-41ff-b36b-0ebe19c001dc…"
+                        - paragraph: No messages yet
+                      - generic: 25d
+                    - generic:
+                      - generic: Feb 4, 3:00 PM
+                      - generic: Hold to delete
+                  - generic:
+                    - generic:
+                      - generic:
+                        - button "Delete conversation"
+                - generic:
+                  - button "The-lab No messages yet 30d Jan 31, 2:23 AM Hold to delete":
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: The-lab
+                        - paragraph: No messages yet
+                      - generic: 30d
+                    - generic:
+                      - generic: Jan 31, 2:23 AM
+                      - generic: Hold to delete
+                  - generic:
+                    - generic:
+                      - generic:
+                        - button "Delete conversation"
+                - generic:
+                  - button "[cron:23db24b2-6fca-4aa5-82b7-8f8d14a402ff… No messages yet 30d Jan 30, 4:00 PM Hold to delete":
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: "[cron:23db24b2-6fca-4aa5-82b7-8f8d14a402ff…"
+                        - paragraph: No messages yet
+                      - generic: 30d
+                    - generic:
+                      - generic: Jan 30, 4:00 PM
+                      - generic: Hold to delete
+                  - generic:
+                    - generic:
+                      - generic:
+                        - button "Delete conversation"
+                - generic:
+                  - button "[cron:ed0cd810-200b-4f0f-ba1a-c36c4384e67e… No messages yet 31d Jan 30, 3:24 AM Hold to delete":
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: "[cron:ed0cd810-200b-4f0f-ba1a-c36c4384e67e…"
+                        - paragraph: No messages yet
+                      - generic: 31d
+                    - generic:
+                      - generic: Jan 30, 3:24 AM
+                      - generic: Hold to delete
+                  - generic:
+                    - generic:
+                      - generic:
+                        - button "Delete conversation"
+                - generic:
+                  - button "Swap.win No messages yet 31d Jan 30, 2:59 AM Hold to delete":
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: Swap.win
+                        - paragraph: No messages yet
+                      - generic: 31d
+                    - generic:
+                      - generic: Jan 30, 2:59 AM
+                      - generic: Hold to delete
+                  - generic:
+                    - generic:
+                      - generic:
+                        - button "Delete conversation"
+                - generic:
+                  - button "The-lab No messages yet 31d Jan 30, 2:52 AM Hold to delete":
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: The-lab
+                        - paragraph: No messages yet
+                      - generic: 31d
+                    - generic:
+                      - generic: Jan 30, 2:52 AM
+                      - generic: Hold to delete
+                  - generic:
+                    - generic:
+                      - generic:
+                        - button "Delete conversation"
+                - generic:
+                  - button "The-lab No messages yet 31d Jan 30, 2:51 AM Hold to delete":
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: The-lab
+                        - paragraph: No messages yet
+                      - generic: 31d
+                    - generic:
+                      - generic: Jan 30, 2:51 AM
+                      - generic: Hold to delete
+                  - generic:
+                    - generic:
+                      - generic:
+                        - button "Delete conversation"
+            - generic:
+              - generic:
+                - paragraph: Agents
+                - generic: 0 active
+              - generic:
+                - generic: Active runs will appear here.
+  - navigation [ref=e56]:
+    - generic [ref=e58]:
+      - button "Chat" [ref=e59] [cursor=pointer]:
+        - img [ref=e60]
+      - button "Tasks" [active] [ref=e63] [cursor=pointer]:
+        - img [ref=e64]
+        - generic [ref=e68]: "1"
+      - button "Files" [ref=e69] [cursor=pointer]:
+        - img [ref=e70]
+```
