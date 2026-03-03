@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { ChatComposer } from "./components/chat/chat-composer";
 import { ConversationSidebar } from "./components/chat/conversation-sidebar";
 import { MessageCard } from "./components/chat/message-card";
@@ -9,6 +9,7 @@ import { MenuIcon, PlusIcon } from "./components/ui/icons";
 import { LoadingSkeleton } from "./components/ui/loading-skeleton";
 import { OfflineBanner } from "./components/ui/offline-banner";
 import { SystemFlow } from "./components/flow/system-flow";
+import { TimelinePage } from "./components/timeline/timeline-page";
 import { WorkflowDashboard } from "./components/workflow/workflow-dashboard";
 import {
   useAgentsStore,
@@ -21,7 +22,36 @@ import { useActivityStore } from "./lib/stores/activity-store";
 import { processGatewayEvent, recordConnectionActivity } from "./lib/stores/process-gateway-event";
 import { useTaskStore } from "./lib/stores/task-store-v2";
 import { extractText } from "./lib/ui-utils";
+import { useHashRouter, navigate } from "./lib/use-hash-router";
 
+/* ─── Nav link helper ─── */
+function NavLink({ href, label, active }: { href: string; label: string; active: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={() => navigate(href)}
+      className={`text-xs transition-colors ${active ? "text-white font-medium" : "text-zinc-400 hover:text-white"}`}
+    >
+      {label}
+    </button>
+  );
+}
+
+function MobileTabLink({ href, label, active }: { href: string; label: string; active: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={() => navigate(href)}
+      className={`flex-1 py-2.5 text-center text-xs font-medium transition-colors ${
+        active ? "border-b-2 border-blue-400 text-white" : "text-zinc-500"
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
+/* ─── Chat view (unchanged) ─── */
 function ChatView({
   title,
   loading,
@@ -30,7 +60,6 @@ function ChatView({
   attachments,
   tasks,
   agents,
-  showHeader,
   onNewChat,
   onRetry,
   onHide,
@@ -38,7 +67,6 @@ function ChatView({
   onSend,
   onAttach,
   onRemoveAttachment,
-  onBack,
 }: {
   title: string;
   loading: boolean;
@@ -47,7 +75,6 @@ function ChatView({
   attachments: ReturnType<typeof useUiStore.getState>["attachments"];
   tasks: ReturnType<typeof useTaskStore.getState>["tasks"];
   agents: ReturnType<typeof useAgentsStore.getState>["agents"];
-  showHeader: boolean;
   onNewChat: () => void;
   onRetry: (id: string) => void;
   onHide: (id: string) => void;
@@ -55,7 +82,6 @@ function ChatView({
   onSend: () => void;
   onAttach: (files: FileList) => void;
   onRemoveAttachment: (id: string) => void;
-  onBack?: () => void;
 }) {
   const endRef = useRef<HTMLDivElement | null>(null);
   const lastMessage = messages[messages.length - 1];
@@ -66,24 +92,6 @@ function ChatView({
 
   return (
     <div className="flex h-full flex-col">
-      {showHeader && (
-        <div className="flex shrink-0 items-center gap-3 border-b border-white/5 px-4 py-2">
-          {onBack && (
-            <button type="button" onClick={onBack} className="text-sm text-zinc-400 hover:text-white">
-              ← Back
-            </button>
-          )}
-          <h2 className="min-w-0 flex-1 truncate text-base font-semibold text-white">{title}</h2>
-          <button
-            type="button"
-            onClick={onNewChat}
-            className="rounded-xl border border-white/8 bg-white/[0.04] px-3 py-1.5 text-sm text-zinc-300 hover:bg-white/[0.08]"
-          >
-            New
-          </button>
-        </div>
-      )}
-
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 pb-4 xl:px-6">
         <div className="flex-1" />
         {loading && <LoadingSkeleton rows={4} className="h-24 rounded-3xl" />}
@@ -125,7 +133,10 @@ function ChatView({
   );
 }
 
+/* ─── Main App ─── */
 export function App() {
+  const { route } = useHashRouter();
+
   const connectionState = useGatewayStore((s) => s.connectionState);
   const connectionDetail = useGatewayStore((s) => s.connectionDetail);
   const lastGatewayEvent = useGatewayStore((s) => s.lastGatewayEvent);
@@ -134,7 +145,6 @@ export function App() {
 
   const conversations = useChatStore((s) => s.conversations);
   const sessionsReady = useChatStore((s) => s.sessionsReady);
-  const selectedConversationKey = useChatStore((s) => s.selectedConversationKey);
   const messagesByConversation = useChatStore((s) => s.messagesByConversation);
   const queuedMessages = useChatStore((s) => s.queuedMessages);
   const loadingConversationKey = useChatStore((s) => s.loadingConversationKey);
@@ -160,7 +170,6 @@ export function App() {
   const agents = useAgentsStore((s) => s.agents);
 
   const mobileSidebarOpen = useUiStore((s) => s.mobileSidebarOpen);
-  const sidebarFilesMode = useUiStore((s) => s.sidebarFilesMode);
   const draft = useUiStore((s) => s.draft);
   const attachments = useUiStore((s) => s.attachments);
   const conversationSearch = useUiStore((s) => s.conversationSearch);
@@ -171,16 +180,21 @@ export function App() {
   const removeAttachment = useUiStore((s) => s.removeAttachment);
   const toggleMobileSidebar = useUiStore((s) => s.toggleMobileSidebar);
   const closeMobileSidebar = useUiStore((s) => s.closeMobileSidebar);
-  const toggleSidebarFilesMode = useUiStore((s) => s.toggleSidebarFilesMode);
   const requestSearchFocus = useUiStore((s) => s.requestSearchFocus);
   const closeOverlays = useUiStore((s) => s.closeOverlays);
 
-  // Main view state
-  const [mainView, setMainView] = useState<"home" | "files" | "flow" | null>("home");
-  const showingChat = selectedConversationKey !== null && mainView === null;
+  // Derive current page and chat key from route
+  const currentPage = route.page;
+  const chatSessionKey = currentPage === "chat" ? route.sessionKey : null;
 
+  // When route changes to a chat, select that conversation
+  useEffect(() => {
+    if (chatSessionKey) {
+      void selectConversation(chatSessionKey);
+    }
+  }, [chatSessionKey, selectConversation]);
 
-
+  // Startup effects
   useEffect(() => { connect(); }, [connect]);
   useEffect(() => { void useTaskStore.getState().load(); }, []);
 
@@ -193,54 +207,45 @@ export function App() {
   }, [connectionState, flushQueuedMessages, loadFiles, queuedMessages.length, refreshSessions]);
 
   useEffect(() => { processGatewayEvent({ lastGatewayEvent }); }, [gatewayEventVersion, lastGatewayEvent]);
+  useEffect(() => { recordConnectionActivity(connectionState, connectionDetail); }, [connectionDetail, connectionState]);
 
-  useEffect(() => {
-    recordConnectionActivity(connectionState, connectionDetail);
-  }, [connectionDetail, connectionState]);
-
+  // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); requestSearchFocus(); closeMobileSidebar(); }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "n") { e.preventDefault(); void createConversation(); }
       if (e.key === "Escape") {
-        if (showingChat) {
-          // Deselect → go back to the dashboard
-          useChatStore.setState({ selectedConversationKey: null });
-        }
+        if (currentPage === "chat") navigate("#/");
         closeOverlays();
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [closeMobileSidebar, closeOverlays, createConversation, requestSearchFocus, showingChat]);
+  }, [closeMobileSidebar, closeOverlays, createConversation, requestSearchFocus, currentPage]);
 
-  const selectedMessages = selectedConversationKey ? messagesByConversation[selectedConversationKey] ?? [] : [];
-  const selectedTitle = conversations.find((c) => c.key === selectedConversationKey)?.title || "New Chat";
-
-  const goHome = () => {
-    setMainView("home");
-  };
-
-  const openFiles = () => {
-    setMainView("files");
-  };
-
-  const openFlow = () => {
-    setMainView("flow");
-  };
+  const selectedMessages = chatSessionKey ? messagesByConversation[chatSessionKey] ?? [] : [];
+  const selectedTitle = chatSessionKey
+    ? conversations.find((c) => c.key === chatSessionKey)?.title || "Chat"
+    : "";
 
   const openSession = (key: string) => {
-    setMainView(null);
-    const title = conversations.find((conversation) => conversation.key === key)?.title ?? key;
+    const title = conversations.find((c) => c.key === key)?.title ?? key;
     useActivityStore.getState().push("session_start", `Session opened: ${title}`, { sessionKey: key });
-    void selectConversation(key);
+    navigate(`#/chat/${encodeURIComponent(key)}`);
     closeMobileSidebar();
   };
+
+  const pageTitle =
+    currentPage === "files" ? "Files"
+    : currentPage === "flow" ? "System Flow"
+    : currentPage === "timeline" ? "Timeline"
+    : currentPage === "chat" ? selectedTitle
+    : "Dashboard";
 
   const sidebar = (
     <ConversationSidebar
       conversations={conversations}
-      selectedConversationKey={selectedConversationKey}
+      selectedConversationKey={chatSessionKey}
       search={conversationSearch}
       ready={sessionsReady}
       agents={agents}
@@ -250,7 +255,7 @@ export function App() {
       onDelete={(key) => void deleteConversation(key)}
       onRename={(key, title) => void renameConversation(key, title)}
       onNewChat={() => void createConversation()}
-      onToggleFilesMode={openFiles}
+      onToggleFilesMode={() => navigate("#/files")}
     />
   );
 
@@ -270,81 +275,46 @@ export function App() {
           <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/5 px-4 py-2 xl:hidden">
             <div className="flex min-w-0 items-center gap-2">
               <IconButton label="Open sidebar" onClick={toggleMobileSidebar}><MenuIcon /></IconButton>
-              {(showingChat || mainView === "files" || mainView === "flow") ? (
-                <button type="button" onClick={goHome} className="text-sm text-zinc-400 hover:text-white">←</button>
-              ) : null}
-              <p className="truncate text-base font-semibold text-white">
-                {mainView === "files" ? "Files" : mainView === "flow" ? "System Flow" : showingChat ? selectedTitle : "Dashboard"}
-              </p>
+              <p className="truncate text-base font-semibold text-white">{pageTitle}</p>
             </div>
             <IconButton label="New chat" onClick={() => void createConversation()}><PlusIcon /></IconButton>
           </div>
 
           <OfflineBanner visible={connectionState !== "connected"} detail={connectionDetail} />
 
-          {/* Mobile tab bar: visible on home/flow views */}
-          {(mainView === "home" || mainView === "flow") && (
-            <div className="flex border-b border-white/5 xl:hidden">
-              <button
-                type="button"
-                onClick={goHome}
-                className={`flex-1 py-2.5 text-center text-xs font-medium transition-colors ${
-                  mainView === "home"
-                    ? "border-b-2 border-blue-400 text-white"
-                    : "text-zinc-500"
-                }`}
-              >
-                Dashboard
-              </button>
-              <button
-                type="button"
-                onClick={openFlow}
-                className={`flex-1 py-2.5 text-center text-xs font-medium transition-colors ${
-                  mainView === "flow"
-                    ? "border-b-2 border-blue-400 text-white"
-                    : "text-zinc-500"
-                }`}
-              >
-                Flow
-              </button>
-            </div>
-          )}
-
-          {/* Desktop: connection indicator */}
-          <div className="hidden shrink-0 items-center justify-between gap-3 border-b border-white/5 px-4 py-2 xl:flex">
-            <div className="flex items-center gap-2">
-              <span className={`h-2 w-2 rounded-full ${
-                connectionState === "connected" ? "bg-emerald-400"
-                : connectionState === "connecting" || connectionState === "reconnecting" ? "bg-amber-400"
-                : "bg-rose-400"
-              }`} />
-              <span className="text-xs text-zinc-400">{connectionState}</span>
-            </div>
-            <div className="flex items-center gap-3">
-              {(showingChat || mainView === "files" || mainView === "flow") && (
-                <button type="button" onClick={goHome} className="text-xs text-zinc-400 hover:text-white">
-                  ← Dashboard
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={openFlow}
-                className={`text-xs transition-colors ${mainView === "flow" ? "text-white font-medium" : "text-zinc-400 hover:text-white"}`}
-              >
-                Flow
-              </button>
-              <button type="button" onClick={openFiles} className="text-xs text-zinc-400 hover:text-white">
-                Files
-              </button>
-              <button type="button" onClick={() => void refreshSessions()} className="text-xs text-zinc-400 hover:text-white">
-                Refresh
-              </button>
-            </div>
+          {/* Mobile bottom tab bar */}
+          <div className="fixed bottom-0 left-0 right-0 z-20 flex border-t border-white/5 bg-canvas xl:hidden">
+            <MobileTabLink href="#/" label="Dashboard" active={currentPage === "dashboard"} />
+            <MobileTabLink href="#/flow" label="Flow" active={currentPage === "flow"} />
+            <MobileTabLink href="#/files" label="Files" active={currentPage === "files"} />
+            <MobileTabLink href="#/timeline" label="Timeline" active={currentPage === "timeline"} />
           </div>
 
-          {/* Main view: dashboard, files, or chat */}
-          <div className="flex min-h-0 flex-1 flex-col">
-            {mainView === "flow" ? (
+          {/* Desktop top navigation */}
+          <div className="hidden shrink-0 items-center justify-between gap-3 border-b border-white/5 px-4 py-2 xl:flex">
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <span className={`h-2 w-2 rounded-full ${
+                  connectionState === "connected" ? "bg-emerald-400"
+                  : connectionState === "connecting" || connectionState === "reconnecting" ? "bg-amber-400"
+                  : "bg-rose-400"
+                }`} />
+                <span className="text-xs font-medium text-zinc-300">OpenClaw</span>
+              </div>
+              <div className="h-4 w-px bg-white/10" />
+              <NavLink href="#/" label="Dashboard" active={currentPage === "dashboard"} />
+              <NavLink href="#/flow" label="Flow" active={currentPage === "flow"} />
+              <NavLink href="#/files" label="Files" active={currentPage === "files"} />
+              <NavLink href="#/timeline" label="Timeline" active={currentPage === "timeline"} />
+            </div>
+            <button type="button" onClick={() => void refreshSessions()} className="text-xs text-zinc-400 hover:text-white">
+              Refresh
+            </button>
+          </div>
+
+          {/* Main view area */}
+          <div className="flex min-h-0 flex-1 flex-col pb-12 xl:pb-0">
+            {currentPage === "flow" ? (
               <ErrorBoundary label="System Flow">
                 <SystemFlow
                   conversations={conversations}
@@ -353,27 +323,28 @@ export function App() {
                   onQuickSend={quickSend}
                 />
               </ErrorBoundary>
-            ) : mainView === "files" ? (
+            ) : currentPage === "files" ? (
               <ErrorBoundary label="Files">
                 <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-3 xl:p-5">
-                  <div className="mb-3 flex items-center gap-3">
-                    <button type="button" onClick={goHome} className="text-sm text-zinc-400 hover:text-white">← Back</button>
-                    <h2 className="text-base font-semibold text-white">Files</h2>
-                  </div>
                   <FileBrowser entries={fileEntries} ready={filesReady} fallback={filesFallback} preview={filePreview} onOpen={openFile} />
                 </div>
               </ErrorBoundary>
-            ) : showingChat ? (
+            ) : currentPage === "timeline" ? (
+              <ErrorBoundary label="Timeline">
+                <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+                  <TimelinePage />
+                </div>
+              </ErrorBoundary>
+            ) : currentPage === "chat" && chatSessionKey ? (
               <ErrorBoundary label="Chat">
                 <ChatView
                   title={selectedTitle}
-                  loading={loadingConversationKey === selectedConversationKey}
+                  loading={loadingConversationKey === chatSessionKey}
                   messages={selectedMessages}
                   draft={draft}
                   attachments={attachments}
                   tasks={tasks}
                   agents={agents}
-                  showHeader={false}
                   onNewChat={() => void createConversation()}
                   onRetry={(id) => void retryMessage(id)}
                   onHide={hideMessage}
@@ -381,7 +352,6 @@ export function App() {
                   onSend={() => void sendMessage()}
                   onAttach={(incoming) => void addAttachments(Array.from(incoming))}
                   onRemoveAttachment={removeAttachment}
-                  onBack={goHome}
                 />
               </ErrorBoundary>
             ) : (
