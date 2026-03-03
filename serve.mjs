@@ -3,6 +3,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync, statSync, readdirSy
 import { join, extname, relative, resolve } from "node:path";
 import { homedir } from "node:os";
 import { createConnection } from "node:net";
+import { execSync } from "node:child_process";
 
 const DIST = resolve(import.meta.dirname, "dist");
 const GATEWAY = { host: "127.0.0.1", port: 18790 };
@@ -189,7 +190,6 @@ const server = createServer((req, res) => {
   if (url.pathname === "/api/repos") {
     if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);
     try {
-      const { execSync } = await import("node:child_process");
       const home = process.env.HOME || "/home/clawd";
       const run = (cmd, cwd) => { try { return execSync(cmd, { cwd, encoding: "utf8", timeout: 10000 }).trim(); } catch { return ""; } };
       const gitDirs = run(`find ${home} -maxdepth 4 -name ".git" -type d 2>/dev/null`);
