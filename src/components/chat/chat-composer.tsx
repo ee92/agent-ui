@@ -85,10 +85,14 @@ export function ChatComposer({
     updateSuggestions(value);
   };
 
+  const canSend = draft.trim().length > 0 || attachments.length > 0;
+
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
-      onSend();
+      if (draft.trim().length > 0) {
+        onSend();
+      }
     }
   };
 
@@ -150,7 +154,11 @@ export function ChatComposer({
           />
           <button
             type="button"
-            onClick={onSend}
+            onClick={() => {
+              if (canSend) {
+                onSend();
+              }
+            }}
             className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-blue-500 text-white hover:bg-blue-400 xl:h-auto xl:w-auto xl:gap-2 xl:rounded-2xl xl:px-4 xl:py-2.5 xl:text-sm xl:font-medium"
           >
             <SendIcon />
