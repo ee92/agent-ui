@@ -23,19 +23,28 @@ function TaskCard({
   childCount,
   onAdvance,
   onOpenSession,
+  isDragging,
+  onDragStart,
+  onDragEnd,
 }: {
   task: VisibleTask;
   childCount: number;
   onAdvance: (task: TaskNode) => void;
   onOpenSession: (key: string) => void;
+  isDragging: boolean;
+  onDragStart: (event: React.DragEvent<HTMLElement>, task: VisibleTask) => void;
+  onDragEnd: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const gesture = useRef({ x: 0, y: 0, pointerType: "" });
 
   return (
     <article
-      className="rounded-xl bg-black/20 p-3 transition-all duration-150 hover:bg-white/[0.04]"
+      draggable="true"
+      className={`rounded-xl bg-black/20 p-3 transition-all duration-150 hover:bg-white/[0.04] ${isDragging ? "opacity-50" : ""}`}
       onClick={() => setExpanded((current) => !current)}
+      onDragStart={(event) => onDragStart(event, task)}
+      onDragEnd={onDragEnd}
       onPointerDown={(event) => {
         gesture.current = { x: event.clientX, y: event.clientY, pointerType: event.pointerType };
       }}
@@ -110,24 +119,46 @@ function Column({
   tasks,
   childCounts,
   doneExpanded,
+  dragOverColumn,
   onToggleDone,
   onAdvance,
   onOpenSession,
+  draggingTaskId,
+  onCardDragStart,
+  onCardDragEnd,
+  onColumnDragOver,
+  onColumnDragEnter,
+  onColumnDragLeave,
+  onColumnDrop,
 }: {
   status: TaskStatus;
   tasks: VisibleTask[];
   childCounts: Map<string, number>;
   doneExpanded: boolean;
+  dragOverColumn: TaskStatus | null;
   onToggleDone: () => void;
   onAdvance: (task: TaskNode) => void;
   onOpenSession: (key: string) => void;
+  draggingTaskId: string | null;
+  onCardDragStart: (event: React.DragEvent<HTMLElement>, task: VisibleTask) => void;
+  onCardDragEnd: () => void;
+  onColumnDragOver: (event: React.DragEvent<HTMLElement>, status: TaskStatus) => void;
+  onColumnDragEnter: (status: TaskStatus) => void;
+  onColumnDragLeave: (event: React.DragEvent<HTMLElement>, status: TaskStatus) => void;
+  onColumnDrop: (event: React.DragEvent<HTMLElement>, status: TaskStatus) => void;
 }) {
   const meta = TASK_STATUS_META[status];
   const isAttention = (status === "review" || status === "blocked") && tasks.length > 0;
   const showTasks = status === "done" && !doneExpanded ? [] : tasks;
 
   return (
-    <section className="flex min-h-[24rem] w-[85vw] shrink-0 snap-center flex-col rounded-xl border border-border bg-zinc-900/80 p-3 backdrop-blur-xl xl:min-h-0 xl:w-auto">
+    <section
+      className={`flex min-h-[24rem] w-[85vw] shrink-0 snap-center flex-col rounded-xl border bg-zinc-900/80 p-3 backdrop-blur-xl xl:min-h-0 xl:w-auto ${dragOverColumn === status ? "border-blue-500/30" : "border-border"}`}
+      onDragOver={(event) => onColumnDragOver(event, status)}
+      onDragEnter={() => onColumnDragEnter(status)}
+      onDragLeave={(event) => onColumnDragLeave(event, status)}
+      onDrop={(event) => onColumnDrop(event, status)}
+    >
       <div className="mb-3 flex min-h-11 items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
           <span
@@ -155,6 +186,9 @@ function Column({
             childCount={childCounts.get(task.id) ?? 0}
             onAdvance={onAdvance}
             onOpenSession={onOpenSession}
+            isDragging={draggingTaskId === task.id}
+            onDragStart={onCardDragStart}
+            onDragEnd={onCardDragEnd}
           />
         ))}
         {status === "done" && tasks.length > 0 && !doneExpanded && (
@@ -191,6 +225,8 @@ export function TaskPipeline({
   const [doneExpanded, setDoneExpanded] = useState(false);
   const [adding, setAdding] = useState(false);
   const [newTitle, setNewTitle] = useState("");
+  const [dragOverColumn, setDragOverColumn] = useState<TaskStatus | null>(null);
+  const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
 
   const childCounts = useMemo(() => {
     const counts = new Map<string, number>();
@@ -241,6 +277,54 @@ export function TaskPipeline({
       })
       .catch(() => {});
   };
+
+  const handleCardDragStart = useCallback((event: React.DragEvent<HTMLElement>, task: VisibleTask) => {
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", task.id);
+    event.dataTransfer.setData("application/x-task-id", task.id);
+    event.dataTransfer.setData("application/x-task-status", task.status);
+    setDraggingTaskId(task.id);
+  }, []);
+
+  const handleCardDragEnd = useCallback(() => {
+    setDraggingTaskId(null);
+    setDragOverColumn(null);
+  }, []);
+
+  const handleColumnDragOver = useCallback((event: React.DragEvent<HTMLElement>, status: TaskStatus) => {
+    event.preventDefault();
+    if (dragOverColumn !== status) {
+      setDragOverColumn(status);
+    }
+  }, [dragOverColumn]);
+
+  const handleColumnDragEnter = useCallback((status: TaskStatus) => {
+    setDragOverColumn(status);
+  }, []);
+
+  const handleColumnDragLeave = useCallback((event: React.DragEvent<HTMLElement>, status: TaskStatus) => {
+    if (!event.currentTarget.contains(event.relatedTarget as Node | null) && dragOverColumn === status) {
+      setDragOverColumn(null);
+    }
+  }, [dragOverColumn]);
+
+  const handleColumnDrop = useCallback((event: React.DragEvent<HTMLElement>, status: TaskStatus) => {
+    event.preventDefault();
+
+    const taskId =
+      event.dataTransfer.getData("application/x-task-id") ||
+      event.dataTransfer.getData("text/plain");
+    const currentStatus = event.dataTransfer.getData("application/x-task-status") as TaskStatus;
+
+    setDragOverColumn(null);
+    setDraggingTaskId(null);
+
+    if (!taskId || !currentStatus || currentStatus === status) {
+      return;
+    }
+
+    void updateTask(taskId, { status }).catch(() => {});
+  }, [updateTask]);
 
   return (
     <section className="flex min-h-0 flex-1 flex-col">
@@ -295,9 +379,17 @@ export function TaskPipeline({
             tasks={columns.get(status) ?? []}
             childCounts={childCounts}
             doneExpanded={doneExpanded}
+            dragOverColumn={dragOverColumn}
             onToggleDone={() => setDoneExpanded((current) => !current)}
             onAdvance={handleAdvance}
             onOpenSession={onOpenSession}
+            draggingTaskId={draggingTaskId}
+            onCardDragStart={handleCardDragStart}
+            onCardDragEnd={handleCardDragEnd}
+            onColumnDragOver={handleColumnDragOver}
+            onColumnDragEnter={handleColumnDragEnter}
+            onColumnDragLeave={handleColumnDragLeave}
+            onColumnDrop={handleColumnDrop}
           />
         ))}
       </div>
