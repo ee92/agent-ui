@@ -230,8 +230,8 @@ function CronCalendar({ weekDays, cronCount }: { weekDays: WeekDay[]; cronCount:
                     className="block w-full rounded-lg border border-white/6 bg-zinc-900 px-2.5 py-2 text-left transition hover:border-white/12 hover:bg-zinc-800"
                     title={c.key}
                   >
-                    <p className="truncate text-xs font-medium text-zinc-100">{c.title?.trim() || c.key}</p>
-                    <p className="mt-1 text-[11px] text-zinc-500">Last run {formatTime(c.updatedAt)}</p>
+                    <p className="text-xs font-medium leading-4 text-zinc-100">{c.title?.trim() || c.key}</p>
+                    <p className="mt-1 text-[11px] text-zinc-500">{formatTime(c.updatedAt)}</p>
                   </button>
                 ))}
               </div>

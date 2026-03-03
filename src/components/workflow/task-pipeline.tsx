@@ -94,7 +94,7 @@ function TaskCard({
           <span className="h-2.5 w-2.5 rounded-full bg-current" />
         </button>
         <div className="min-w-0 flex-1">
-          <p className={`truncate text-sm font-medium ${task.status === "done" ? "text-zinc-500 line-through" : "text-white"}`}>
+          <p className={`text-sm font-medium leading-5 ${task.status === "done" ? "text-zinc-500 line-through" : "text-white"}`}>
             {task.title}
           </p>
           <div className="mt-2 flex flex-wrap gap-1.5">
@@ -395,7 +395,9 @@ export function TaskPipeline({
 
       {/* Mobile: tab bar to pick column + single column view */}
       <div className="xl:hidden">
-        <div className="mb-3 flex items-center gap-1 overflow-x-auto rounded-xl border border-white/5 bg-black/20 p-1">
+        <div className="relative mb-3">
+          <div className="pointer-events-none absolute right-0 top-0 z-10 h-full w-8 bg-gradient-to-l from-canvas to-transparent" />
+        <div className="flex items-center gap-1 overflow-x-auto rounded-xl border border-white/5 bg-black/20 p-1 scrollbar-none">
           {COLUMN_ORDER.map((status) => (
             <ColumnTab
               key={status}
@@ -405,6 +407,7 @@ export function TaskPipeline({
               onClick={() => setMobileColumn(status)}
             />
           ))}
+        </div>
         </div>
         <Column
           status={mobileColumn}
