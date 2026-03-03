@@ -1,8 +1,29 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { FileEntry, FilePreview } from "../../lib/types";
 import { useGatewayStore } from "../../lib/store";
 import { fileBreadcrumbs, fileLabelFromPath, formatFileSize } from "../../lib/ui-utils";
 import { LoadingSkeleton } from "../ui/loading-skeleton";
+import { JsonViewer } from "./json-viewer";
+import { MarkdownViewer } from "./markdown-viewer";
+
+function formatEntryDate(value?: string) {
+  if (!value) {
+    return null;
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric"
+  }).format(date);
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 
 export function FileBrowser({
   entries,
@@ -26,6 +47,11 @@ export function FileBrowser({
   const [searching, setSearching] = useState(false);
   const [openingPath, setOpeningPath] = useState<string | null>(null);
   const [mobilePreviewPath, setMobilePreviewPath] = useState<string | null>(null);
+  const [previewSearch, setPreviewSearch] = useState("");
+  const [activePreviewMatch, setActivePreviewMatch] = useState(0);
+  const [previewMatchCount, setPreviewMatchCount] = useState(0);
+  const previewSearchInputRef = useRef<HTMLInputElement | null>(null);
+  const previewContentRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setCache({ "": entries });
@@ -90,6 +116,168 @@ export function FileBrowser({
     }
   }, [openingPath, preview?.path]);
 
+  useEffect(() => {
+    setPreviewSearch("");
+    setActivePreviewMatch(0);
+    setPreviewMatchCount(0);
+  }, [preview?.path]);
+
+  useEffect(() => {
+    if (!preview) {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "f") {
+        event.preventDefault();
+        previewSearchInputRef.current?.focus();
+        previewSearchInputRef.current?.select();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [preview]);
+
+  useEffect(() => {
+    const container = previewContentRef.current;
+    if (!container) {
+      setPreviewMatchCount(0);
+      setActivePreviewMatch(0);
+      return;
+    }
+
+    const applyHighlights = () => {
+      const highlightedNodes = Array.from(container.querySelectorAll("span[data-file-search-match='true']"));
+      for (const node of highlightedNodes) {
+        const parent = node.parentNode;
+        if (!parent) {
+          continue;
+        }
+        parent.replaceChild(document.createTextNode(node.textContent ?? ""), node);
+        parent.normalize();
+      }
+
+      const query = previewSearch.trim();
+      if (!query) {
+        setPreviewMatchCount(0);
+        setActivePreviewMatch(0);
+        return;
+      }
+
+      const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, {
+        acceptNode: (node) => {
+          if (!node.nodeValue?.trim()) {
+            return NodeFilter.FILTER_REJECT;
+          }
+          const parentElement = node.parentElement;
+          if (!parentElement) {
+            return NodeFilter.FILTER_REJECT;
+          }
+          if (parentElement.closest("script, style")) {
+            return NodeFilter.FILTER_REJECT;
+          }
+          if (parentElement.dataset.fileSearchMatch === "true") {
+            return NodeFilter.FILTER_REJECT;
+          }
+          return NodeFilter.FILTER_ACCEPT;
+        }
+      });
+
+      const textNodes: Text[] = [];
+      let currentNode = walker.nextNode();
+      while (currentNode) {
+        textNodes.push(currentNode as Text);
+        currentNode = walker.nextNode();
+      }
+
+      const regex = new RegExp(escapeRegExp(query), "gi");
+      let matchTotal = 0;
+
+      for (const textNode of textNodes) {
+        const text = textNode.nodeValue ?? "";
+        regex.lastIndex = 0;
+        const matches = [...text.matchAll(regex)];
+        if (!matches.length) {
+          continue;
+        }
+
+        const fragment = document.createDocumentFragment();
+        let lastIndex = 0;
+
+        for (const match of matches) {
+          const startIndex = match.index ?? 0;
+          const matchedText = match[0];
+          if (startIndex > lastIndex) {
+            fragment.append(text.slice(lastIndex, startIndex));
+          }
+          const highlight = document.createElement("span");
+          highlight.dataset.fileSearchMatch = "true";
+          highlight.className = "rounded bg-amber-300/30 px-0.5 text-amber-100";
+          highlight.textContent = matchedText;
+          fragment.append(highlight);
+          lastIndex = startIndex + matchedText.length;
+          matchTotal += 1;
+        }
+
+        if (lastIndex < text.length) {
+          fragment.append(text.slice(lastIndex));
+        }
+
+        textNode.parentNode?.replaceChild(fragment, textNode);
+      }
+
+      setPreviewMatchCount(matchTotal);
+      setActivePreviewMatch((current) => {
+        if (matchTotal === 0) {
+          return 0;
+        }
+        return current >= matchTotal ? 0 : current;
+      });
+    };
+
+    let disconnected = false;
+    let observer: MutationObserver | null = null;
+    const runHighlights = () => {
+      if (disconnected) {
+        return;
+      }
+      observer?.disconnect();
+      applyHighlights();
+      if (!disconnected && observer) {
+        observer.observe(container, { childList: true, subtree: true, characterData: true });
+      }
+    };
+
+    const timeoutId = window.setTimeout(runHighlights, 0);
+    observer = new MutationObserver(() => runHighlights());
+    observer.observe(container, { childList: true, subtree: true, characterData: true });
+
+    return () => {
+      disconnected = true;
+      window.clearTimeout(timeoutId);
+      observer?.disconnect();
+    };
+  }, [preview?.content, preview?.path, previewSearch]);
+
+  useEffect(() => {
+    const container = previewContentRef.current;
+    if (!container) {
+      return;
+    }
+    const matches = Array.from(container.querySelectorAll("span[data-file-search-match='true']")) as HTMLSpanElement[];
+    for (const [index, match] of matches.entries()) {
+      if (index === activePreviewMatch) {
+        match.className = "rounded bg-amber-300 px-0.5 text-zinc-950";
+      } else {
+        match.className = "rounded bg-amber-300/30 px-0.5 text-amber-100";
+      }
+    }
+    if (matches.length > 0 && matches[activePreviewMatch]) {
+      matches[activePreviewMatch].scrollIntoView({ block: "center", inline: "nearest" });
+    }
+  }, [activePreviewMatch, previewMatchCount]);
+
   const loadDirectory = async (path: string) => {
     if (cache[path]) {
       setCurrentPath(path);
@@ -111,6 +299,7 @@ export function FileBrowser({
           size?: number;
           childCount?: number;
           mtime?: number | string;
+          ctime?: number | string;
         }>;
       };
       setCache((current) => ({
@@ -122,7 +311,8 @@ export function FileBrowser({
           depth: 0,
           size: entry.size,
           childCount: entry.childCount,
-          mtime: typeof entry.mtime === "number" ? new Date(entry.mtime).toISOString() : entry.mtime
+          mtime: typeof entry.mtime === "number" ? new Date(entry.mtime).toISOString() : entry.mtime,
+          ctime: typeof entry.ctime === "number" ? new Date(entry.ctime).toISOString() : entry.ctime
         }))
       }));
       setCurrentPath(path);
@@ -140,6 +330,32 @@ export function FileBrowser({
   const visibleEntries = search.trim().length >= 2 ? searchResults : cache[currentPath] ?? [];
   const breadcrumbs = fileBreadcrumbs(currentPath);
   const showingSearch = search.trim().length >= 2;
+  const previewingFile = preview && (preview.path === mobilePreviewPath || !mobilePreviewPath);
+  const previewPath = previewingFile ? preview.path.toLowerCase() : "";
+
+  const movePreviewMatch = (direction: 1 | -1) => {
+    if (previewMatchCount === 0) {
+      return;
+    }
+    setActivePreviewMatch((current) => (current + direction + previewMatchCount) % previewMatchCount);
+  };
+
+  const renderPreviewContent = () => {
+    if (!previewingFile) {
+      return null;
+    }
+    if (previewPath.endsWith(".md")) {
+      return <MarkdownViewer content={preview.content} />;
+    }
+    if (previewPath.endsWith(".json")) {
+      return <JsonViewer content={preview.content} />;
+    }
+    return (
+      <pre className="min-h-full whitespace-pre-wrap break-words p-4 font-mono text-xs leading-6 text-zinc-200 sm:text-sm">
+        {preview.content}
+      </pre>
+    );
+  };
 
   return (
     <div className="flex h-full min-w-0 flex-col gap-4 overflow-hidden xl:grid xl:grid-cols-[320px_minmax(0,1fr)]">
@@ -202,6 +418,7 @@ export function FileBrowser({
                   const meta = isDirectory
                     ? `${typeof entry.childCount === "number" ? `${entry.childCount} item${entry.childCount === 1 ? "" : "s"}` : "Folder"}`
                     : formatFileSize(entry.size);
+                  const modifiedDate = !isDirectory ? formatEntryDate(entry.mtime) : null;
                   return (
                     <button
                       key={`${showingSearch ? "search" : currentPath}:${entry.path}`}
@@ -220,8 +437,10 @@ export function FileBrowser({
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-sm font-medium text-zinc-100">{entry.name}</span>
                         <span className="block truncate text-xs text-zinc-500">{showingSearch ? entry.path : meta}</span>
+                        {!showingSearch && modifiedDate ? (
+                          <span className="block truncate text-xs text-zinc-600">Modified {modifiedDate}</span>
+                        ) : null}
                       </span>
-                      {!showingSearch && !isDirectory ? <span className="text-xs text-zinc-500">{meta}</span> : null}
                       {isDirectory ? <span className="text-lg text-zinc-500">›</span> : null}
                     </button>
                   );
@@ -251,11 +470,38 @@ export function FileBrowser({
               </h3>
             </div>
           </div>
+          {previewingFile ? (
+            <div className="mb-3 flex flex-wrap items-center gap-3 rounded-2xl border border-white/8 bg-black/20 px-3 py-2">
+              <input
+                ref={previewSearchInputRef}
+                value={previewSearch}
+                onChange={(event) => {
+                  setPreviewSearch(event.target.value);
+                  setActivePreviewMatch(0);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    movePreviewMatch(event.shiftKey ? -1 : 1);
+                  }
+                }}
+                placeholder="Search in file... (Ctrl+F)"
+                className="h-10 min-w-[220px] flex-1 bg-transparent text-sm text-zinc-100 outline-none placeholder:text-zinc-500"
+              />
+              <span className="text-xs text-zinc-500">
+                {previewMatchCount > 0
+                  ? `${Math.min(activePreviewMatch + 1, previewMatchCount)} of ${previewMatchCount} matches`
+                  : previewSearch.trim()
+                    ? "0 matches"
+                    : "Type to search"}
+              </span>
+            </div>
+          ) : null}
           <div className="scroll-soft min-h-[360px] flex-1 overflow-auto rounded-3xl border border-white/8 bg-black/30 xl:min-h-0">
-            {preview && (preview.path === mobilePreviewPath || !mobilePreviewPath) ? (
-              <pre className="min-h-full whitespace-pre-wrap break-words p-4 font-mono text-xs leading-6 text-zinc-200 sm:text-sm">
-                {preview.content}
-              </pre>
+            {previewingFile ? (
+              <div ref={previewContentRef} className="min-h-full">
+                {renderPreviewContent()}
+              </div>
             ) : (
               <div className="flex h-full items-center justify-center px-4 text-sm text-zinc-500">
                 {openingPath ? "Opening file..." : "Choose a file to inspect."}

@@ -25,6 +25,7 @@ export const useFilesStore = create<FilesStoreState>((set, get) => ({
           size?: number;
           childCount?: number;
           mtime?: number | string;
+          ctime?: number | string;
         }>;
       };
       set({
@@ -35,7 +36,8 @@ export const useFilesStore = create<FilesStoreState>((set, get) => ({
           depth: 0,
           size: entry.size,
           childCount: entry.childCount,
-          mtime: typeof entry.mtime === "number" ? new Date(entry.mtime).toISOString() : entry.mtime
+          mtime: typeof entry.mtime === "number" ? new Date(entry.mtime).toISOString() : entry.mtime,
+          ctime: typeof entry.ctime === "number" ? new Date(entry.ctime).toISOString() : entry.ctime
         })),
         filePreview: null,
         filesReady: true,
