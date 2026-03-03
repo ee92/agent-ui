@@ -5,13 +5,15 @@ export type Route =
   | { page: "chat"; sessionKey: string }
   | { page: "files"; path?: string }
   | { page: "flow" }
-  | { page: "timeline" };
+  | { page: "timeline" }
+  | { page: "projects" };
 
 function parseHash(hash: string): Route {
   const raw = hash.replace(/^#\/?/, "");
   if (!raw || raw === "dashboard") return { page: "dashboard" };
   if (raw === "flow") return { page: "flow" };
   if (raw === "timeline") return { page: "timeline" };
+  if (raw === "projects") return { page: "projects" };
   if (raw === "files") return { page: "files" };
   if (raw.startsWith("files/")) return { page: "files", path: decodeURIComponent(raw.slice(6)) };
   if (raw.startsWith("chat/")) return { page: "chat", sessionKey: decodeURIComponent(raw.slice(5)) };

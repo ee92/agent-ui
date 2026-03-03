@@ -1,17 +1,14 @@
 import { useState } from "react";
 import type { AgentRun, ActivityEvent, Conversation } from "../../lib/types";
-import { useAgentsStore, useGatewayStore } from "../../lib/store";
+import { useAgentsStore } from "../../lib/store";
 import { useActivityStore } from "../../lib/stores/activity-store";
 import {
-  useBlockedCount,
-  useReviewCount,
   useTaskStore,
   useVisibleTasks,
 } from "../../lib/stores/task-store-v2";
 import type { TaskNode } from "../../lib/task-types";
 import { ActivityFeed } from "./activity-feed";
 import { StatsBar } from "./stats-bar";
-import { StatusPulse } from "./status-pulse";
 import { TaskPipeline } from "./task-pipeline";
 
 type DashboardTab = "tasks" | "stats" | "activity";
@@ -54,11 +51,8 @@ export function WorkflowDashboard({
   onOpenSession: (key: string) => void;
   onQuickSend: (sessionKey: string, text: string) => Promise<void>;
 }) {
-  const connectionState = useGatewayStore((state) => state.connectionState);
   const liveTasks = useTaskStore((state) => state.tasks);
   const visibleTasks = useVisibleTasks();
-  const reviewCount = useReviewCount();
-  const blockedCount = useBlockedCount();
   const liveAgents = useAgentsStore((state) => state.agents);
   const liveActivities = useActivityStore((state) => state.events);
 
@@ -72,17 +66,7 @@ export function WorkflowDashboard({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-3 pt-3 xl:px-5">
-      {/* Status pulse — always visible */}
-      <div className="mb-3 shrink-0">
-        <StatusPulse
-          connectionState={connectionState}
-          blockedCount={blockedCount}
-          reviewCount={reviewCount}
-          agents={agentItems}
-        />
-      </div>
-
-      {/* Tab bar */}
+      {/* Tab bar with inline status dot */}
       <div className="mb-3 flex shrink-0 items-center gap-1 overflow-x-auto rounded-xl border border-white/5 bg-black/20 p-1">
         <TabButton label="Tasks" active={activeTab === "tasks"} count={activeTaskCount} onClick={() => setActiveTab("tasks")} />
         <TabButton label="Stats" active={activeTab === "stats"} onClick={() => setActiveTab("stats")} />

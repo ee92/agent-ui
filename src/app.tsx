@@ -10,6 +10,8 @@ import { LoadingSkeleton } from "./components/ui/loading-skeleton";
 import { OfflineBanner } from "./components/ui/offline-banner";
 import { SystemFlow } from "./components/flow/system-flow";
 import { TimelinePage } from "./components/timeline/timeline-page";
+import { ProjectsPage } from "./components/projects/projects-page";
+import { StatusPulse } from "./components/workflow/status-pulse";
 import { WorkflowDashboard } from "./components/workflow/workflow-dashboard";
 import {
   useAgentsStore,
@@ -20,7 +22,7 @@ import {
 } from "./lib/store";
 import { useActivityStore } from "./lib/stores/activity-store";
 import { processGatewayEvent, recordConnectionActivity } from "./lib/stores/process-gateway-event";
-import { useTaskStore } from "./lib/stores/task-store-v2";
+import { useBlockedCount, useReviewCount, useTaskStore } from "./lib/stores/task-store-v2";
 import { extractText } from "./lib/ui-utils";
 import { useHashRouter, navigate } from "./lib/use-hash-router";
 
@@ -168,6 +170,8 @@ export function App() {
   const loadFiles = useFilesStore((s) => s.loadFiles);
   const openFile = useFilesStore((s) => s.openFile);
   const agents = useAgentsStore((s) => s.agents);
+  const blockedCount = useBlockedCount();
+  const reviewCount = useReviewCount();
 
   const mobileSidebarOpen = useUiStore((s) => s.mobileSidebarOpen);
   const draft = useUiStore((s) => s.draft);
@@ -284,21 +288,17 @@ export function App() {
 
           {/* Mobile bottom tab bar */}
           <div className="fixed bottom-0 left-0 right-0 z-20 flex border-t border-white/5 bg-canvas xl:hidden">
-            <MobileTabLink href="#/" label="Dashboard" active={currentPage === "dashboard"} />
-            <MobileTabLink href="#/flow" label="Flow" active={currentPage === "flow"} />
+            <MobileTabLink href="#/" label="Home" active={currentPage === "dashboard"} />
             <MobileTabLink href="#/files" label="Files" active={currentPage === "files"} />
             <MobileTabLink href="#/timeline" label="Timeline" active={currentPage === "timeline"} />
+            <MobileTabLink href="#/projects" label="Projects" active={currentPage === "projects"} />
           </div>
 
           {/* Desktop top navigation */}
           <div className="hidden shrink-0 items-center justify-between gap-3 border-b border-white/5 px-4 py-2 xl:flex">
             <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <span className={`h-2 w-2 rounded-full ${
-                  connectionState === "connected" ? "bg-emerald-400"
-                  : connectionState === "connecting" || connectionState === "reconnecting" ? "bg-amber-400"
-                  : "bg-rose-400"
-                }`} />
+              <div className="flex items-center gap-1">
+                <StatusPulse connectionState={connectionState} blockedCount={blockedCount} reviewCount={reviewCount} agents={agents} />
                 <span className="text-xs font-medium text-zinc-300">OpenClaw</span>
               </div>
               <div className="h-4 w-px bg-white/10" />
@@ -306,6 +306,7 @@ export function App() {
               <NavLink href="#/flow" label="Flow" active={currentPage === "flow"} />
               <NavLink href="#/files" label="Files" active={currentPage === "files"} />
               <NavLink href="#/timeline" label="Timeline" active={currentPage === "timeline"} />
+              <NavLink href="#/projects" label="Projects" active={currentPage === "projects"} />
             </div>
             <button type="button" onClick={() => void refreshSessions()} className="text-xs text-zinc-400 hover:text-white">
               Refresh
@@ -333,6 +334,12 @@ export function App() {
               <ErrorBoundary label="Timeline">
                 <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
                   <TimelinePage />
+                </div>
+              </ErrorBoundary>
+            ) : currentPage === "projects" ? (
+              <ErrorBoundary label="Projects">
+                <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+                  <ProjectsPage />
                 </div>
               </ErrorBoundary>
             ) : currentPage === "chat" && chatSessionKey ? (

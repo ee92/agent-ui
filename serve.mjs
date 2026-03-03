@@ -185,6 +185,46 @@ const server = createServer((req, res) => {
     return;
   }
 
+  // API: list git repos
+  if (url.pathname === "/api/repos") {
+    if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);
+    try {
+      const { execSync } = await import("node:child_process");
+      const home = process.env.HOME || "/home/clawd";
+      const run = (cmd, cwd) => { try { return execSync(cmd, { cwd, encoding: "utf8", timeout: 10000 }).trim(); } catch { return ""; } };
+      const gitDirs = run(`find ${home} -maxdepth 4 -name ".git" -type d 2>/dev/null`);
+      const repos = gitDirs ? gitDirs.split("\n").filter(Boolean).map(g => {
+        const dir = g.replace(/\/\.git$/, "");
+        const name = dir.split("/").pop() || dir;
+        const branch = run("git branch --show-current", dir) || run("git rev-parse --short HEAD", dir);
+        const status = run("git status --porcelain", dir);
+        const dirtyFiles = status ? status.split("\n").length : 0;
+        const tracking = run("git rev-parse --abbrev-ref @{upstream} 2>/dev/null", dir);
+        let ahead = 0, behind = 0;
+        if (tracking) {
+          const ab = run("git rev-list --left-right --count HEAD...@{upstream} 2>/dev/null", dir);
+          if (ab) { const [a, b] = ab.split(/\s+/).map(Number); ahead = a || 0; behind = b || 0; }
+        }
+        const lastMsg = run("git log -1 --format=%s 2>/dev/null", dir);
+        const lastTs = run("git log -1 --format=%ct 2>/dev/null", dir);
+        const lastCommitAge = lastTs ? Math.round((Date.now() / 1000 - parseInt(lastTs)) / 3600) : null;
+        const branches = run('git branch --format="%(refname:short)"', dir).split("\n").filter(Boolean);
+        const stashList = run("git stash list", dir);
+        const stashes = stashList ? stashList.split("\n").length : 0;
+        const duRaw = run(`du -sh ${dir} 2>/dev/null`, dir);
+        const diskUsage = duRaw ? duRaw.split("\t")[0] : "?";
+        const problems = [];
+        if (dirtyFiles > 0) problems.push(`${dirtyFiles} dirty files`);
+        if (behind > 0) problems.push(`${behind} behind remote`);
+        if (ahead > 0) problems.push(`${ahead} unpushed`);
+        if (stashes > 0) problems.push(`${stashes} stashes`);
+        if (!tracking) problems.push("no upstream");
+        return { name, dir, branch, dirtyFiles, ahead, behind, lastCommitMsg: lastMsg, lastCommitAgeHours: lastCommitAge, branches: branches.length, branchNames: branches.slice(0, 20), stashes, diskUsage, problems, hasUpstream: !!tracking };
+      }) : [];
+      return jsonResponse(res, { repos });
+    } catch (e) { return jsonResponse(res, { error: "scan failed", detail: e.message }, 500); }
+  }
+
   // CORS preflight
   if (req.method === "OPTIONS") {
     res.writeHead(204, { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, POST, OPTIONS", "Access-Control-Allow-Headers": "Content-Type, Authorization" });
