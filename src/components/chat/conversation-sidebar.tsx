@@ -1,5 +1,5 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
-import type { AgentRun, Conversation, FileEntry } from "../../lib/types";
+import type { AgentRun, Conversation } from "../../lib/types";
 import { formatAbsolute, formatRelative, groupConversations } from "../../lib/ui-utils";
 import { FolderIcon, PlusIcon } from "../ui/icons";
 import { IconButton } from "../ui/icon-button";
@@ -10,8 +10,6 @@ export function ConversationSidebar({
   selectedConversationKey,
   search,
   ready,
-  filesMode,
-  fileEntries,
   agents,
   focusSearchVersion,
   onSearch,
@@ -19,16 +17,12 @@ export function ConversationSidebar({
   onDelete,
   onRename,
   onNewChat,
-  onSelectAgent,
   onToggleFilesMode,
-  onOpenFile
 }: {
   conversations: Conversation[];
   selectedConversationKey: string | null;
   search: string;
   ready: boolean;
-  filesMode: boolean;
-  fileEntries: FileEntry[];
   agents: AgentRun[];
   focusSearchVersion: number;
   onSearch: (value: string) => void;
@@ -36,9 +30,7 @@ export function ConversationSidebar({
   onDelete: (key: string) => void;
   onRename: (key: string, title: string) => void;
   onNewChat: () => void;
-  onSelectAgent: (agent: AgentRun) => void;
   onToggleFilesMode: () => void;
-  onOpenFile: (path: string) => void;
 }) {
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [titleDraft, setTitleDraft] = useState("");
@@ -103,7 +95,7 @@ export function ConversationSidebar({
           <h1 className="text-lg font-semibold text-white">Workspace</h1>
         </div>
         <div className="flex gap-2">
-          <IconButton label="Toggle files" onClick={onToggleFilesMode} active={filesMode}>
+          <IconButton label="Browse files" onClick={onToggleFilesMode}>
             <FolderIcon />
           </IconButton>
           <IconButton label="New chat" onClick={onNewChat}>
@@ -111,43 +103,7 @@ export function ConversationSidebar({
           </IconButton>
         </div>
       </div>
-      {filesMode ? (
-        <div className="flex min-h-0 flex-1 flex-col">
-          <div className="mb-3 flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-white">Files</p>
-              <p className="text-xs text-zinc-500">Read-only browser</p>
-            </div>
-            <button type="button" onClick={onToggleFilesMode} className="rounded-full border border-white/8 px-3 py-1 text-xs text-zinc-300">
-              Close
-            </button>
-          </div>
-          <div className="scroll-soft min-h-0 space-y-1 overflow-x-hidden overflow-y-auto pr-1">
-            {fileEntries.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-white/8 px-3 py-4 text-sm text-zinc-500">
-                No files available yet.
-              </div>
-            ) : null}
-            {fileEntries.map((entry) => (
-              <button
-                key={entry.path}
-                type="button"
-                onClick={() => {
-                  if (entry.type === "file") {
-                    onOpenFile(entry.path);
-                  }
-                }}
-                className="flex w-full min-w-0 items-center gap-3 overflow-hidden rounded-2xl px-3 py-3 text-left text-base text-zinc-300 hover:bg-white/[0.04] sm:py-2 sm:text-sm"
-                style={{ paddingLeft: `${12 + (entry.depth ?? 0) * 12}px` }}
-              >
-                <span className="text-zinc-500">{entry.type === "directory" ? "📁" : "📄"}</span>
-                <span className="truncate">{entry.name}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      ) : (
-        <>
+      <>
           <input
             data-conversation-search="true"
             value={search}
@@ -290,7 +246,7 @@ export function ConversationSidebar({
                   <button
                     key={agent.id}
                     type="button"
-                    onClick={() => onSelectAgent(agent)}
+                    onClick={() => agent.sessionKey && onSelect(agent.sessionKey)}
                     className="w-full min-w-0 rounded-2xl border border-white/8 bg-black/20 px-3 py-3 text-left text-base text-zinc-200 hover:border-white/12 sm:text-sm"
                   >
                     <div className="flex items-center justify-between gap-2">
@@ -307,7 +263,6 @@ export function ConversationSidebar({
             </section>
           </div>
         </>
-      )}
     </aside>
   );
 }

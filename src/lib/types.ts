@@ -1,5 +1,24 @@
 export type ConnectionState = "connecting" | "connected" | "reconnecting" | "disconnected";
 
+export type ActivityEventKind =
+  | "session_start"
+  | "session_message"
+  | "agent_start"
+  | "agent_done"
+  | "agent_error"
+  | "task_status"
+  | "cron"
+  | "connection";
+
+export type ActivityEvent = {
+  id: string;
+  kind: ActivityEventKind;
+  summary: string;
+  timestamp: string;
+  sessionKey?: string;
+  metadata?: Record<string, unknown>;
+};
+
 export type MessageRole = "user" | "assistant" | "system";
 
 export type MessageContentPart =
@@ -27,6 +46,15 @@ export type Conversation = {
   createdAt: string;
   isStreaming: boolean;
   runId?: string | null;
+  // Session metadata from gateway
+  kind?: "direct" | "group" | "global" | "unknown";
+  channel?: string | null;
+  model?: string | null;
+  modelProvider?: string | null;
+  thinkingLevel?: string | null;
+  inputTokens?: number;
+  outputTokens?: number;
+  lastMessageRole?: "user" | "assistant" | "system" | null;
 };
 
 export type AgentStatus = "running" | "idle" | "waiting" | "error" | "done";
@@ -73,6 +101,7 @@ export type PendingSend = {
 
 export type SessionsListEntry = {
   key: string;
+  kind?: "direct" | "group" | "global" | "unknown";
   label?: string | null;
   displayName?: string | null;
   title?: string | null;
@@ -81,4 +110,13 @@ export type SessionsListEntry = {
   createdAt?: string | number | null;
   lastMessage?: unknown;
   activeRunId?: string | null;
+  channel?: string | null;
+  model?: string | null;
+  modelProvider?: string | null;
+  thinkingLevel?: string | null;
+  reasoningLevel?: string | null;
+  inputTokens?: number;
+  outputTokens?: number;
+  totalTokens?: number;
+  sessionId?: string | null;
 };

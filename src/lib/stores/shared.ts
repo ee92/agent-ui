@@ -12,8 +12,8 @@ import type {
   SessionsListEntry
 } from "../types";
 
-export type PanelMode = "tasks" | "files";
-export type MobileTab = "chat" | "tasks" | "files";
+export type PanelMode = "tasks" | "agents" | "files";
+export type MobileTab = "chat" | "tasks" | "agents" | "files";
 export type FileMethodKind = "list" | "read" | "write";
 
 export type MethodVariant = {
@@ -51,6 +51,7 @@ export type ChatStoreState = {
   retryMessage: (messageId: string) => Promise<void>;
   hideMessage: (messageId: string) => void;
   addTaskFromMessage: (messageId: string) => Promise<void>;
+  quickSend: (sessionKey: string, text: string) => Promise<void>;
   handleChatEvent: (payload: unknown) => void;
 };
 
@@ -233,6 +234,14 @@ function humanizeSessionKey(key: string): string {
   return key.replace(/^agent:main:/, "").replace(/[-_]/g, " ");
 }
 
+function extractLastMessageRole(value: unknown): "user" | "assistant" | "system" | null {
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  const role = typeof record.role === "string" ? record.role.toLowerCase() : null;
+  if (role === "user" || role === "assistant" || role === "system") return role;
+  return null;
+}
+
 export function normalizeSession(entry: SessionsListEntry): Conversation {
   // Priority: explicit label > cleaned derivedTitle > cleaned displayName > humanized key
   const candidates = [
@@ -251,7 +260,15 @@ export function normalizeSession(entry: SessionsListEntry): Conversation {
     updatedAt: normalizeTime(entry.updatedAt),
     createdAt: normalizeTime(entry.createdAt ?? entry.updatedAt),
     isStreaming: Boolean(entry.activeRunId),
-    runId: entry.activeRunId ?? null
+    runId: entry.activeRunId ?? null,
+    kind: entry.kind ?? undefined,
+    channel: entry.channel ?? null,
+    model: entry.model ?? null,
+    modelProvider: entry.modelProvider ?? null,
+    thinkingLevel: entry.thinkingLevel ?? null,
+    inputTokens: entry.inputTokens,
+    outputTokens: entry.outputTokens,
+    lastMessageRole: extractLastMessageRole(entry.lastMessage),
   };
 }
 

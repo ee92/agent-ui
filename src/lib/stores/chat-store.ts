@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { ChatMessage, SessionsListEntry } from "../types";
 import { useGatewayStore } from "./gateway-store";
+import { useSessionFlowStore } from "./session-flow-store";
 import { useTaskStore } from "./task-store-v2";
 import { useUiStore } from "./ui-store";
 import {
@@ -49,9 +50,20 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
         includeLastMessage: true
       });
       const sessions = Array.isArray(response.sessions) ? response.sessions.flatMap(normalizeSession) : [];
-      const selectedConversationKey = get().selectedConversationKey ?? loadSelectedKey() ?? sessions[0]?.key ?? null;
+      const selectedConversationKey = get().selectedConversationKey ?? loadSelectedKey() ?? null;
       saveSelectedKey(selectedConversationKey);
       set({ conversations: sessions, selectedConversationKey, sessionsReady: true });
+
+      // Seed session flow timeline with conversation data
+      useSessionFlowStore.getState().seedFromConversations(
+        sessions.map((s) => ({
+          key: s.key,
+          updatedAt: s.updatedAt,
+          createdAt: s.createdAt,
+          isStreaming: s.isStreaming,
+          runId: s.runId,
+        }))
+      );
       if (selectedConversationKey) {
         await get().selectConversation(selectedConversationKey);
       }
@@ -135,6 +147,14 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
         messagesByConversation: { ...get().messagesByConversation, [key]: messages },
         loadingConversationKey: null
       });
+
+      // Seed session flow timeline with message history
+      if (messages.length > 0) {
+        useSessionFlowStore.getState().seedFromHistory(
+          key,
+          messages.map((m) => ({ role: m.role, createdAt: m.createdAt }))
+        );
+      }
     } catch {
       set({
         messagesByConversation: { ...get().messagesByConversation, [key]: [] },
@@ -339,16 +359,60 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
     const title = text.split("\n")[0]?.trim() || "New task";
     await useTaskStore.getState().add(title, null, { notes: text, sessionKey: key });
   },
+
+  quickSend: async (sessionKey, text) => {
+    const client = useGatewayStore.getState().gatewayClient;
+    if (!client || !client.isConnected() || !text.trim()) return;
+    try {
+      await client.request("chat.send", {
+        sessionKey,
+        message: text.trim(),
+        thinking: "low",
+        timeoutMs: 300000,
+      });
+      // Refresh to pick up the new messages
+      void get().refreshSessions();
+    } catch (error) {
+      console.error("quickSend failed:", error);
+    }
+  },
   handleChatEvent: (payload) => {
     if (!payload || typeof payload !== "object") {
       return;
     }
     const data = payload as Record<string, unknown>;
-    const sessionKey = typeof data.sessionKey === "string" ? data.sessionKey : null;
+    let sessionKey = typeof data.sessionKey === "string" ? data.sessionKey : null;
     const runId = typeof data.runId === "string" ? data.runId : null;
     const state = typeof data.state === "string" ? data.state : null;
     if (!sessionKey || !state) {
       return;
+    }
+    // If no messages exist under the canonical key but a runId matches a pending
+    // assistant stub in a different (local) conversation, remap that conversation
+    // to the canonical key so responses land in the right place.
+    if (runId && !(get().messagesByConversation[sessionKey]?.length)) {
+      const allMessages = get().messagesByConversation;
+      const allConversations = get().conversations;
+      for (const [localKey, msgs] of Object.entries(allMessages)) {
+        if (localKey === sessionKey) continue;
+        const hasPendingRun = msgs.some((m) => m.runId === runId && m.pending);
+        if (hasPendingRun) {
+          // Remap: move messages from localKey to sessionKey and update conversation
+          const updatedMessages = { ...allMessages, [sessionKey]: msgs };
+          delete updatedMessages[localKey];
+          const updatedConversations = allConversations.map((c) =>
+            c.key === localKey ? { ...c, key: sessionKey } : c
+          );
+          const selectedKey = get().selectedConversationKey === localKey ? sessionKey : get().selectedConversationKey;
+          set({
+            messagesByConversation: updatedMessages,
+            conversations: updatedConversations,
+            selectedConversationKey: selectedKey
+          });
+          saveSelectedKey(selectedKey);
+          break;
+        }
+      }
     }
     const currentMessages = [...(get().messagesByConversation[sessionKey] ?? [])];
     const lastAssistantIndex = [...currentMessages]

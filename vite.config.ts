@@ -6,6 +6,7 @@ type TestConfig = {
   test: {
     environment: "node";
     setupFiles: string[];
+    exclude: string[];
   };
 };
 
@@ -15,7 +16,7 @@ const config = {
   test: {
     environment: "node",
     setupFiles: ["./src/test/setup.ts"],
-    exclude: ["e2e/**", "node_modules/**"]
+    exclude: ["e2e/**", "node_modules/**"],
   }
 } satisfies UserConfig & TestConfig;
 

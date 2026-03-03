@@ -80,3 +80,16 @@ export function TaskIcon() {
     </svg>
   );
 }
+
+export function AgentsIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <circle cx="12" cy="8" r="3" />
+      <path d="M5 20v-1a5 5 0 0 1 5-5h4a5 5 0 0 1 5 5v1" />
+      <circle cx="19" cy="6" r="2" />
+      <path d="M19 8a3 3 0 0 1 3 3v1" />
+      <circle cx="5" cy="6" r="2" />
+      <path d="M5 8a3 3 0 0 0-3 3v1" />
+    </svg>
+  );
+}

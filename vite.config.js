@@ -6,7 +6,8 @@ var config = {
     server: { host: "127.0.0.1", port: 5173 },
     test: {
         environment: "node",
-        setupFiles: ["./src/test/setup.ts"]
+        setupFiles: ["./src/test/setup.ts"],
+        exclude: ["e2e/**", "node_modules/**"],
     }
 };
 export default defineConfig(config);
