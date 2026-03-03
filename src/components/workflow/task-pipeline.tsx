@@ -6,6 +6,27 @@ import { TASK_STATUS_META, TASK_TRANSITIONS, type TaskNode, type TaskStatus } fr
 type VisibleTask = TaskNode & { depth: number };
 
 const COLUMN_ORDER: TaskStatus[] = ["todo", "active", "review", "blocked", "done"];
+
+function ColumnTab({ status, count, active, onClick }: { status: TaskStatus; count: number; active: boolean; onClick: () => void }) {
+  const meta = TASK_STATUS_META[status];
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+        active ? "bg-white/[0.08] text-white" : "text-zinc-400 hover:bg-white/[0.04] hover:text-zinc-200"
+      }`}
+    >
+      <span className={`h-2 w-2 rounded-full ${meta.dot}`} />
+      {meta.label}
+      {count > 0 && (
+        <span className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[11px] font-semibold ${
+          active ? "bg-white/10 text-zinc-200" : "bg-white/[0.04] text-zinc-500"
+        }`}>{count}</span>
+      )}
+    </button>
+  );
+}
 const DONE_RETENTION_MS = 3 * 24 * 60 * 60 * 1000;
 
 function GitBranchIcon() {
@@ -153,7 +174,7 @@ function Column({
 
   return (
     <section
-      className={`flex min-h-[24rem] w-[85vw] shrink-0 snap-center flex-col rounded-xl border bg-zinc-900/80 p-3 backdrop-blur-xl xl:min-h-0 xl:w-auto ${dragOverColumn === status ? "border-blue-500/30" : "border-border"}`}
+      className={`flex min-h-[12rem] flex-col rounded-xl border bg-zinc-900/80 p-3 backdrop-blur-xl xl:min-h-[24rem] ${dragOverColumn === status ? "border-blue-500/30" : "border-border"}`}
       onDragOver={(event) => onColumnDragOver(event, status)}
       onDragEnter={() => onColumnDragEnter(status)}
       onDragLeave={(event) => onColumnDragLeave(event, status)}
@@ -227,6 +248,7 @@ export function TaskPipeline({
   const [newTitle, setNewTitle] = useState("");
   const [dragOverColumn, setDragOverColumn] = useState<TaskStatus | null>(null);
   const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
+  const [mobileColumn, setMobileColumn] = useState<TaskStatus>("active");
 
   const childCounts = useMemo(() => {
     const counts = new Map<string, number>();
@@ -371,7 +393,40 @@ export function TaskPipeline({
         </form>
       )}
 
-      <div className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-4 -mx-3 px-3 xl:mx-0 xl:grid xl:min-h-0 xl:flex-1 xl:grid-cols-5 xl:overflow-x-visible xl:px-0">
+      {/* Mobile: tab bar to pick column + single column view */}
+      <div className="xl:hidden">
+        <div className="mb-3 flex items-center gap-1 overflow-x-auto rounded-xl border border-white/5 bg-black/20 p-1">
+          {COLUMN_ORDER.map((status) => (
+            <ColumnTab
+              key={status}
+              status={status}
+              count={(columns.get(status) ?? []).length}
+              active={mobileColumn === status}
+              onClick={() => setMobileColumn(status)}
+            />
+          ))}
+        </div>
+        <Column
+          status={mobileColumn}
+          tasks={columns.get(mobileColumn) ?? []}
+          childCounts={childCounts}
+          doneExpanded={doneExpanded}
+          dragOverColumn={dragOverColumn}
+          onToggleDone={() => setDoneExpanded((current) => !current)}
+          onAdvance={handleAdvance}
+          onOpenSession={onOpenSession}
+          draggingTaskId={draggingTaskId}
+          onCardDragStart={handleCardDragStart}
+          onCardDragEnd={handleCardDragEnd}
+          onColumnDragOver={handleColumnDragOver}
+          onColumnDragEnter={handleColumnDragEnter}
+          onColumnDragLeave={handleColumnDragLeave}
+          onColumnDrop={handleColumnDrop}
+        />
+      </div>
+
+      {/* Desktop: scrollable 5-col grid with more breathing room */}
+      <div className="hidden xl:grid xl:min-h-0 xl:flex-1 xl:grid-cols-5 xl:gap-3 xl:overflow-x-auto xl:pb-4">
         {COLUMN_ORDER.map((status) => (
           <Column
             key={status}
