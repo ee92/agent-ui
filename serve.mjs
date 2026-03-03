@@ -44,7 +44,13 @@ function listDir(dirPath) {
         const stat = statSync(fullPath);
         const relPath = relative(WORKSPACE, fullPath);
         const isDir = entry.isDirectory();
-        const item = { path: relPath, name: entry.name, type: isDir ? "directory" : "file", mtime: stat.mtimeMs };
+        const item = {
+          path: relPath,
+          name: entry.name,
+          type: isDir ? "directory" : "file",
+          mtime: stat.mtimeMs,
+          ctime: stat.birthtimeMs
+        };
         if (!isDir) item.size = stat.size;
         if (isDir) {
           // Include child count so UI knows if expandable
