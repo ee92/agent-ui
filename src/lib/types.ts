@@ -78,6 +78,7 @@ export type FileEntry = {
   size?: number;
   childCount?: number;
   mtime?: string;
+  ctime?: string;
 };
 
 export type FilePreview = {
