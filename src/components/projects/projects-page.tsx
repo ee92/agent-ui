@@ -1,5 +1,11 @@
-import { useEffect, useState } from "react";
-import { useGatewayStore } from "../../lib/store";
+import { useEffect, useState, useMemo } from "react";
+import { useGatewayStore, useChatStore } from "../../lib/store";
+import { useTaskStore } from "../../lib/stores/task-store-v2";
+import { useTaskCreateStore } from "../../lib/stores/task-create-store";
+import { useCronStore } from "../../lib/stores/cron-store";
+import { tasksForProject } from "../../lib/link-resolver";
+import { TASK_STATUS_META } from "../../lib/task-types";
+import { navigate } from "../../lib/use-hash-router";
 
 type Repo = {
   name: string;
@@ -34,7 +40,14 @@ function StatusBadge({ problems }: { problems: string[] }) {
   return <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-300">⚠ {problems.length} issue{problems.length !== 1 ? "s" : ""}</span>;
 }
 
-function RepoCard({ repo, expanded, onToggle }: { repo: Repo; expanded: boolean; onToggle: () => void }) {
+function RepoCard({ repo, expanded, onToggle, relatedTasks, relatedCrons, onCreateTask }: {
+  repo: Repo;
+  expanded: boolean;
+  onToggle: () => void;
+  relatedTasks: { id: string; title: string; status: string }[];
+  relatedCrons: { id: string; name: string }[];
+  onCreateTask: () => void;
+}) {
   return (
     <div className={`rounded-xl border transition-colors ${repo.problems.length > 0 ? "border-amber-500/15 bg-amber-500/[0.02]" : "border-white/6 bg-zinc-950/70"}`}>
       <button
@@ -109,7 +122,7 @@ function RepoCard({ repo, expanded, onToggle }: { repo: Repo; expanded: boolean;
           )}
 
           {/* Branches */}
-          <div>
+          <div className="mb-3">
             <p className="text-[11px] uppercase tracking-wide text-zinc-500">Branches ({repo.branches})</p>
             <div className="mt-1.5 flex flex-wrap gap-1.5">
               {repo.branchNames.map((b) => (
@@ -131,6 +144,37 @@ function RepoCard({ repo, expanded, onToggle }: { repo: Repo; expanded: boolean;
               )}
             </div>
           </div>
+
+          {/* Related tasks */}
+          {relatedTasks.length > 0 && (
+            <div className="mb-3">
+              <p className="text-[11px] uppercase tracking-wide text-zinc-500">Linked Tasks ({relatedTasks.length})</p>
+              <div className="mt-1.5 space-y-1">
+                {relatedTasks.map((t) => (
+                  <div key={t.id} className="flex items-center gap-2 rounded-lg border border-white/5 bg-black/20 px-3 py-1.5">
+                    <span className={`h-2 w-2 rounded-full ${TASK_STATUS_META[t.status as keyof typeof TASK_STATUS_META]?.dot || "bg-zinc-500"}`} />
+                    <span className="min-w-0 truncate text-xs text-zinc-200">{t.title}</span>
+                    <span className="ml-auto text-[10px] text-zinc-500">{TASK_STATUS_META[t.status as keyof typeof TASK_STATUS_META]?.label || t.status}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Related cron jobs */}
+          {relatedCrons.length > 0 && (
+            <div className="mb-3">
+              <p className="text-[11px] uppercase tracking-wide text-zinc-500">Cron Jobs ({relatedCrons.length})</p>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {relatedCrons.map((c) => (
+                  <button key={c.id} type="button" onClick={() => navigate("#/timeline")} className="rounded-full bg-sky-500/10 px-2.5 py-0.5 text-xs text-sky-300 hover:bg-sky-500/20">⏰ {c.name}</button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Quick action */}
+          <button type="button" onClick={onCreateTask} className="rounded-lg bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-300 hover:bg-emerald-500/20">📌 Create Task for {repo.name}</button>
         </div>
       )}
     </div>
@@ -139,6 +183,9 @@ function RepoCard({ repo, expanded, onToggle }: { repo: Repo; expanded: boolean;
 
 export function ProjectsPage() {
   const gatewayToken = useGatewayStore((s) => s.gatewayToken);
+  const allTasks = useTaskStore((s) => s.tasks);
+  const cronJobs = useCronStore((s) => s.jobs);
+  const openTaskCreate = useTaskCreateStore((s) => s.openTaskCreate);
   const [repos, setRepos] = useState<Repo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -172,6 +219,22 @@ export function ProjectsPage() {
       return next;
     });
   };
+
+  // Compute related entities per repo
+  const repoRelations = useMemo(() => {
+    const map = new Map<string, { tasks: { id: string; title: string; status: string }[]; crons: { id: string; name: string }[] }>();
+    for (const repo of repos) {
+      const tasks = tasksForProject(allTasks, repo.name)
+        .filter((t) => t.status !== "done")
+        .map((t) => ({ id: t.id, title: t.title, status: t.status }));
+      const lower = repo.name.toLowerCase();
+      const crons = cronJobs
+        .filter((c) => c.name.toLowerCase().includes(lower) || (c.description || "").toLowerCase().includes(lower))
+        .map((c) => ({ id: c.id, name: c.name }));
+      map.set(repo.dir, { tasks, crons });
+    }
+    return map;
+  }, [repos, allTasks, cronJobs]);
 
   const filtered = filter === "all" ? repos : filter === "dirty" ? repos.filter((r) => r.problems.length > 0) : repos.filter((r) => r.problems.length === 0);
   const dirtyCount = repos.filter((r) => r.problems.length > 0).length;
@@ -210,14 +273,20 @@ export function ProjectsPage() {
         )}
         {!loading && !error && filtered.length > 0 && (
           <div className="space-y-2">
-            {filtered.map((repo) => (
-              <RepoCard
-                key={repo.dir}
-                repo={repo}
-                expanded={expanded.has(repo.dir)}
-                onToggle={() => toggle(repo.dir)}
-              />
-            ))}
+            {filtered.map((repo) => {
+              const rels = repoRelations.get(repo.dir) ?? { tasks: [], crons: [] };
+              return (
+                <RepoCard
+                  key={repo.dir}
+                  repo={repo}
+                  expanded={expanded.has(repo.dir)}
+                  onToggle={() => toggle(repo.dir)}
+                  relatedTasks={rels.tasks}
+                  relatedCrons={rels.crons}
+                  onCreateTask={() => openTaskCreate({ title: `[${repo.name}] `, repo: repo.name, sourceLabel: `Project: ${repo.name}` })}
+                />
+              );
+            })}
           </div>
         )}
       </div>

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { ActivityEvent, ActivityEventKind } from "../../lib/types";
 import { useActivityStore } from "../../lib/stores/activity-store";
 import { useCronStore, type CronJob } from "../../lib/stores/cron-store";
+import { useTaskCreateStore } from "../../lib/stores/task-create-store";
 import { useGatewayStore } from "../../lib/store";
 import { navigate } from "../../lib/use-hash-router";
 
@@ -129,7 +130,7 @@ function ActivityTimeline({ groups }: { groups: ActivityGroup[] }) {
 }
 
 /* ─── Cron Job Card ─── */
-function CronJobCard({ job, onEdit, onRun }: { job: CronJob; onEdit: () => void; onRun: () => void }) {
+function CronJobCard({ job, onEdit, onRun, onCreateTask }: { job: CronJob; onEdit: () => void; onRun: () => void; onCreateTask: () => void }) {
   const nextRun = job.state.nextRunAtMs;
   const lastRun = job.state.lastRunAtMs;
   const status = job.state.lastRunStatus;
@@ -158,6 +159,7 @@ function CronJobCard({ job, onEdit, onRun }: { job: CronJob; onEdit: () => void;
       </button>
       <div className="flex items-center gap-2 border-t border-white/5 px-4 py-2">
         <button type="button" onClick={onRun} className="rounded-lg bg-blue-500/10 px-3 py-1.5 text-xs font-medium text-blue-300 hover:bg-blue-500/20">Run Now</button>
+        <button type="button" onClick={onCreateTask} className="rounded-lg bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-300 hover:bg-emerald-500/20">📌 Task</button>
         {job.sessionKey && (
           <button type="button" onClick={() => navigate(`#/chat/${encodeURIComponent(job.sessionKey!)}`)} className="rounded-lg bg-white/[0.04] px-3 py-1.5 text-xs text-zinc-400 hover:bg-white/[0.06]">View Session</button>
         )}
@@ -361,13 +363,13 @@ function CronSchedulePanel({ jobs, onEdit, onRun }: { jobs: CronJob[]; onEdit: (
 }
 
 /* ─── All Cron Jobs list ─── */
-function CronJobsList({ jobs, onEdit, onRun }: { jobs: CronJob[]; onEdit: (job: CronJob) => void; onRun: (id: string) => void }) {
+function CronJobsList({ jobs, onEdit, onRun, onCreateTask }: { jobs: CronJob[]; onEdit: (job: CronJob) => void; onRun: (id: string) => void; onCreateTask: (job: CronJob) => void }) {
   if (jobs.length === 0) {
     return <div className="flex min-h-40 items-center justify-center rounded-xl border border-dashed border-white/10 text-sm text-zinc-500">No cron jobs configured.</div>;
   }
   return (
     <div className="space-y-2">
-      {jobs.map((job) => <CronJobCard key={job.id} job={job} onEdit={() => onEdit(job)} onRun={() => onRun(job.id)} />)}
+      {jobs.map((job) => <CronJobCard key={job.id} job={job} onEdit={() => onEdit(job)} onRun={() => onRun(job.id)} onCreateTask={() => onCreateTask(job)} />)}
     </div>
   );
 }
@@ -379,8 +381,19 @@ export function TimelinePage() {
   const events = useActivityStore((s) => s.events);
   const connectionState = useGatewayStore((s) => s.connectionState);
   const { jobs, loading, loadJobs, updateJob, runJob } = useCronStore();
+  const openTaskCreate = useTaskCreateStore((s) => s.openTaskCreate);
   const [activeTab, setActiveTab] = useState<TimelineTab>("schedule");
   const [editingJob, setEditingJob] = useState<CronJob | null>(null);
+
+  const handleCreateTaskFromCron = (job: CronJob) => {
+    const msg = getPayloadMessage(job.payload);
+    openTaskCreate({
+      title: `[Cron] ${job.name}`,
+      notes: job.state.lastError ? `Last error: ${job.state.lastError}\n\nPrompt: ${msg.slice(0, 300)}` : msg.slice(0, 400),
+      sessionKey: job.sessionKey || undefined,
+      sourceLabel: `From cron: ${job.name}`,
+    });
+  };
 
   useEffect(() => {
     if (connectionState === "connected") void loadJobs();
@@ -405,7 +418,7 @@ export function TimelinePage() {
       <div className="min-h-0 flex-1 overflow-y-auto pb-[calc(env(safe-area-inset-bottom)+1rem)]">
         {loading && <div className="flex min-h-40 items-center justify-center text-sm text-zinc-500">Loading cron jobs...</div>}
         {!loading && activeTab === "schedule" && <CronSchedulePanel jobs={enabledJobs} onEdit={setEditingJob} onRun={runJob} />}
-        {!loading && activeTab === "crons" && <CronJobsList jobs={jobs} onEdit={setEditingJob} onRun={runJob} />}
+        {!loading && activeTab === "crons" && <CronJobsList jobs={jobs} onEdit={setEditingJob} onRun={runJob} onCreateTask={handleCreateTaskFromCron} />}
         {activeTab === "activity" && <ActivityTimeline groups={activityGroups} />}
       </div>
 

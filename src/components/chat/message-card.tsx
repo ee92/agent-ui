@@ -14,7 +14,7 @@ export function MessageCard({
   onCopy: () => void;
   onRetry: () => void;
   onHide: () => void;
-  onTask: () => void;
+  onTask: (text: string) => void;
 }) {
   if (message.hidden) {
     return null;
@@ -78,10 +78,13 @@ export function MessageCard({
           {!isUser ? (
             <button
               type="button"
-              onClick={onTask}
+              onClick={() => {
+                const text = message.parts.filter((p) => p.type === "text").map((p) => (p as { text: string }).text).join("\n").trim();
+                onTask(text);
+              }}
               className="min-h-11 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-[11px] text-zinc-200 hover:bg-black/30"
             >
-              Add to tasks
+              📌 Create Task
             </button>
           ) : null}
           <button

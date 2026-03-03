@@ -12,6 +12,8 @@ import { SystemFlow } from "./components/flow/system-flow";
 import { TimelinePage } from "./components/timeline/timeline-page";
 import { ProjectsPage } from "./components/projects/projects-page";
 import { StatusPulse } from "./components/workflow/status-pulse";
+import { TaskCreateModalGlobal } from "./components/workflow/task-create-modal";
+import { useTaskCreateStore } from "./lib/stores/task-create-store";
 import { WorkflowDashboard } from "./components/workflow/workflow-dashboard";
 import {
   useAgentsStore,
@@ -65,6 +67,7 @@ function ChatView({
   onNewChat,
   onRetry,
   onHide,
+  onTask,
   onDraftChange,
   onSend,
   onAttach,
@@ -80,6 +83,7 @@ function ChatView({
   onNewChat: () => void;
   onRetry: (id: string) => void;
   onHide: (id: string) => void;
+  onTask: (text: string) => void;
   onDraftChange: (value: string) => void;
   onSend: () => void;
   onAttach: (files: FileList) => void;
@@ -112,7 +116,7 @@ function ChatView({
               onCopy={() => void navigator.clipboard.writeText(extractText(message))}
               onRetry={() => onRetry(message.id)}
               onHide={() => onHide(message.id)}
-              onTask={() => {}}
+              onTask={(text) => onTask(text)}
             />
           </div>
         ))}
@@ -186,6 +190,8 @@ export function App() {
   const closeMobileSidebar = useUiStore((s) => s.closeMobileSidebar);
   const requestSearchFocus = useUiStore((s) => s.requestSearchFocus);
   const closeOverlays = useUiStore((s) => s.closeOverlays);
+
+  const openTaskCreate = useTaskCreateStore((s) => s.openTaskCreate);
 
   // Derive current page and chat key from route
   const currentPage = route.page;
@@ -355,6 +361,17 @@ export function App() {
                   onNewChat={() => void createConversation()}
                   onRetry={(id) => void retryMessage(id)}
                   onHide={hideMessage}
+                  onTask={(text) => {
+                    const lines = text.split("\n").filter((l) => l.trim());
+                    const title = (lines[0] || "").replace(/^#+\s*/, "").slice(0, 120);
+                    const notes = lines.slice(1).join("\n").slice(0, 500);
+                    openTaskCreate({
+                      title,
+                      notes,
+                      sessionKey: chatSessionKey || undefined,
+                      sourceLabel: `From conversation: ${selectedTitle}`,
+                    });
+                  }}
                   onDraftChange={setDraft}
                   onSend={() => void sendMessage()}
                   onAttach={(incoming) => void addAttachments(Array.from(incoming))}
@@ -386,6 +403,9 @@ export function App() {
           <div className="h-full overflow-y-auto p-3">{sidebar}</div>
         </div>
       </div>
+
+      {/* Task creation modal (global — triggered from chat, timeline, dashboard) */}
+      <TaskCreateModalGlobal />
     </div>
   );
 }
