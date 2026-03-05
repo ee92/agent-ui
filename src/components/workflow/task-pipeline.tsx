@@ -357,6 +357,9 @@ export function TaskPipeline({
     if (!taskId || !currentStatus || currentStatus === status) {
       return;
     }
+    if (!TASK_TRANSITIONS[currentStatus]?.includes(status)) {
+      return;
+    }
 
     void updateTask(taskId, { status }).catch(() => {});
   }, [updateTask]);
