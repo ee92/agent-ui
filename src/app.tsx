@@ -236,6 +236,11 @@ export function App() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); requestSearchFocus(); closeMobileSidebar(); }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "n") { e.preventDefault(); void createConversation(); }
+      if ((e.metaKey || e.ctrlKey) && e.key >= "1" && e.key <= "5") {
+        e.preventDefault();
+        const routes = ["#/", "#/flow", "#/files", "#/timeline", "#/projects"];
+        navigate(routes[parseInt(e.key, 10) - 1]);
+      }
       if (e.key === "Escape") {
         if (currentPage === "chat") navigate("#/");
         closeOverlays();
