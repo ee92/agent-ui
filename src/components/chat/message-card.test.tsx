@@ -21,6 +21,6 @@ describe("MessageCard", () => {
 
     expect(screen.getByText("Assistant")).toBeTruthy();
     expect(screen.getByText("Copy")).toBeTruthy();
-    expect(screen.getByText("Add to tasks")).toBeTruthy();
+    expect(screen.getByText("Create Task")).toBeTruthy();
   });
 });

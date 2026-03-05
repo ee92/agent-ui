@@ -58,6 +58,18 @@ function TaskCard({
 }) {
   const [expanded, setExpanded] = useState(false);
   const gesture = useRef({ x: 0, y: 0, pointerType: "" });
+  const blockedReason = useMemo(() => {
+    if (task.status !== "blocked" || !task.notes.trim()) {
+      return null;
+    }
+    const lines = task.notes.split(/\r?\n/).map((line) => line.trim());
+    for (let index = lines.length - 1; index >= 0; index -= 1) {
+      if (/^\[BLOCKED\b/i.test(lines[index])) {
+        return lines[index];
+      }
+    }
+    return null;
+  }, [task.notes, task.status]);
 
   return (
     <article
@@ -97,6 +109,7 @@ function TaskCard({
           <p className={`text-sm font-medium leading-5 ${task.status === "done" ? "text-zinc-500 line-through" : "text-white"}`}>
             {task.title}
           </p>
+          {blockedReason && <p className="mt-1 text-xs text-zinc-400">⚠️ {blockedReason}</p>}
           <div className="mt-2 flex flex-wrap gap-1.5">
             {childCount > 0 && (
               <span className="rounded-full bg-white/[0.04] px-2 py-1 text-[11px] text-zinc-400">
