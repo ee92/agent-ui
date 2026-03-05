@@ -215,7 +215,7 @@ export const useTaskStore = create<TaskStoreState>((set, get) => {
 
     setFocus: (id) => set({ focusedId: id }),
     setStatusFilter: (statuses) => set({ statusFilter: statuses }),
-    startPolling: (intervalMs = 30000) => {
+    startPolling: (intervalMs = 3000) => {
       if (taskPollingInterval) {
         clearInterval(taskPollingInterval);
       }
