@@ -39,6 +39,18 @@ function GitBranchIcon() {
   );
 }
 
+function relativeTime(iso: string): string {
+  const ms = Date.now() - Date.parse(iso);
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return "just now";
+  const m = Math.floor(s / 60);
+  if (m < 60) return m + "m ago";
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + "h ago";
+  const d = Math.floor(h / 24);
+  return d + "d ago";
+}
+
 function TaskCard({
   task,
   childCount,
@@ -134,6 +146,7 @@ function TaskCard({
                 {task.branch ? `${task.repo}:${task.branch}` : task.repo}
               </span>
             )}
+            <span className="rounded-full bg-white/[0.02] px-2 py-1 text-[11px] text-zinc-500">{relativeTime(task.updatedAt)}</span>
           </div>
           <div
             className={`grid transition-all duration-150 ${expanded && task.notes.trim() ? "mt-2 grid-rows-[1fr]" : "grid-rows-[0fr]"}`}
