@@ -27,6 +27,7 @@ import { useGatewayStore } from "./gateway-store";
 const TASKS_PATH = "tasks.json";
 const LOCAL_KEY = "openclaw-ui-tasks-v2";
 const DONE_RETENTION_MS = 14 * 24 * 60 * 60 * 1000; // 14 days
+let taskPollingInterval: ReturnType<typeof setInterval> | null = null;
 
 interface TaskStoreState {
   /** All tasks (flat array, tree via parentId) */
@@ -55,6 +56,8 @@ interface TaskStoreState {
   toggle: (id: string) => void;
   setFocus: (id: string | null) => void;
   setStatusFilter: (statuses: TaskStatus[] | null) => void;
+  startPolling: (intervalMs?: number) => void;
+  stopPolling: () => void;
 
   // ─── Derived (computed in selectors, not stored) ─────
 }
@@ -212,6 +215,34 @@ export const useTaskStore = create<TaskStoreState>((set, get) => {
 
     setFocus: (id) => set({ focusedId: id }),
     setStatusFilter: (statuses) => set({ statusFilter: statuses }),
+    startPolling: (intervalMs = 30000) => {
+      if (taskPollingInterval) {
+        clearInterval(taskPollingInterval);
+      }
+
+      const poll = async () => {
+        const remote = await loadRemote();
+        if (remote === null) return;
+
+        const { valid } = validate(remote);
+        if (!valid) return;
+
+        const next = pruneOldDone(remote);
+        const current = get().tasks;
+        if (JSON.stringify(next) !== JSON.stringify(current)) {
+          set({ tasks: next, fallback: false });
+          saveLocal(next);
+        }
+      };
+
+      taskPollingInterval = setInterval(() => { void poll(); }, intervalMs);
+    },
+    stopPolling: () => {
+      if (taskPollingInterval) {
+        clearInterval(taskPollingInterval);
+        taskPollingInterval = null;
+      }
+    },
   };
 });
 

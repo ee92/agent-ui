@@ -206,7 +206,19 @@ export function App() {
 
   // Startup effects
   useEffect(() => { connect(); }, [connect]);
-  useEffect(() => { void useTaskStore.getState().load(); }, []);
+  useEffect(() => {
+    let cancelled = false;
+    const initTasks = async () => {
+      const store = useTaskStore.getState();
+      await store.load();
+      if (!cancelled) store.startPolling();
+    };
+    void initTasks();
+    return () => {
+      cancelled = true;
+      useTaskStore.getState().stopPolling();
+    };
+  }, []);
 
   useEffect(() => {
     if (connectionState === "connected") {
