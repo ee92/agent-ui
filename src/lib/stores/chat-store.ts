@@ -215,7 +215,31 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
     if (!selectedKey) {
       return;
     }
-    const text = ui.draft.trim();
+    let text = ui.draft.trim();
+
+    // Inject task context on first message to a task-linked session
+    const existingMessages = get().messagesByConversation[selectedKey] ?? [];
+    const hasUserMessages = existingMessages.some((m) => m.role === "user");
+    if (!hasUserMessages && text) {
+      const linkedTask = useTaskStore.getState().tasks.find(
+        (t) => t.sessionKey === selectedKey || t.sessionKeys?.includes(selectedKey)
+      );
+      if (linkedTask) {
+        const lines = [
+          `[Task context — you are working on task ${linkedTask.id}: "${linkedTask.title}"]`,
+          `[Status: ${linkedTask.status}]`,
+        ];
+        if (linkedTask.notes?.trim()) {
+          lines.push(`[Notes: ${linkedTask.notes.trim()}]`);
+        }
+        if (linkedTask.sessionKeys && linkedTask.sessionKeys.length > 0) {
+          lines.push(`[Previous sessions: ${linkedTask.sessionKeys.join(", ")} — check transcripts in ~/.openclaw/agents/main/sessions/ for prior work]`);
+        }
+        lines.push(`[Use "task note ${linkedTask.id} ..." to log progress, "task review ${linkedTask.id} ..." when done]`, "---");
+        text = lines.join("\n") + "\n" + text;
+      }
+    }
+    const displayText = ui.draft.trim();
     const attachments = ui.attachments;
     if (!text && attachments.length === 0) {
       return;
@@ -224,7 +248,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
       id: crypto.randomUUID(),
       role: "user",
       parts: [
-        ...(text ? [{ type: "text", text } as const] : []),
+        ...(displayText ? [{ type: "text", text: displayText } as const] : []),
         ...attachments.flatMap((attachment) =>
           attachment.dataUrl
             ? ({ type: "image", url: attachment.dataUrl, alt: attachment.name } as const)
