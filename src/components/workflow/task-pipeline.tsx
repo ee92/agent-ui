@@ -5,6 +5,7 @@ import { TASK_STATUS_META, TASK_TRANSITIONS, type TaskNode, type TaskStatus } fr
 import { TaskEditModal } from "./task-edit-modal";
 
 type VisibleTask = TaskNode & { depth: number };
+type DropHint = { status: TaskStatus; targetId: string; position: "before" | "after" } | null;
 
 const COLUMN_ORDER: TaskStatus[] = ["todo", "active", "review", "blocked", "done"];
 
@@ -58,6 +59,10 @@ function TaskCard({
   onAdvance,
   onEdit,
   onOpenSession,
+  canMoveUp,
+  canMoveDown,
+  onMoveUp,
+  onMoveDown,
   isDragging,
   onDragStart,
   onDragEnd,
@@ -67,6 +72,10 @@ function TaskCard({
   onAdvance: (task: TaskNode) => void;
   onEdit: (task: TaskNode) => void;
   onOpenSession: (key: string) => void;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+  onMoveUp: (task: VisibleTask) => void;
+  onMoveDown: (task: VisibleTask) => void;
   isDragging: boolean;
   onDragStart: (event: React.DragEvent<HTMLElement>, task: VisibleTask) => void;
   onDragEnd: () => void;
@@ -166,6 +175,38 @@ function TaskCard({
               </span>
             )}
             <span className="rounded-full bg-white/[0.02] px-2 py-1 text-[11px] text-zinc-500">{relativeTime(task.updatedAt)}</span>
+            <div className="flex items-center gap-1 xl:hidden">
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onMoveUp(task);
+                }}
+                disabled={!canMoveUp}
+                className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-white/[0.05] text-zinc-300 transition-all duration-150 hover:bg-white/[0.1] hover:text-white disabled:cursor-not-allowed disabled:opacity-35"
+                aria-label={`Move ${task.title} up`}
+                title="Move up"
+              >
+                <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8">
+                  <path d="m3.5 10 4.5-4.5L12.5 10" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onMoveDown(task);
+                }}
+                disabled={!canMoveDown}
+                className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-white/[0.05] text-zinc-300 transition-all duration-150 hover:bg-white/[0.1] hover:text-white disabled:cursor-not-allowed disabled:opacity-35"
+                aria-label={`Move ${task.title} down`}
+                title="Move down"
+              >
+                <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8">
+                  <path d="m3.5 6 4.5 4.5L12.5 6" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+            </div>
           </div>
           <div
             className={`grid transition-all duration-150 ${expanded && task.notes.trim() ? "mt-2 grid-rows-[1fr]" : "grid-rows-[0fr]"}`}
@@ -191,8 +232,13 @@ function Column({
   onEdit,
   onOpenSession,
   draggingTaskId,
+  dropHint,
   onCardDragStart,
   onCardDragEnd,
+  onTaskDragOver,
+  onTaskDrop,
+  onMoveUp,
+  onMoveDown,
   onColumnDragOver,
   onColumnDragEnter,
   onColumnDragLeave,
@@ -208,8 +254,13 @@ function Column({
   onEdit: (task: TaskNode) => void;
   onOpenSession: (key: string) => void;
   draggingTaskId: string | null;
+  dropHint: DropHint;
   onCardDragStart: (event: React.DragEvent<HTMLElement>, task: VisibleTask) => void;
   onCardDragEnd: () => void;
+  onTaskDragOver: (event: React.DragEvent<HTMLDivElement>, status: TaskStatus, task: VisibleTask) => void;
+  onTaskDrop: (event: React.DragEvent<HTMLDivElement>, status: TaskStatus, task: VisibleTask) => void;
+  onMoveUp: (task: VisibleTask) => void;
+  onMoveDown: (task: VisibleTask) => void;
   onColumnDragOver: (event: React.DragEvent<HTMLElement>, status: TaskStatus) => void;
   onColumnDragEnter: (status: TaskStatus) => void;
   onColumnDragLeave: (event: React.DragEvent<HTMLElement>, status: TaskStatus) => void;
@@ -247,19 +298,35 @@ function Column({
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1">
-        {showTasks.map((task) => (
-          <TaskCard
-            key={task.id}
-            task={task}
-            childCount={childCounts.get(task.id) ?? 0}
-            onAdvance={onAdvance}
-            onEdit={onEdit}
-            onOpenSession={onOpenSession}
-            isDragging={draggingTaskId === task.id}
-            onDragStart={onCardDragStart}
-            onDragEnd={onCardDragEnd}
-          />
-        ))}
+        {showTasks.map((task, index) => {
+          const dropBefore = dropHint?.status === status && dropHint.targetId === task.id && dropHint.position === "before";
+          const dropAfter = dropHint?.status === status && dropHint.targetId === task.id && dropHint.position === "after";
+          return (
+            <div
+              key={task.id}
+              className="relative"
+              onDragOver={(event) => onTaskDragOver(event, status, task)}
+              onDrop={(event) => onTaskDrop(event, status, task)}
+            >
+              {dropBefore ? <div className="pointer-events-none absolute -top-1 left-2 right-2 h-0.5 rounded-full bg-blue-400" /> : null}
+              {dropAfter ? <div className="pointer-events-none absolute -bottom-1 left-2 right-2 h-0.5 rounded-full bg-blue-400" /> : null}
+              <TaskCard
+                task={task}
+                childCount={childCounts.get(task.id) ?? 0}
+                onAdvance={onAdvance}
+                onEdit={onEdit}
+                onOpenSession={onOpenSession}
+                canMoveUp={index > 0}
+                canMoveDown={index < showTasks.length - 1}
+                onMoveUp={onMoveUp}
+                onMoveDown={onMoveDown}
+                isDragging={draggingTaskId === task.id}
+                onDragStart={onCardDragStart}
+                onDragEnd={onCardDragEnd}
+              />
+            </div>
+          );
+        })}
         {status === "done" && tasks.length > 0 && !doneExpanded && (
           <button
             type="button"
@@ -289,6 +356,7 @@ export function TaskPipeline({
   onOpenSession: (key: string) => void;
 }) {
   const updateTask = useTaskStore((state) => state.update);
+  const moveTask = useTaskStore((state) => state.move);
   const addTask = useTaskStore((state) => state.add);
   const pushActivity = useActivityStore((state) => state.push);
   const [doneExpanded, setDoneExpanded] = useState(false);
@@ -296,6 +364,7 @@ export function TaskPipeline({
   const [newTitle, setNewTitle] = useState("");
   const [dragOverColumn, setDragOverColumn] = useState<TaskStatus | null>(null);
   const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
+  const [dropHint, setDropHint] = useState<DropHint>(null);
   const [mobileColumn, setMobileColumn] = useState<TaskStatus>("active");
   const [editingTask, setEditingTask] = useState<TaskNode | null>(null);
 
@@ -334,6 +403,26 @@ export function TaskPipeline({
     return grouped;
   }, [visibleTasks]);
 
+  const tasksById = useMemo(() => {
+    const map = new Map<string, TaskNode>();
+    for (const task of tasks) {
+      map.set(task.id, task);
+    }
+    return map;
+  }, [tasks]);
+
+  const getMoveTarget = useCallback((target: TaskNode, position: "before" | "after") => {
+    const siblings = tasks
+      .filter((task) => task.parentId === target.parentId)
+      .sort((left, right) => left.order - right.order);
+    const targetIndex = siblings.findIndex((task) => task.id === target.id);
+    if (position === "before") {
+      return { newParentId: target.parentId, beforeId: target.id as string | null };
+    }
+    const nextSibling = targetIndex >= 0 ? siblings[targetIndex + 1] : null;
+    return { newParentId: target.parentId, beforeId: nextSibling?.id ?? null };
+  }, [tasks]);
+
   const handleAdvance = (task: TaskNode) => {
     const nextStatus = TASK_TRANSITIONS[task.status][0] ?? task.status;
     if (nextStatus === task.status) {
@@ -360,6 +449,7 @@ export function TaskPipeline({
   const handleCardDragEnd = useCallback(() => {
     setDraggingTaskId(null);
     setDragOverColumn(null);
+    setDropHint(null);
   }, []);
 
   const handleColumnDragOver = useCallback((event: React.DragEvent<HTMLElement>, status: TaskStatus) => {
@@ -389,6 +479,7 @@ export function TaskPipeline({
 
     setDragOverColumn(null);
     setDraggingTaskId(null);
+    setDropHint(null);
 
     if (!taskId || !currentStatus || currentStatus === status) {
       return;
@@ -399,6 +490,93 @@ export function TaskPipeline({
 
     void updateTask(taskId, { status }).catch(() => {});
   }, [updateTask]);
+
+  const resolveDropPosition = useCallback((event: React.DragEvent<HTMLDivElement>): "before" | "after" => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    return event.clientY < rect.top + rect.height / 2 ? "before" : "after";
+  }, []);
+
+  const handleTaskDragOver = useCallback((event: React.DragEvent<HTMLDivElement>, status: TaskStatus, target: VisibleTask) => {
+    const taskId =
+      event.dataTransfer.getData("application/x-task-id") ||
+      event.dataTransfer.getData("text/plain") ||
+      draggingTaskId;
+    const statusFromTransfer = event.dataTransfer.getData("application/x-task-status") as TaskStatus;
+    const currentStatus = statusFromTransfer || (taskId ? tasksById.get(taskId)?.status : undefined);
+
+    if (!taskId || taskId === target.id) {
+      return;
+    }
+    if (currentStatus !== status) {
+      setDropHint(null);
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    const position = resolveDropPosition(event);
+    setDropHint((current) => {
+      if (current?.status === status && current.targetId === target.id && current.position === position) {
+        return current;
+      }
+      return { status, targetId: target.id, position };
+    });
+  }, [draggingTaskId, resolveDropPosition, tasksById]);
+
+  const handleTaskDrop = useCallback((event: React.DragEvent<HTMLDivElement>, status: TaskStatus, target: VisibleTask) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const taskId =
+      event.dataTransfer.getData("application/x-task-id") ||
+      event.dataTransfer.getData("text/plain") ||
+      draggingTaskId;
+    const statusFromTransfer = event.dataTransfer.getData("application/x-task-status") as TaskStatus;
+    const currentStatus = statusFromTransfer || (taskId ? tasksById.get(taskId)?.status : undefined);
+
+    setDragOverColumn(null);
+    setDraggingTaskId(null);
+
+    if (!taskId || taskId === target.id || !currentStatus) {
+      setDropHint(null);
+      return;
+    }
+
+    if (currentStatus !== status) {
+      setDropHint(null);
+      if (!TASK_TRANSITIONS[currentStatus]?.includes(status)) {
+        return;
+      }
+      void updateTask(taskId, { status }).catch(() => {});
+      return;
+    }
+
+    const position = resolveDropPosition(event);
+    const { newParentId, beforeId } = getMoveTarget(target, position);
+    setDropHint(null);
+    void moveTask(taskId, newParentId, beforeId).catch(() => {});
+  }, [draggingTaskId, getMoveTarget, moveTask, resolveDropPosition, tasksById, updateTask]);
+
+  const moveWithinColumn = useCallback((task: VisibleTask, direction: -1 | 1) => {
+    const columnTasks = columns.get(task.status) ?? [];
+    const currentIndex = columnTasks.findIndex((candidate) => candidate.id === task.id);
+    const targetIndex = currentIndex + direction;
+    if (currentIndex < 0 || targetIndex < 0 || targetIndex >= columnTasks.length) {
+      return;
+    }
+
+    const target = columnTasks[targetIndex];
+    const { newParentId, beforeId } = getMoveTarget(target, direction < 0 ? "before" : "after");
+    void moveTask(task.id, newParentId, beforeId).catch(() => {});
+  }, [columns, getMoveTarget, moveTask]);
+
+  const handleMoveUp = useCallback((task: VisibleTask) => {
+    moveWithinColumn(task, -1);
+  }, [moveWithinColumn]);
+
+  const handleMoveDown = useCallback((task: VisibleTask) => {
+    moveWithinColumn(task, 1);
+  }, [moveWithinColumn]);
 
   return (
     <section className="flex min-h-0 flex-1 flex-col">
@@ -472,8 +650,13 @@ export function TaskPipeline({
           onEdit={setEditingTask}
           onOpenSession={onOpenSession}
           draggingTaskId={draggingTaskId}
+          dropHint={dropHint}
           onCardDragStart={handleCardDragStart}
           onCardDragEnd={handleCardDragEnd}
+          onTaskDragOver={handleTaskDragOver}
+          onTaskDrop={handleTaskDrop}
+          onMoveUp={handleMoveUp}
+          onMoveDown={handleMoveDown}
           onColumnDragOver={handleColumnDragOver}
           onColumnDragEnter={handleColumnDragEnter}
           onColumnDragLeave={handleColumnDragLeave}
@@ -496,8 +679,13 @@ export function TaskPipeline({
             onEdit={setEditingTask}
             onOpenSession={onOpenSession}
             draggingTaskId={draggingTaskId}
+            dropHint={dropHint}
             onCardDragStart={handleCardDragStart}
             onCardDragEnd={handleCardDragEnd}
+            onTaskDragOver={handleTaskDragOver}
+            onTaskDrop={handleTaskDrop}
+            onMoveUp={handleMoveUp}
+            onMoveDown={handleMoveDown}
             onColumnDragOver={handleColumnDragOver}
             onColumnDragEnter={handleColumnDragEnter}
             onColumnDragLeave={handleColumnDragLeave}
