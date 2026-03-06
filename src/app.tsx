@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { TaskContextCard } from "./components/tasks/task-context-card";
 import { ChatComposer } from "./components/chat/chat-composer";
 import { ConversationSidebar } from "./components/chat/conversation-sidebar";
 import { MessageCard } from "./components/chat/message-card";
@@ -58,6 +59,7 @@ function MobileTabLink({ href, label, active }: { href: string; label: string; a
 /* ─── Chat view (unchanged) ─── */
 function ChatView({
   title,
+  sessionKey,
   loading,
   messages,
   draft,
@@ -74,6 +76,7 @@ function ChatView({
   onRemoveAttachment,
 }: {
   title: string;
+  sessionKey: string | null;
   loading: boolean;
   messages: ReturnType<typeof useChatStore.getState>["messagesByConversation"][string];
   draft: string;
@@ -92,6 +95,15 @@ function ChatView({
   const endRef = useRef<HTMLDivElement | null>(null);
   const lastMessage = messages[messages.length - 1];
 
+  // Find linked task for this session
+  const linkedTask = tasks.find((t) => {
+    const sk = sessionKey;
+    if (!sk) return false;
+    if (t.sessionKey === sk) return true;
+    const keys = (t as typeof t & { sessionKeys?: string[] }).sessionKeys;
+    return keys?.includes(sk) ?? false;
+  });
+
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: "end" });
   }, [lastMessage?.id, lastMessage?.pending, loading, messages.length]);
@@ -101,7 +113,10 @@ function ChatView({
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 pb-4 xl:px-6">
         <div className="flex-1" />
         {loading && <LoadingSkeleton rows={4} className="h-24 rounded-3xl" />}
-        {!loading && messages.length === 0 && (
+        {!loading && messages.length === 0 && linkedTask && (
+          <TaskContextCard task={linkedTask} />
+        )}
+        {!loading && messages.length === 0 && !linkedTask && (
           <div className="flex flex-col items-center justify-center px-8 py-16 text-center">
             <p className="text-lg font-medium text-white">Start something new</p>
             <p className="mt-2 max-w-xs text-sm leading-6 text-zinc-400">
@@ -251,9 +266,20 @@ export function App() {
   }, [closeMobileSidebar, closeOverlays, createConversation, requestSearchFocus, currentPage]);
 
   const selectedMessages = chatSessionKey ? messagesByConversation[chatSessionKey] ?? [] : [];
-  const selectedTitle = chatSessionKey
-    ? conversations.find((c) => c.key === chatSessionKey)?.title || "Chat"
-    : "";
+  const selectedTitle = (() => {
+    if (!chatSessionKey) return "";
+    const convTitle = conversations.find((c) => c.key === chatSessionKey)?.title;
+    const taskTitle = tasks.find((t) => {
+      if (t.sessionKey === chatSessionKey) return true;
+      const keys = (t as typeof t & { sessionKeys?: string[] }).sessionKeys;
+      return keys?.includes(chatSessionKey) ?? false;
+    })?.title;
+    // Prefer task title over generic conversation titles
+    if (taskTitle && (!convTitle || convTitle === "New Chat" || convTitle === "Untitled conversation" || convTitle === chatSessionKey)) {
+      return taskTitle;
+    }
+    return convTitle || taskTitle || "Chat";
+  })();
 
   const openSession = (key: string) => {
     const title = conversations.find((c) => c.key === key)?.title ?? key;
@@ -369,6 +395,7 @@ export function App() {
               <ErrorBoundary label="Chat">
                 <ChatView
                   title={selectedTitle}
+                  sessionKey={chatSessionKey}
                   loading={loadingConversationKey === chatSessionKey}
                   messages={selectedMessages}
                   draft={draft}

@@ -216,6 +216,16 @@ function cleanSessionTitle(raw: string): string {
   t = t.replace(/^\[cron:[a-f0-9-]+\.{3}$/, "");
   // Strip "System: [date] Cron: HEARTBEAT_OK..." noise
   if (/^System:\s*\[/.test(t) || /^HEARTBEAT/i.test(t)) return "";
+  // Strip raw metadata titles (untrusted envelope headers used as derived titles)
+  if (/^Sender \(untrusted/i.test(t) || /^Conversation info \(untrusted/i.test(t)) return "";
+  // Strip "[timestamp] ..." prefixes from user messages used as titles
+  if (/^\[(Mon|Tue|Wed|Thu|Fri|Sat|Sun) \d{4}-/.test(t)) return "";
+  // Strip "[Internal API Access]..." noise
+  if (/^\[Internal API/i.test(t)) return "";
+  // Strip "Pre-compaction memory flush..." noise
+  if (/^Pre-compaction/i.test(t)) return "";
+  // Strip "A scheduled reminder..." noise
+  if (/^A scheduled reminder/i.test(t)) return "";
   // Clean up telegram session keys
   t = t.replace(/^telegram:(slash|group):/, "").replace(/:[0-9-]+(:topic:[0-9]+)?$/, "");
   // Capitalize first letter
@@ -256,7 +266,7 @@ export function normalizeSession(entry: SessionsListEntry): Conversation {
     key: entry.key,
     title,
     derivedTitle: entry.derivedTitle ?? null,
-    preview: messageTextFromUnknown(entry.lastMessage).slice(0, 140),
+    preview: (messageTextFromUnknown(entry.lastMessage) || (typeof entry.lastMessagePreview === "string" ? entry.lastMessagePreview : "")).slice(0, 140),
     updatedAt: normalizeTime(entry.updatedAt),
     createdAt: normalizeTime(entry.createdAt ?? entry.updatedAt),
     isStreaming: Boolean(entry.activeRunId),
@@ -279,13 +289,42 @@ export function normalizeHistoryMessage(message: unknown): ChatMessage | null {
   const record = message as Record<string, unknown>;
   const role = typeof record.role === "string" ? record.role.toLowerCase() : "assistant";
   const text = messageTextFromUnknown(record);
-  if (!text && !Array.isArray(record.content)) {
+  const parts: ChatMessage["parts"] = [];
+  // Extract image content parts if present
+  if (Array.isArray(record.content)) {
+    for (const part of record.content) {
+      if (part && typeof part === "object") {
+        const p = part as Record<string, unknown>;
+        if (p.type === "image" || p.type === "image_url") {
+          const url =
+            (typeof p.url === "string" && p.url) ||
+            (typeof p.image_url === "object" && p.image_url && typeof (p.image_url as Record<string, unknown>).url === "string"
+              ? (p.image_url as Record<string, unknown>).url as string
+              : null) ||
+            (typeof p.source === "object" && p.source && typeof (p.source as Record<string, unknown>).url === "string"
+              ? (p.source as Record<string, unknown>).url as string
+              : null);
+          if (url) {
+            parts.push({ type: "image", url, alt: typeof p.alt === "string" ? p.alt : "" });
+          }
+        }
+      }
+    }
+  }
+  // Extract media URL if present (from message tool sends)
+  if (typeof record.media === "string" && record.media) {
+    parts.push({ type: "image", url: record.media, alt: "" });
+  }
+  if (text) {
+    parts.push({ type: "text", text });
+  }
+  if (parts.length === 0) {
     return null;
   }
   return {
     id: crypto.randomUUID(),
     role: role === "user" || role === "assistant" || role === "system" ? role : "assistant",
-    parts: text ? [{ type: "text", text }] : [],
+    parts,
     createdAt: normalizeTime(
       typeof record.timestamp === "number" || typeof record.timestamp === "string"
         ? record.timestamp
@@ -310,7 +349,7 @@ export function buildPreview(parts: ChatMessage["parts"]) {
     .slice(0, 140);
 }
 
-export function ensureConversation(list: Conversation[], key: string) {
+export function ensureConversation(list: Conversation[], key: string, fallbackTitle?: string) {
   if (list.some((item) => item.key === key)) {
     return list;
   }
@@ -318,7 +357,7 @@ export function ensureConversation(list: Conversation[], key: string) {
   return [
     {
       key,
-      title: "Untitled conversation",
+      title: fallbackTitle || "Untitled conversation",
       preview: "",
       updatedAt: now,
       createdAt: now,

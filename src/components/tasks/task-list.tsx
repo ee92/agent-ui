@@ -8,6 +8,15 @@ import { ChatIcon, TaskIcon } from "../ui/icons";
 type VisibleTask = TaskNode & { depth: number };
 type FilterKey = "all" | "review" | "blocked" | "active" | "done";
 type ContextMenuState = { taskId: string; x: number; y: number } | null;
+type DropPosition = "before" | "after" | "inside" | "list-end";
+type DropHint = { targetId: string | null; position: DropPosition } | null;
+type TaskEditDraft = {
+  title: string;
+  notes: string;
+  status: TaskStatus;
+  repo: string;
+  branch: string;
+};
 
 const FILTERS: Array<{ key: FilterKey; label: string; statuses: TaskStatus[] | null; count?: "review" | "blocked" }> = [
   { key: "all", label: "All", statuses: null },
@@ -41,6 +50,19 @@ function GitBranchIcon() {
   );
 }
 
+function GripIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden>
+      <circle cx="8" cy="6" r="1.4" />
+      <circle cx="8" cy="12" r="1.4" />
+      <circle cx="8" cy="18" r="1.4" />
+      <circle cx="16" cy="6" r="1.4" />
+      <circle cx="16" cy="12" r="1.4" />
+      <circle cx="16" cy="18" r="1.4" />
+    </svg>
+  );
+}
+
 function getActiveFilterKey(statusFilter: TaskStatus[] | null): FilterKey {
   if (!statusFilter || statusFilter.length === 0) {
     return "all";
@@ -63,6 +85,16 @@ function getSwipeStatus(status: TaskStatus) {
     return null;
   }
   return TASK_TRANSITIONS[status].includes("done") ? "done" : (TASK_TRANSITIONS[status][0] ?? null);
+}
+
+function createEditDraft(task: TaskNode): TaskEditDraft {
+  return {
+    title: task.title,
+    notes: task.notes,
+    status: task.status,
+    repo: task.repo ?? "",
+    branch: task.branch ?? ""
+  };
 }
 
 export function TaskList({
@@ -93,10 +125,14 @@ export function TaskList({
   const [draft, setDraft] = useState("");
   const [draftParentId, setDraftParentId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editingTitle, setEditingTitle] = useState("");
+  const [editingDraft, setEditingDraft] = useState<TaskEditDraft | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState>(null);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dropHint, setDropHint] = useState<DropHint>(null);
 
   const editingInputRef = useRef<HTMLInputElement | null>(null);
+  const notesInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const editingPanelRef = useRef<HTMLDivElement | null>(null);
   const rowRefs = useRef(new Map<string, HTMLDivElement>());
   const gestureRef = useRef<{
     taskId: string | null;
@@ -137,10 +173,41 @@ export function TaskList({
   }, [editingId]);
 
   useEffect(() => {
+    if (!editingDraft || !notesInputRef.current) {
+      return;
+    }
+    notesInputRef.current.style.height = "0px";
+    notesInputRef.current.style.height = `${notesInputRef.current.scrollHeight}px`;
+  }, [editingDraft?.notes]);
+
+  useEffect(() => {
+    if (!editingId) {
+      return;
+    }
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") {
+        return;
+      }
+      event.preventDefault();
+      finishEditing(false);
+    };
+
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [editingId, editingDraft]);
+
+  useEffect(() => {
     if (draftParentId && !tasksById.has(draftParentId)) {
       setDraftParentId(null);
     }
   }, [draftParentId, tasksById]);
+
+  useEffect(() => {
+    if (editingId && !tasksById.has(editingId)) {
+      setEditingId(null);
+      setEditingDraft(null);
+    }
+  }, [editingId, tasksById]);
 
   useEffect(() => {
     if (!contextMenu) {
@@ -199,7 +266,7 @@ export function TaskList({
           }
           setFocus(createdId);
           setEditingId(createdId);
-          setEditingTitle("New task");
+          setEditingDraft({ title: "New task", notes: "", status: "todo", repo: "", branch: "" });
         })();
         return;
       }
@@ -246,22 +313,49 @@ export function TaskList({
     setContextMenu(null);
     setFocus(task.id);
     setEditingId(task.id);
-    setEditingTitle(task.title);
+    setEditingDraft(createEditDraft(task));
   };
 
   const finishEditing = (save: boolean) => {
     const targetId = editingId;
-    const nextTitle = editingTitle.trim();
+    const currentDraft = editingDraft;
     setEditingId(null);
-    setEditingTitle("");
-    if (!save || !targetId || !nextTitle) {
+    setEditingDraft(null);
+
+    if (!save || !targetId || !currentDraft) {
       return;
     }
+
     const existing = tasksById.get(targetId);
-    if (!existing || existing.title === nextTitle) {
+    if (!existing) {
       return;
     }
-    void updateTask(targetId, { title: nextTitle });
+
+    const nextTitle = currentDraft.title.trim() || existing.title;
+    const nextNotes = currentDraft.notes;
+    const nextRepo = currentDraft.repo.trim() || null;
+    const nextBranch = currentDraft.branch.trim() || null;
+    const patch: Partial<Omit<TaskNode, "id" | "createdAt">> = {};
+
+    if (existing.title !== nextTitle) {
+      patch.title = nextTitle;
+    }
+    if (existing.notes !== nextNotes) {
+      patch.notes = nextNotes;
+    }
+    if (existing.status !== currentDraft.status) {
+      patch.status = currentDraft.status;
+    }
+    if (existing.repo !== nextRepo) {
+      patch.repo = nextRepo;
+    }
+    if (existing.branch !== nextBranch) {
+      patch.branch = nextBranch;
+    }
+
+    if (Object.keys(patch).length > 0) {
+      void updateTask(targetId, patch);
+    }
   };
 
   const cycleStatus = (task: TaskNode) => {
@@ -292,6 +386,46 @@ export function TaskList({
   const openMenu = (taskId: string, x: number, y: number) => {
     setContextMenu({ taskId, x, y });
     focusTask(taskId);
+  };
+
+  const resolveDropIntent = (event: React.DragEvent<HTMLDivElement>): DropPosition => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const offsetY = event.clientY - rect.top;
+    if (offsetY < rect.height * 0.3) {
+      return "before";
+    }
+    if (offsetY > rect.height * 0.7) {
+      return "after";
+    }
+    return "inside";
+  };
+
+  const resolveDropTarget = (target: VisibleTask, position: DropPosition): { newParentId: string | null; beforeId: string | null } => {
+    if (position === "inside") {
+      return { newParentId: target.id, beforeId: null };
+    }
+
+    const siblings = getChildren(tasks, target.parentId);
+    const targetIndex = siblings.findIndex((item) => item.id === target.id);
+
+    if (position === "before") {
+      return { newParentId: target.parentId, beforeId: target.id };
+    }
+
+    const nextSibling = targetIndex >= 0 ? siblings[targetIndex + 1] : null;
+    return { newParentId: target.parentId, beforeId: nextSibling?.id ?? null };
+  };
+
+  const handleDropOnTask = (target: VisibleTask, position: DropPosition) => {
+    if (!draggingId || draggingId === target.id) {
+      setDropHint(null);
+      return;
+    }
+
+    const { newParentId, beforeId } = resolveDropTarget(target, position);
+    void moveTask(draggingId, newParentId, beforeId);
+    setDraggingId(null);
+    setDropHint(null);
   };
 
   const contextTask = contextMenu ? tasksById.get(contextMenu.taskId) ?? null : null;
@@ -366,16 +500,50 @@ export function TaskList({
         ) : visibleTasks.length === 0 ? (
           <div className="flex h-full min-h-[220px] items-center justify-center text-sm text-zinc-500">No tasks match this filter.</div>
         ) : (
-          <div className="space-y-2">
+          <div
+            className="space-y-2"
+            onDragOver={(event) => {
+              if (!draggingId) {
+                return;
+              }
+              const target = event.target as HTMLElement;
+              if (!target.closest("[data-task-row='true']")) {
+                event.preventDefault();
+                setDropHint({ targetId: null, position: "list-end" });
+              }
+            }}
+            onDrop={(event) => {
+              if (!draggingId) {
+                return;
+              }
+              const target = event.target as HTMLElement;
+              if (!target.closest("[data-task-row='true']")) {
+                event.preventDefault();
+                void moveTask(draggingId, null, null);
+                setDraggingId(null);
+                setDropHint(null);
+              }
+            }}
+          >
             {visibleTasks.map((task) => {
               const children = childCounts.get(task.id) ?? 0;
               const isEditing = editingId === task.id;
               const isFocused = focusedId === task.id;
               const hasNested = children > 0;
               const statusMeta = TASK_STATUS_META[task.status];
+              const dropBefore = dropHint?.targetId === task.id && dropHint.position === "before";
+              const dropAfter = dropHint?.targetId === task.id && dropHint.position === "after";
+              const dropInside = dropHint?.targetId === task.id && dropHint.position === "inside";
+              const linkedSessionKeys = Array.from(new Set([
+                ...((task as TaskNode & { sessionKeys?: string[] }).sessionKeys ?? []),
+                ...(task.sessionKey ? [task.sessionKey] : [])
+              ]));
+              const transitionStatuses = Array.from(new Set([editingDraft?.status ?? task.status, ...TASK_TRANSITIONS[editingDraft?.status ?? task.status]]));
+
               return (
                 <div
                   key={task.id}
+                  data-task-row="true"
                   ref={(node) => {
                     if (node) {
                       rowRefs.current.set(task.id, node);
@@ -439,11 +607,44 @@ export function TaskList({
                     clearGesture();
                   }}
                   onPointerCancel={clearGesture}
+                  onDragOver={(event) => {
+                    if (!draggingId || draggingId === task.id) {
+                      return;
+                    }
+                    event.preventDefault();
+                    setDropHint({ targetId: task.id, position: resolveDropIntent(event) });
+                  }}
+                  onDrop={(event) => {
+                    if (!draggingId) {
+                      return;
+                    }
+                    event.preventDefault();
+                    handleDropOnTask(task, resolveDropIntent(event));
+                  }}
                   className={`relative rounded-xl bg-black/20 py-1.5 outline-none transition-all duration-150 ${
                     isFocused ? "bg-white/[0.06] ring-1 ring-blue-400/30" : "hover:bg-white/[0.04]"
-                  }`}
+                  } ${draggingId === task.id ? "opacity-45" : ""}`}
                   style={{ paddingLeft: `${16 + task.depth * 24}px` }}
                 >
+                  {dropBefore ? (
+                    <div
+                      className="pointer-events-none absolute top-0 h-0.5 rounded-full bg-blue-400"
+                      style={{ left: `${16 + task.depth * 24}px`, right: "12px" }}
+                    />
+                  ) : null}
+                  {dropAfter ? (
+                    <div
+                      className="pointer-events-none absolute bottom-0 h-0.5 rounded-full bg-blue-400"
+                      style={{ left: `${16 + task.depth * 24}px`, right: "12px" }}
+                    />
+                  ) : null}
+                  {dropInside ? (
+                    <div
+                      className="pointer-events-none absolute bottom-0 h-0.5 rounded-full bg-blue-400"
+                      style={{ left: `${16 + (task.depth + 1) * 24}px`, right: "12px" }}
+                    />
+                  ) : null}
+
                   {Array.from({ length: task.depth }).map((_, index) => (
                     <span
                       key={`${task.id}-line-${index}`}
@@ -453,6 +654,28 @@ export function TaskList({
                     />
                   ))}
                   <div className="flex min-h-12 items-center gap-1.5 pr-2">
+                    <button
+                      type="button"
+                      draggable
+                      onPointerDown={(event) => {
+                        event.stopPropagation();
+                      }}
+                      onDragStart={(event) => {
+                        event.stopPropagation();
+                        setDraggingId(task.id);
+                        setDropHint(null);
+                        event.dataTransfer.effectAllowed = "move";
+                        event.dataTransfer.setData("text/plain", task.id);
+                      }}
+                      onDragEnd={() => {
+                        setDraggingId(null);
+                        setDropHint(null);
+                      }}
+                      className="inline-flex h-12 w-8 shrink-0 cursor-grab items-center justify-center rounded-full text-zinc-500 transition-all duration-150 hover:bg-white/5 hover:text-zinc-100 active:cursor-grabbing"
+                      aria-label="Drag task"
+                    >
+                      <GripIcon />
+                    </button>
                     {hasNested ? (
                       <button
                         type="button"
@@ -480,51 +703,42 @@ export function TaskList({
                       <span className={`h-3 w-3 rounded-full ${statusMeta.dot}`} />
                     </button>
                     <div className="min-w-0 flex-1">
-                      {isEditing ? (
-                        <input
-                          ref={editingInputRef}
-                          value={editingTitle}
-                          onChange={(event) => setEditingTitle(event.target.value)}
-                          onBlur={() => finishEditing(true)}
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter") {
-                              event.preventDefault();
-                              finishEditing(true);
-                            }
-                            if (event.key === "Escape") {
-                              event.preventDefault();
-                              finishEditing(false);
-                            }
-                          }}
-                          className="h-10 w-full rounded-lg bg-black/40 px-3 text-sm text-zinc-100 outline-none ring-1 ring-blue-400/30"
-                        />
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          const sessionKey = linkedSessionKeys[linkedSessionKeys.length - 1] ?? null;
+                          if (sessionKey) {
+                            onOpenSession(sessionKey);
+                          } else {
                             beginEditing(task);
-                          }}
-                          className="min-h-12 w-full text-left text-sm text-zinc-100 transition-all duration-150 hover:text-white"
-                        >
-                          <span className={task.status === "done" ? "text-zinc-500 line-through" : ""}>{task.title}</span>
-                        </button>
-                      )}
-                      {(task.sessionKey || (task.repo && task.branch)) ? (
+                          }
+                        }}
+                        className="min-h-12 w-full text-left text-sm text-zinc-100 transition-all duration-150 hover:text-white"
+                      >
+                        <span className={task.status === "done" ? "text-zinc-500 line-through" : ""}>{task.title}</span>
+                      </button>
+                      {task.notes && task.status === "blocked" ? (
+                        <p className="mt-1 line-clamp-2 text-xs text-red-300/70">
+                          {task.notes.split("\n").filter(Boolean).pop()}
+                        </p>
+                      ) : null}
+                      {(linkedSessionKeys.length > 0 || (task.repo && task.branch)) ? (
                         <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
-                          {task.sessionKey ? (
+                          {linkedSessionKeys.map((key) => (
                             <button
+                              key={key}
                               type="button"
                               onClick={(event) => {
                                 event.stopPropagation();
-                                onOpenSession(task.sessionKey!);
+                                onOpenSession(key);
                               }}
                               className="inline-flex min-h-8 items-center gap-1 rounded-full bg-white/5 px-2.5 py-1 transition-all duration-150 hover:bg-white/10 hover:text-zinc-100"
                             >
                               <ChatIcon />
-                              <span className="truncate">{task.sessionKey}</span>
+                              <span className="truncate">{key}</span>
                             </button>
-                          ) : null}
+                          ))}
                           {task.repo && task.branch ? (
                             <span className="inline-flex min-h-8 items-center gap-1 rounded-full bg-white/5 px-2.5 py-1">
                               <GitBranchIcon />
@@ -540,9 +754,97 @@ export function TaskList({
                       <span className="shrink-0 rounded-full bg-white/5 px-2 py-1 text-xs text-zinc-400">{children}</span>
                     ) : null}
                   </div>
+
+                  {isEditing && editingDraft ? (
+                    <div
+                      ref={editingPanelRef}
+                      onBlurCapture={(event) => {
+                        const next = event.relatedTarget as Node | null;
+                        if (next && event.currentTarget.contains(next)) {
+                          return;
+                        }
+                        finishEditing(true);
+                      }}
+                      className="mx-2 mt-2 rounded-xl border border-white/10 bg-black/30 p-3"
+                    >
+                      <div className="space-y-3">
+                        <input
+                          ref={editingInputRef}
+                          value={editingDraft.title}
+                          onChange={(event) => setEditingDraft((current) => (current ? { ...current, title: event.target.value } : current))}
+                          className="h-11 w-full rounded-lg border border-white/10 bg-black/40 px-3 text-sm text-zinc-100 outline-none transition-all duration-150 focus:border-blue-400/40"
+                          placeholder="Task title"
+                        />
+                        <textarea
+                          ref={notesInputRef}
+                          rows={1}
+                          value={editingDraft.notes}
+                          onChange={(event) => setEditingDraft((current) => (current ? { ...current, notes: event.target.value } : current))}
+                          className="max-h-56 min-h-20 w-full resize-none rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-zinc-100 outline-none transition-all duration-150 placeholder:text-zinc-500 focus:border-blue-400/40"
+                          placeholder="Notes"
+                        />
+                        <div className="flex flex-wrap gap-2">
+                          {transitionStatuses.map((status) => {
+                            const meta = TASK_STATUS_META[status];
+                            const isActive = editingDraft.status === status;
+                            return (
+                              <button
+                                key={`${task.id}-${status}`}
+                                type="button"
+                                onClick={() => setEditingDraft((current) => (current ? { ...current, status } : current))}
+                                className={`inline-flex min-h-9 items-center gap-1.5 rounded-full px-3 text-xs transition-all duration-150 ${
+                                  isActive
+                                    ? "bg-blue-400/20 text-blue-300"
+                                    : "bg-white/5 text-zinc-300 hover:bg-white/10 hover:text-zinc-100"
+                                }`}
+                              >
+                                <span className={`h-2 w-2 rounded-full ${meta.dot}`} />
+                                {meta.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          <input
+                            value={editingDraft.repo}
+                            onChange={(event) => setEditingDraft((current) => (current ? { ...current, repo: event.target.value } : current))}
+                            className="h-10 w-full rounded-lg border border-white/10 bg-black/40 px-3 text-sm text-zinc-100 outline-none transition-all duration-150 placeholder:text-zinc-500 focus:border-blue-400/40"
+                            placeholder="Repo (optional)"
+                          />
+                          <input
+                            value={editingDraft.branch}
+                            onChange={(event) => setEditingDraft((current) => (current ? { ...current, branch: event.target.value } : current))}
+                            className="h-10 w-full rounded-lg border border-white/10 bg-black/40 px-3 text-sm text-zinc-100 outline-none transition-all duration-150 placeholder:text-zinc-500 focus:border-blue-400/40"
+                            placeholder="Branch (optional)"
+                          />
+                        </div>
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            type="button"
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => finishEditing(false)}
+                            className="inline-flex h-9 items-center rounded-lg bg-white/5 px-3 text-xs text-zinc-300 transition-all duration-150 hover:bg-white/10 hover:text-zinc-100"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => finishEditing(true)}
+                            className="inline-flex h-9 items-center rounded-lg bg-blue-400/20 px-3 text-xs text-blue-200 transition-all duration-150 hover:bg-blue-400/30"
+                          >
+                            Save
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               );
             })}
+            {dropHint?.position === "list-end" ? (
+              <div className="h-0.5 rounded-full bg-blue-400" />
+            ) : null}
           </div>
         )}
       </div>
@@ -594,7 +896,7 @@ export function TaskList({
                 const createdId = await addTask("New task", contextTask.id);
                 setFocus(createdId);
                 setEditingId(createdId);
-                setEditingTitle("New task");
+                setEditingDraft({ title: "New task", notes: "", status: "todo", repo: "", branch: "" });
               })();
             }}
             className="flex min-h-11 w-full items-center rounded-lg px-3 text-left text-sm text-zinc-100 transition-all duration-150 hover:bg-white/5"
@@ -607,7 +909,9 @@ export function TaskList({
             onClick={() => {
               setContextMenu(null);
               if (currentSessionKey) {
-                void updateTask(contextTask.id, { sessionKey: currentSessionKey });
+                const existing = (contextTask as TaskNode & { sessionKeys?: string[] }).sessionKeys ?? [];
+                const updated = existing.includes(currentSessionKey) ? existing : [...existing, currentSessionKey];
+                void updateTask(contextTask.id, { sessionKey: currentSessionKey, sessionKeys: updated } as Partial<TaskNode>);
               }
             }}
             className="flex min-h-11 w-full items-center rounded-lg px-3 text-left text-sm text-zinc-100 transition-all duration-150 hover:bg-white/5 disabled:text-zinc-600"

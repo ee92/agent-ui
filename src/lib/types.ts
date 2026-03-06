@@ -110,6 +110,7 @@ export type SessionsListEntry = {
   updatedAt?: string | number | null;
   createdAt?: string | number | null;
   lastMessage?: unknown;
+  lastMessagePreview?: string | null;
   activeRunId?: string | null;
   channel?: string | null;
   model?: string | null;

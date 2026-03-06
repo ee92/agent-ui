@@ -49,6 +49,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
         includeDerivedTitles: true,
         includeLastMessage: true
       });
+
       const sessions = Array.isArray(response.sessions) ? response.sessions.flatMap(normalizeSession) : [];
       const selectedConversationKey = get().selectedConversationKey ?? loadSelectedKey() ?? null;
       saveSelectedKey(selectedConversationKey);
@@ -122,10 +123,14 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
   selectConversation: async (key) => {
     saveSelectedKey(key);
     const client = useGatewayStore.getState().gatewayClient;
+    // Look up task title for the sidebar
+    const taskTitle = useTaskStore.getState().tasks.find((t: { sessionKey?: string | null; sessionKeys?: string[] }) =>
+      t.sessionKey === key || t.sessionKeys?.includes(key)
+    )?.title;
     set({
       selectedConversationKey: key,
       loadingConversationKey: key,
-      conversations: ensureConversation(get().conversations, key)
+      conversations: ensureConversation(get().conversations, key, taskTitle || undefined)
     });
     useUiStore.getState().closeMobileSidebar();
     if (!client || !client.isConnected() || get().messagesByConversation[key]) {

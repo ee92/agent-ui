@@ -17,7 +17,7 @@ describe("ChatComposer", () => {
       />
     );
 
-    expect(screen.getByPlaceholderText("Message OpenClaw. Use # for tasks and @ for agents.")).toBeTruthy();
+    expect(screen.getByPlaceholderText("Message OpenClaw — type / for commands, # for tasks, @ for agents")).toBeTruthy();
     expect(screen.getByText("notes.txt ×")).toBeTruthy();
   });
 });

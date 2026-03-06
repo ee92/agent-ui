@@ -28,8 +28,10 @@ export interface TaskNode {
   order: number;
   /** Whether children are collapsed in UI */
   collapsed: boolean;
-  /** Linked session key (where work is happening) */
+  /** Linked session key (where work is happening) — legacy single key */
   sessionKey: string | null;
+  /** All session keys that have worked on this task */
+  sessionKeys?: string[];
   /** Linked git repo name (e.g. "swap.win") */
   repo: string | null;
   /** Linked git branch */

@@ -2,6 +2,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { useActivityStore } from "../../lib/stores/activity-store";
 import { useTaskStore } from "../../lib/stores/task-store-v2";
 import { TASK_STATUS_META, TASK_TRANSITIONS, type TaskNode, type TaskStatus } from "../../lib/task-types";
+import { TaskEditModal } from "./task-edit-modal";
 
 type VisibleTask = TaskNode & { depth: number };
 
@@ -55,6 +56,7 @@ function TaskCard({
   task,
   childCount,
   onAdvance,
+  onEdit,
   onOpenSession,
   isDragging,
   onDragStart,
@@ -63,6 +65,7 @@ function TaskCard({
   task: VisibleTask;
   childCount: number;
   onAdvance: (task: TaskNode) => void;
+  onEdit: (task: TaskNode) => void;
   onOpenSession: (key: string) => void;
   isDragging: boolean;
   onDragStart: (event: React.DragEvent<HTMLElement>, task: VisibleTask) => void;
@@ -86,7 +89,7 @@ function TaskCard({
   return (
     <article
       draggable="true"
-      className={`rounded-xl bg-black/20 p-3 transition-all duration-150 hover:bg-white/[0.04] ${isDragging ? "opacity-50" : ""}`}
+      className={`group/card rounded-xl bg-black/20 p-3 transition-all duration-150 hover:bg-white/[0.04] ${isDragging ? "opacity-50" : ""}`}
       onClick={() => setExpanded((current) => !current)}
       onDragStart={(event) => onDragStart(event, task)}
       onDragEnd={onDragEnd}
@@ -118,9 +121,25 @@ function TaskCard({
           <span className="h-2.5 w-2.5 rounded-full bg-current" />
         </button>
         <div className="min-w-0 flex-1">
-          <p className={`text-sm font-medium leading-5 ${task.status === "done" ? "text-zinc-500 line-through" : "text-white"}`}>
-            {task.title}
-          </p>
+          <div className="flex items-start gap-1">
+            <p className={`flex-1 text-sm font-medium leading-5 ${task.status === "done" ? "text-zinc-500 line-through" : "text-white"}`}>
+              {task.title}
+            </p>
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                onEdit(task);
+              }}
+              className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-zinc-500 opacity-0 transition-all duration-150 hover:bg-white/[0.08] hover:text-zinc-200 group-hover/card:opacity-100"
+              aria-label={`Edit ${task.title}`}
+              title="Edit task"
+            >
+              <svg viewBox="0 0 16 16" className="h-3 w-3" fill="currentColor">
+                <path d="M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 0 1-.927-.928l.929-3.25c.081-.286.235-.547.445-.758l8.61-8.61Zm1.414 1.06a.25.25 0 0 0-.354 0L10.811 3.75l1.439 1.44 1.263-1.263a.25.25 0 0 0 0-.354l-1.086-1.086ZM11.189 6.25 9.75 4.811l-6.286 6.287a.25.25 0 0 0-.064.108l-.558 1.953 1.953-.558a.249.249 0 0 0 .108-.064l6.286-6.286Z" />
+              </svg>
+            </button>
+          </div>
           {blockedReason && <p className="mt-1 text-xs text-zinc-400">⚠️ {blockedReason}</p>}
           <div className="mt-2 flex flex-wrap gap-1.5">
             {childCount > 0 && (
@@ -169,6 +188,7 @@ function Column({
   dragOverColumn,
   onToggleDone,
   onAdvance,
+  onEdit,
   onOpenSession,
   draggingTaskId,
   onCardDragStart,
@@ -185,6 +205,7 @@ function Column({
   dragOverColumn: TaskStatus | null;
   onToggleDone: () => void;
   onAdvance: (task: TaskNode) => void;
+  onEdit: (task: TaskNode) => void;
   onOpenSession: (key: string) => void;
   draggingTaskId: string | null;
   onCardDragStart: (event: React.DragEvent<HTMLElement>, task: VisibleTask) => void;
@@ -232,6 +253,7 @@ function Column({
             task={task}
             childCount={childCounts.get(task.id) ?? 0}
             onAdvance={onAdvance}
+            onEdit={onEdit}
             onOpenSession={onOpenSession}
             isDragging={draggingTaskId === task.id}
             onDragStart={onCardDragStart}
@@ -275,6 +297,7 @@ export function TaskPipeline({
   const [dragOverColumn, setDragOverColumn] = useState<TaskStatus | null>(null);
   const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
   const [mobileColumn, setMobileColumn] = useState<TaskStatus>("active");
+  const [editingTask, setEditingTask] = useState<TaskNode | null>(null);
 
   const childCounts = useMemo(() => {
     const counts = new Map<string, number>();
@@ -446,6 +469,7 @@ export function TaskPipeline({
           dragOverColumn={dragOverColumn}
           onToggleDone={() => setDoneExpanded((current) => !current)}
           onAdvance={handleAdvance}
+          onEdit={setEditingTask}
           onOpenSession={onOpenSession}
           draggingTaskId={draggingTaskId}
           onCardDragStart={handleCardDragStart}
@@ -469,6 +493,7 @@ export function TaskPipeline({
             dragOverColumn={dragOverColumn}
             onToggleDone={() => setDoneExpanded((current) => !current)}
             onAdvance={handleAdvance}
+            onEdit={setEditingTask}
             onOpenSession={onOpenSession}
             draggingTaskId={draggingTaskId}
             onCardDragStart={handleCardDragStart}
@@ -480,6 +505,13 @@ export function TaskPipeline({
           />
         ))}
       </div>
+
+      {editingTask && (
+        <TaskEditModal
+          task={editingTask}
+          onClose={() => setEditingTask(null)}
+        />
+      )}
     </section>
   );
 }

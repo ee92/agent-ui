@@ -9,6 +9,32 @@ type Suggestion = {
   meta: string;
 };
 
+const SLASH_COMMANDS: Suggestion[] = [
+  { label: "/briefing", insert: "/briefing", meta: "Morning briefing" },
+  { label: "/portfolio", insert: "/portfolio", meta: "Wallet portfolio" },
+  { label: "/balances", insert: "/balances", meta: "Token balances" },
+  { label: "/phiat", insert: "/phiat", meta: "Phiat health factors" },
+  { label: "/cost", insert: "/cost", meta: "Token usage & API cost" },
+  { label: "/costs", insert: "/costs", meta: "Session cost breakdown" },
+  { label: "/workstreams", insert: "/workstreams", meta: "Active workstreams" },
+  { label: "/health", insert: "/health", meta: "System health overview" },
+  { label: "/containers", insert: "/containers", meta: "Docker containers" },
+  { label: "/deploy", insert: "/deploy", meta: "Deploy swap.win" },
+  { label: "/cron", insert: "/cron", meta: "Cron job dashboard" },
+  { label: "/search", insert: "/search ", meta: "Search session transcripts" },
+  { label: "/repos", insert: "/repos", meta: "Git repo health" },
+  { label: "/branches", insert: "/branches", meta: "Stale branch cleaner" },
+  { label: "/deps", insert: "/deps", meta: "Outdated npm deps" },
+  { label: "/disk", insert: "/disk", meta: "Disk usage treemap" },
+  { label: "/gas", insert: "/gas", meta: "PulseChain gas tracker" },
+  { label: "/audit", insert: "/audit", meta: "Docker security scan" },
+  { label: "/preview", insert: "/preview ", meta: "Spin up local preview" },
+  { label: "/pr-summary", insert: "/pr-summary", meta: "Git PR changelog" },
+  { label: "/docker-prune", insert: "/docker-prune", meta: "Prune Docker images" },
+  { label: "/nginx", insert: "/nginx", meta: "Nginx log analysis" },
+  { label: "/status", insert: "/status", meta: "Session status" },
+];
+
 export function ChatComposer({
   draft,
   attachments,
@@ -29,7 +55,8 @@ export function ChatComposer({
   onRemoveAttachment: (id: string) => void;
 }) {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
-  const [trigger, setTrigger] = useState<"#" | "@" | null>(null);
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [trigger, setTrigger] = useState<"/" | "#" | "@" | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
 
@@ -44,6 +71,17 @@ export function ChatComposer({
 
   const updateSuggestions = (value: string) => {
     const token = value.split(/\s+/).at(-1) ?? "";
+    if (token.startsWith("/") && value.trimStart() === token) {
+      // Only show slash commands when it's the first token
+      const query = token.toLowerCase();
+      setSuggestions(
+        SLASH_COMMANDS
+          .filter((cmd) => cmd.label.startsWith(query) || cmd.meta.toLowerCase().includes(query.slice(1)))
+          .slice(0, 8)
+      );
+      setTrigger("/");
+      return;
+    }
     if (token.startsWith("#")) {
       const query = token.slice(1).toLowerCase();
       setSuggestions(
@@ -83,11 +121,34 @@ export function ChatComposer({
     const value = event.target.value;
     onDraftChange(value);
     updateSuggestions(value);
+    setSelectedIndex(0);
   };
 
   const canSend = draft.trim().length > 0 || attachments.length > 0;
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (suggestions.length > 0) {
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        setSelectedIndex((i) => (i + 1) % suggestions.length);
+        return;
+      }
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        setSelectedIndex((i) => (i - 1 + suggestions.length) % suggestions.length);
+        return;
+      }
+      if (event.key === "Tab" || (event.key === "Enter" && !event.shiftKey)) {
+        event.preventDefault();
+        applySuggestion(suggestions[selectedIndex]);
+        return;
+      }
+      if (event.key === "Escape") {
+        setSuggestions([]);
+        setTrigger(null);
+        return;
+      }
+    }
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       if (draft.trim().length > 0) {
@@ -115,17 +176,18 @@ export function ChatComposer({
       {suggestions.length > 0 ? (
         <div className="mb-3 rounded-2xl border border-white/8 bg-black/40 p-2">
           <div className="mb-2 px-2 text-[11px] uppercase tracking-[0.2em] text-zinc-500">
-            {trigger === "#" ? "Task references" : "Agent mentions"}
+            {trigger === "/" ? "Commands" : trigger === "#" ? "Task references" : "Agent mentions"}
           </div>
-          <div className="space-y-1">
-            {suggestions.map((suggestion) => (
+          <div className="space-y-0.5">
+            {suggestions.map((suggestion, si) => (
               <button
                 key={`${suggestion.insert}-${suggestion.meta}`}
                 type="button"
                 onClick={() => applySuggestion(suggestion)}
-                className="flex w-full items-center justify-between rounded-2xl px-3 py-2 text-left text-sm text-zinc-200 hover:bg-white/[0.04]"
+                onMouseEnter={() => setSelectedIndex(si)}
+                className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm ${si === selectedIndex ? "bg-white/[0.08] text-white" : "text-zinc-200 hover:bg-white/[0.04]"}`}
               >
-                <span>{suggestion.label}</span>
+                <span className="font-medium">{suggestion.label}</span>
                 <span className="text-xs text-zinc-500">{suggestion.meta}</span>
               </button>
             ))}
@@ -149,7 +211,7 @@ export function ChatComposer({
             value={draft}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
-            placeholder="Message OpenClaw. Use # for tasks and @ for agents."
+            placeholder="Message OpenClaw — type / for commands, # for tasks, @ for agents"
             className="max-h-[220px] min-h-11 flex-1 resize-none bg-transparent py-2 text-base leading-6 text-white outline-none placeholder:text-zinc-600 xl:min-h-[56px]"
           />
           <button
