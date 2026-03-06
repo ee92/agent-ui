@@ -21,8 +21,12 @@ function pushDedupedConnection(summary: string, metadata?: Record<string, unknow
   useActivityStore.getState().push("connection", summary, { metadata });
 }
 
+function normalizeKey(key: string): string {
+  return key.replace(/^agent:[^:]+:/, "");
+}
+
 function buildChatSummary(data: Record<string, unknown>) {
-  const sessionKey = typeof data.sessionKey === "string" ? data.sessionKey : undefined;
+  const sessionKey = typeof data.sessionKey === "string" ? normalizeKey(data.sessionKey) : undefined;
   const message =
     typeof data.message === "string"
       ? data.message
@@ -95,7 +99,7 @@ export function processGatewayEvent(state: Pick<AppStoreState, "lastGatewayEvent
       const data = event.data as Record<string, unknown>;
       const chatState = typeof data.state === "string" ? data.state : null;
       const runId = typeof data.runId === "string" ? data.runId : null;
-      const sessionKey = typeof data.sessionKey === "string" ? data.sessionKey : undefined;
+      const sessionKey = typeof data.sessionKey === "string" ? normalizeKey(data.sessionKey) : undefined;
 
       // Feed session flow store
       if (runId && sessionKey) {

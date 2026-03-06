@@ -35,7 +35,7 @@ export const useAgentsStore = create<AgentsStoreState>((set, get) => ({
         id,
         label: existing?.label ?? label,
         status,
-        sessionKey: typeof event.sessionKey === "string" ? event.sessionKey : existing?.sessionKey ?? null,
+        sessionKey: typeof event.sessionKey === "string" ? event.sessionKey.replace(/^agent:[^:]+:/, "") : existing?.sessionKey ?? null,
         startedAt,
         updatedAt: nowIso(),
         summary: phase === "end" ? "Completed recently." : existing?.summary,

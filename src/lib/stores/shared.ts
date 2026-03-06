@@ -252,8 +252,18 @@ function extractLastMessageRole(value: unknown): "user" | "assistant" | "system"
   return null;
 }
 
+/**
+ * Strip the internal `agent:<id>:` prefix from session store keys so the UI
+ * uses the same short key that tasks, chat.send, and chat.history expect.
+ * The gateway resolves both forms, so using the short key everywhere is safe.
+ */
+function normalizeSessionKey(key: string): string {
+  return key.replace(/^agent:[^:]+:/, "");
+}
+
 export function normalizeSession(entry: SessionsListEntry): Conversation {
   // Priority: explicit label > cleaned derivedTitle > cleaned displayName > humanized key
+  const normalizedKey = normalizeSessionKey(entry.key);
   const candidates = [
     entry.label?.trim(),
     entry.title?.trim(),
@@ -263,7 +273,7 @@ export function normalizeSession(entry: SessionsListEntry): Conversation {
   
   const title = candidates[0] || humanizeSessionKey(entry.key);
   return {
-    key: entry.key,
+    key: normalizedKey,
     title,
     derivedTitle: entry.derivedTitle ?? null,
     preview: (messageTextFromUnknown(entry.lastMessage) || (typeof entry.lastMessagePreview === "string" ? entry.lastMessagePreview : "")).slice(0, 140),

@@ -386,7 +386,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
       return;
     }
     const data = payload as Record<string, unknown>;
-    let sessionKey = typeof data.sessionKey === "string" ? data.sessionKey : null;
+    let sessionKey = typeof data.sessionKey === "string" ? data.sessionKey.replace(/^agent:[^:]+:/, "") : null;
     const runId = typeof data.runId === "string" ? data.runId : null;
     const state = typeof data.state === "string" ? data.state : null;
     if (!sessionKey || !state) {
