@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { useSessionFlowStore } from "../../lib/stores/session-flow-store";
+import { useTick } from "../../lib/use-tick";
 import type { AgentRun, Conversation } from "../../lib/types";
 
 type SessionStatus = "running" | "recent" | "idle" | "stale";
@@ -208,6 +209,7 @@ export function SessionGrid({
   onOpenSession: (key: string) => void;
 }) {
   const runs = useSessionFlowStore((s) => s.runs);
+  const tick = useTick(30_000); // refresh relative timestamps every 30s
 
   const sessionData = useMemo(() => {
     const hourAgo = Date.now() - 60 * 60 * 1000;
@@ -247,7 +249,8 @@ export function SessionGrid({
           Date.parse(b.conversation.updatedAt) - Date.parse(a.conversation.updatedAt)
         );
       });
-  }, [conversations, runs]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- tick forces refresh of relative timestamps & statuses
+  }, [conversations, runs, tick]);
 
   const runningCount = sessionData.filter((s) => s.status === "running").length;
   const recentCount = sessionData.filter((s) => s.status === "recent").length;
