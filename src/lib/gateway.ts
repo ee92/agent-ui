@@ -139,10 +139,10 @@ export class GatewayClient {
         ...protocol,
         auth: { token: this.options.token },
         client: {
-          id: "webchat-ui",
+          id: "gateway-client",
           version: "1.0.0",
           platform: "web",
-          mode: "webchat"
+          mode: "ui"
         },
         caps: ["tool-events"],
         scopes: ["operator.admin", "operator.read", "operator.write", "operator.approvals", "operator.pairing"]

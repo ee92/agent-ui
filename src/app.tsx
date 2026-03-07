@@ -318,7 +318,7 @@ export function App() {
 
       <div className="relative flex h-full">
         {/* Desktop sidebar */}
-        <div className="hidden w-[300px] shrink-0 border-r border-white/5 xl:block">
+        <div className="hidden w-[360px] shrink-0 border-r border-white/5 xl:block">
           <div className="h-full overflow-y-auto p-3">{sidebar}</div>
         </div>
 
