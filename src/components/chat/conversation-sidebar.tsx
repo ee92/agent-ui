@@ -271,7 +271,7 @@ export function ConversationSidebar({
         </div>
 
         {/* Always-visible filter tabs */}
-        <div className="mb-3 flex items-center gap-1.5 overflow-x-auto scrollbar-none">
+        <div className="mb-3 flex flex-wrap items-center gap-1.5">
           {TABS.map((tab) => {
             const count = tabCounts[tab.key];
             // Hide tabs with 0 items (except "chats" and "all" which are always visible)
