@@ -47,7 +47,7 @@ export type Conversation = {
   isStreaming: boolean;
   runId?: string | null;
   // Session metadata from gateway
-  kind?: "direct" | "group" | "global" | "unknown";
+  kind?: "direct" | "group" | "global" | "cron" | "agent" | "unknown";
   channel?: string | null;
   model?: string | null;
   modelProvider?: string | null;
@@ -102,7 +102,7 @@ export type PendingSend = {
 
 export type SessionsListEntry = {
   key: string;
-  kind?: "direct" | "group" | "global" | "unknown";
+  kind?: "direct" | "group" | "global" | "cron" | "agent" | "unknown";
   label?: string | null;
   displayName?: string | null;
   title?: string | null;

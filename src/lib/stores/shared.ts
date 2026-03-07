@@ -272,6 +272,18 @@ export function normalizeSession(entry: SessionsListEntry): Conversation {
   ].filter((s): s is string => Boolean(s && s.length > 2));
   
   const title = candidates[0] || humanizeSessionKey(entry.key);
+
+  // Auto-detect kind from session key patterns when gateway doesn't provide it
+  let kind = entry.kind ?? undefined;
+  const keyLower = entry.key.toLowerCase();
+  if (!kind || kind === "unknown" || kind === "direct") {
+    if (keyLower.includes("cron:") || keyLower.includes("cron-")) {
+      kind = "cron";
+    } else if (keyLower.includes("subagent:") || keyLower.includes("agent:") && keyLower.includes(":subagent:")) {
+      kind = "agent";
+    }
+  }
+
   return {
     key: normalizedKey,
     title,
@@ -281,7 +293,7 @@ export function normalizeSession(entry: SessionsListEntry): Conversation {
     createdAt: normalizeTime(entry.createdAt ?? entry.updatedAt),
     isStreaming: Boolean(entry.activeRunId),
     runId: entry.activeRunId ?? null,
-    kind: entry.kind ?? undefined,
+    kind,
     channel: entry.channel ?? null,
     model: entry.model ?? null,
     modelProvider: entry.modelProvider ?? null,
