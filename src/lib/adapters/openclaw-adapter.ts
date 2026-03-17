@@ -1,0 +1,328 @@
+import { GatewayClient } from "../gateway";
+import { useGatewayStore } from "../stores/gateway-store";
+import { messageTextFromUnknown, normalizeTime } from "../stores/shared";
+import type { BackendAdapter, FileEntry, Message, SessionAdapter, SessionEvent, SessionInfo } from "./types";
+
+function normalizeSessionKey(key: string): string {
+  return key.replace(/^agent:[^:]+:/, "");
+}
+
+function toMessage(value: unknown): Message | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  const role = typeof record.role === "string" ? record.role.toLowerCase() : "assistant";
+  if (role !== "user" && role !== "assistant" && role !== "system") {
+    return null;
+  }
+  return {
+    id: typeof record.id === "string" && record.id ? record.id : crypto.randomUUID(),
+    role,
+    content: messageTextFromUnknown(record),
+    timestamp: normalizeTime(
+      (record.createdAt as string | number | null | undefined) ??
+        (record.timestamp as string | number | null | undefined)
+    ),
+    thinking: typeof record.thinking === "string" ? record.thinking : undefined,
+  };
+}
+
+function toSessionInfo(value: unknown): SessionInfo | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  const key = typeof record.key === "string" ? normalizeSessionKey(record.key) : "";
+  if (!key) {
+    return null;
+  }
+  const label =
+    typeof record.label === "string"
+      ? record.label
+      : typeof record.title === "string"
+        ? record.title
+        : typeof record.displayName === "string"
+          ? record.displayName
+          : "Untitled conversation";
+  const lastMessagePreview =
+    typeof record.lastMessagePreview === "string" ? record.lastMessagePreview : messageTextFromUnknown(record.lastMessage);
+
+  return {
+    key,
+    title: label,
+    preview: lastMessagePreview.slice(0, 140),
+    updatedAt: normalizeTime(record.updatedAt as string | number | null | undefined),
+    createdAt: normalizeTime(
+      (record.createdAt as string | number | null | undefined) ??
+        (record.updatedAt as string | number | null | undefined)
+    ),
+    isStreaming: Boolean(record.activeRunId),
+    runId: typeof record.activeRunId === "string" ? record.activeRunId : null,
+  };
+}
+
+class OpenClawSessionAdapter implements SessionAdapter {
+  async send(sessionKey: string, message: string): Promise<Message> {
+    const client = useGatewayStore.getState().gatewayClient;
+    if (!client || !client.isConnected()) {
+      throw new Error("Gateway not connected");
+    }
+    const result = await client.request<{ runId?: string }>("chat.send", {
+      sessionKey,
+      message,
+      thinking: "low",
+      timeoutMs: 300000,
+    });
+    return {
+      id: result.runId ?? crypto.randomUUID(),
+      role: "assistant",
+      content: "",
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  async history(sessionKey: string): Promise<Message[]> {
+    const client = useGatewayStore.getState().gatewayClient;
+    if (!client || !client.isConnected()) {
+      return [];
+    }
+    const response = await client.request<{ messages?: unknown[] }>("chat.history", {
+      sessionKey,
+      limit: 200,
+    });
+    const messages = Array.isArray(response.messages) ? response.messages : [];
+    return messages.flatMap((value) => {
+      const message = toMessage(value);
+      return message ? [message] : [];
+    });
+  }
+
+  async list(): Promise<SessionInfo[]> {
+    const client = useGatewayStore.getState().gatewayClient;
+    if (!client || !client.isConnected()) {
+      return [];
+    }
+    const response = await client.request<{ sessions?: unknown[] }>("sessions.list", {
+      limit: 50,
+      includeDerivedTitles: true,
+      includeLastMessage: true,
+    });
+    const sessions = Array.isArray(response.sessions) ? response.sessions : [];
+    return sessions.flatMap((value) => {
+      const session = toSessionInfo(value);
+      return session ? [session] : [];
+    });
+  }
+
+  async create(key?: string): Promise<SessionInfo> {
+    const rawKey = key || `web-${crypto.randomUUID().slice(0, 8)}`;
+    const client = useGatewayStore.getState().gatewayClient;
+    if (!client || !client.isConnected()) {
+      const now = new Date().toISOString();
+      return {
+        key: rawKey,
+        title: "New Chat",
+        preview: "",
+        updatedAt: now,
+        createdAt: now,
+        isStreaming: false,
+        runId: null,
+      };
+    }
+    const response = await client.request<{ key?: string; entry?: { label?: string } }>("sessions.patch", {
+      key: rawKey,
+      label: "New Chat",
+    });
+    const now = new Date().toISOString();
+    return {
+      key: normalizeSessionKey((typeof response.key === "string" && response.key) || rawKey),
+      title: response.entry?.label || "New Chat",
+      preview: "",
+      updatedAt: now,
+      createdAt: now,
+      isStreaming: false,
+      runId: null,
+    };
+  }
+
+  async rename(sessionKey: string, title: string): Promise<void> {
+    const client = useGatewayStore.getState().gatewayClient;
+    if (!client || !client.isConnected()) {
+      return;
+    }
+    await client.request("sessions.patch", { key: sessionKey, label: title });
+  }
+
+  async delete(sessionKey: string): Promise<void> {
+    const client = useGatewayStore.getState().gatewayClient;
+    if (!client || !client.isConnected()) {
+      return;
+    }
+    await client.request("sessions.delete", { key: sessionKey });
+  }
+
+  subscribe(callback: (event: SessionEvent) => void): () => void {
+    return useGatewayStore.subscribe(
+      (state) => state.lastGatewayEvent,
+      (event) => {
+        if (!event || event.event !== "chat" || !event.data || typeof event.data !== "object") {
+          return;
+        }
+        const payload = event.data as Record<string, unknown>;
+        const key = typeof payload.sessionKey === "string" ? normalizeSessionKey(payload.sessionKey) : null;
+        const state = typeof payload.state === "string" ? payload.state : null;
+        if (!key || !state) {
+          return;
+        }
+        if (state === "delta") {
+          callback({ type: "streaming", sessionKey: key, isStreaming: true });
+          callback({
+            type: "message",
+            sessionKey: key,
+            message: {
+              id: typeof payload.runId === "string" ? payload.runId : crypto.randomUUID(),
+              role: "assistant",
+              content: messageTextFromUnknown((payload.message as Record<string, unknown> | undefined) ?? payload),
+              timestamp: new Date().toISOString(),
+            },
+          });
+        }
+        if (state === "final") {
+          callback({
+            type: "message",
+            sessionKey: key,
+            message: {
+              id: typeof payload.runId === "string" ? payload.runId : crypto.randomUUID(),
+              role: "assistant",
+              content: messageTextFromUnknown((payload.message as Record<string, unknown> | undefined) ?? payload),
+              timestamp: new Date().toISOString(),
+            },
+          });
+          callback({ type: "streaming", sessionKey: key, isStreaming: false });
+        }
+        if (state === "error" || state === "aborted") {
+          callback({ type: "streaming", sessionKey: key, isStreaming: false });
+        }
+      }
+    );
+  }
+}
+
+class OpenClawFileAdapter {
+  private async authHeaders(): Promise<Record<string, string>> {
+    const token = useGatewayStore.getState().gatewayToken;
+    return { Authorization: `Bearer ${token}` };
+  }
+
+  async read(path: string): Promise<string> {
+    const res = await fetch(`/api/files/read?path=${encodeURIComponent(path)}`, {
+      headers: await this.authHeaders(),
+    });
+    if (!res.ok) {
+      throw new Error(`Failed to read file: ${path}`);
+    }
+    const data = (await res.json()) as { content?: string };
+    return data.content ?? "";
+  }
+
+  async write(path: string, content: string): Promise<void> {
+    const res = await fetch("/api/files/write", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(await this.authHeaders()),
+      },
+      body: JSON.stringify({ path, content }),
+    });
+    if (!res.ok) {
+      throw new Error(`Failed to write file: ${path}`);
+    }
+  }
+
+  async list(path: string): Promise<FileEntry[]> {
+    const res = await fetch(`/api/files/list?path=${encodeURIComponent(path)}`, {
+      headers: await this.authHeaders(),
+    });
+    if (!res.ok) {
+      throw new Error(`Failed to list files: ${path}`);
+    }
+    const data = (await res.json()) as {
+      entries?: Array<{
+        path: string;
+        name: string;
+        type: string;
+        size?: number;
+        mtime?: number | string;
+      }>;
+    };
+    const entries = Array.isArray(data.entries) ? data.entries : [];
+    return entries.map((entry) => ({
+      path: entry.path,
+      name: entry.name,
+      isDirectory: entry.type === "directory",
+      size: entry.size,
+      modifiedAt:
+        typeof entry.mtime === "number"
+          ? new Date(entry.mtime).toISOString()
+          : typeof entry.mtime === "string"
+            ? entry.mtime
+            : undefined,
+    }));
+  }
+
+  async exists(path: string): Promise<boolean> {
+    try {
+      await this.read(path);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async delete(path: string): Promise<void> {
+    const res = await fetch("/api/files/delete", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(await this.authHeaders()),
+      },
+      body: JSON.stringify({ path }),
+    });
+    if (!res.ok) {
+      throw new Error(`Failed to delete file: ${path}`);
+    }
+  }
+}
+
+export class OpenClawAdapter implements BackendAdapter {
+  readonly type = "openclaw" as const;
+  readonly sessions = new OpenClawSessionAdapter();
+  readonly files = new OpenClawFileAdapter();
+
+  constructor(
+    private readonly gatewayUrl: string,
+    private readonly gatewayToken: string
+  ) {}
+
+  async connect(): Promise<void> {
+    const gateway = useGatewayStore.getState();
+    gateway.setGatewayConfig(this.gatewayUrl, this.gatewayToken);
+    await gateway.connect();
+  }
+
+  disconnect(): void {
+    useGatewayStore.getState().disconnect();
+  }
+
+  isConnected(): boolean {
+    return useGatewayStore.getState().gatewayClient?.isConnected() ?? false;
+  }
+}
+
+export function createGatewayClientAdapter(client: GatewayClient): BackendAdapter {
+  // Maintains backwards compatibility if tests inject a client directly.
+  useGatewayStore.setState({ gatewayClient: client, connectionState: "connected" });
+  const state = useGatewayStore.getState();
+  return new OpenClawAdapter(state.gatewayUrl, state.gatewayToken);
+}
