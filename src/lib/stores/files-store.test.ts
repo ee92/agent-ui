@@ -1,17 +1,44 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { BackendAdapter } from "../adapters/types";
+import { useAdapterStore } from "../adapters";
 import { useFilesStore } from "./files-store";
-import { useGatewayStore } from "./gateway-store";
+
+const mockAdapter: BackendAdapter = {
+  type: "local",
+  sessions: {
+    send: async () => ({ id: "s1", role: "assistant", content: "", timestamp: new Date().toISOString() }),
+    history: async () => [],
+    list: async () => [],
+    create: async () => ({
+      key: "local",
+      title: "Local",
+      preview: "",
+      updatedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      isStreaming: false,
+      runId: null,
+    }),
+    rename: async () => undefined,
+    delete: async () => undefined,
+  },
+  files: {
+    read: async () => "# Notes",
+    write: async () => undefined,
+    list: async () => [{ path: "notes.md", name: "notes.md", isDirectory: false, size: 12 }],
+    exists: async () => true,
+    delete: async () => undefined,
+  },
+  connect: async () => undefined,
+  disconnect: () => undefined,
+  isConnected: () => true,
+};
 
 describe("files store", () => {
   beforeEach(() => {
-    useGatewayStore.setState({
-      connectionState: "connected",
-      connectionDetail: "",
-      gatewayUrl: "ws://localhost",
-      gatewayToken: "token",
-      gatewayClient: null,
-      lastGatewayEvent: null,
-      gatewayEventVersion: 0
+    useAdapterStore.setState({
+      config: { type: "local", gatewayUrl: "ws://localhost", gatewayToken: "token", workspace: "." },
+      adapter: mockAdapter,
+      connected: true,
     });
     useFilesStore.setState({
       fileEntries: [],
@@ -23,21 +50,7 @@ describe("files store", () => {
   });
 
   it("loads entries and opens previews", async () => {
-    const fetchMock = vi.fn(async (input: string) => {
-      if (input.includes("/api/files/list")) {
-        return {
-          ok: true,
-          json: async () => ({
-            entries: [{ path: "notes.md", name: "notes.md", type: "file", size: 12 }]
-          })
-        };
-      }
-      return {
-        ok: true,
-        json: async () => ({ content: "# Notes" })
-      };
-    });
-    vi.stubGlobal("fetch", fetchMock);
+    vi.restoreAllMocks();
 
     await useFilesStore.getState().loadFiles();
     await useFilesStore.getState().openFile("notes.md");

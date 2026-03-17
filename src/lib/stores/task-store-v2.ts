@@ -22,7 +22,7 @@ import {
   validate,
 } from "../task-engine";
 import type { TaskNode, TaskStatus } from "../task-types";
-import { useGatewayStore } from "./gateway-store";
+import { getBackendAdapter } from "../adapters";
 
 const TASKS_PATH = "tasks.json";
 const LOCAL_KEY = "openclaw-ui-tasks-v2";
@@ -87,43 +87,19 @@ function loadLocal(): TaskNode[] {
 
 async function saveRemote(tasks: TaskNode[]): Promise<boolean> {
   try {
-    const token = await getToken();
-    const res = await fetch("/api/files/write", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ path: TASKS_PATH, content: serialize(tasks) }),
-    });
-    return res.ok;
+    await getBackendAdapter().files.write(TASKS_PATH, serialize(tasks));
+    return true;
   } catch {
     return false;
   }
 }
 
-async function getToken(): Promise<string> {
-  const storeToken = useGatewayStore.getState().gatewayToken;
-  if (storeToken && storeToken !== 'openclaw') return storeToken;
-  try {
-    const res = await fetch('/api/config');
-    if (res.ok) {
-      const data = (await res.json()) as { token?: string };
-      if (data.token) return data.token;
-    }
-  } catch {}
-  return storeToken;
-}
-
 async function loadRemote(): Promise<TaskNode[] | null> {
   try {
-    const token = await getToken();
-    const res = await fetch(`/api/files/read?path=${encodeURIComponent(TASKS_PATH)}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!res.ok) return null;
-    const data = (await res.json()) as { content: string };
-    return deserialize(data.content);
+    const exists = await getBackendAdapter().files.exists(TASKS_PATH);
+    if (!exists) return null;
+    const content = await getBackendAdapter().files.read(TASKS_PATH);
+    return deserialize(content);
   } catch {
     return null;
   }

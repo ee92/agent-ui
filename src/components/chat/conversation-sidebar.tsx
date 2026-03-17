@@ -1,6 +1,7 @@
 import { useDeferredValue, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { AgentRun, Conversation } from "../../lib/types";
+import { useAdapterStore } from "../../lib/adapters";
 import { formatAbsolute, formatRelative, groupConversations } from "../../lib/ui-utils";
 import { FolderIcon, PlusIcon } from "../ui/icons";
 import { IconButton } from "../ui/icon-button";
@@ -158,6 +159,8 @@ export function ConversationSidebar({
   const [menuPos, setMenuPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
   const [filterChannel, setFilterChannel] = useState<FilterChannel>(null);
   const [activeTab, setActiveTab] = useState<FilterTab>("chats");
+  const adapterType = useAdapterStore((state) => state.config.type);
+  const setAdapterType = useAdapterStore((state) => state.setAdapterType);
   const revealTimerRef = useRef<number | null>(null);
   const longPressKeyRef = useRef<string | null>(null);
 
@@ -249,7 +252,19 @@ export function ConversationSidebar({
           <p className="text-xs uppercase tracking-[0.28em] text-zinc-500">OpenClaw</p>
           <h1 className="text-lg font-semibold text-white">Workspace</h1>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
+          <select
+            aria-label="Adapter type"
+            value={adapterType}
+            onChange={(event) => {
+              void setAdapterType(event.target.value as "openclaw" | "claude-code" | "local");
+            }}
+            className="h-9 rounded-xl border border-white/10 bg-black/30 px-2 text-xs text-zinc-300 outline-none hover:border-white/20"
+          >
+            <option value="openclaw">OpenClaw</option>
+            <option value="claude-code">Claude Code</option>
+            <option value="local">Local</option>
+          </select>
           <IconButton label="Browse files" onClick={onToggleFilesMode}>
             <FolderIcon />
           </IconButton>

@@ -23,6 +23,7 @@ import {
   useGatewayStore,
   useUiStore
 } from "./lib/store";
+import { useAdapterStore } from "./lib/adapters";
 import { useActivityStore } from "./lib/stores/activity-store";
 import { processGatewayEvent, recordConnectionActivity } from "./lib/stores/process-gateway-event";
 import { useBlockedCount, useReviewCount, useTaskStore } from "./lib/stores/task-store-v2";
@@ -162,7 +163,9 @@ export function App() {
   const connectionDetail = useGatewayStore((s) => s.connectionDetail);
   const lastGatewayEvent = useGatewayStore((s) => s.lastGatewayEvent);
   const gatewayEventVersion = useGatewayStore((s) => s.gatewayEventVersion);
-  const connect = useGatewayStore((s) => s.connect);
+  const adapterType = useAdapterStore((s) => s.config.type);
+  const adapterConnected = useAdapterStore((s) => s.connected);
+  const connectAdapter = useAdapterStore((s) => s.connect);
 
   const conversations = useChatStore((s) => s.conversations);
   const sessionsReady = useChatStore((s) => s.sessionsReady);
@@ -220,7 +223,7 @@ export function App() {
   }, [chatSessionKey, selectConversation]);
 
   // Startup effects
-  useEffect(() => { connect(); }, [connect]);
+  useEffect(() => { void connectAdapter(); }, [connectAdapter]);
   useEffect(() => {
     let cancelled = false;
     const initTasks = async () => {
@@ -236,15 +239,26 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (connectionState === "connected") {
+    const readyForInitialLoad =
+      (adapterType === "openclaw" && connectionState === "connected") ||
+      (adapterType !== "openclaw" && adapterConnected);
+    if (readyForInitialLoad) {
       void refreshSessions();
       void loadFiles();
       if (queuedMessages.length > 0) void flushQueuedMessages();
     }
-  }, [connectionState, flushQueuedMessages, loadFiles, queuedMessages.length, refreshSessions]);
+  }, [adapterConnected, adapterType, connectionState, flushQueuedMessages, loadFiles, queuedMessages.length, refreshSessions]);
 
-  useEffect(() => { processGatewayEvent({ lastGatewayEvent }); }, [gatewayEventVersion, lastGatewayEvent]);
-  useEffect(() => { recordConnectionActivity(connectionState, connectionDetail); }, [connectionDetail, connectionState]);
+  useEffect(() => {
+    if (adapterType === "openclaw") {
+      processGatewayEvent({ lastGatewayEvent });
+    }
+  }, [adapterType, gatewayEventVersion, lastGatewayEvent]);
+  useEffect(() => {
+    if (adapterType === "openclaw") {
+      recordConnectionActivity(connectionState, connectionDetail);
+    }
+  }, [adapterType, connectionDetail, connectionState]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -333,7 +347,10 @@ export function App() {
             <IconButton label="New chat" onClick={() => void createConversation()}><PlusIcon /></IconButton>
           </div>
 
-          <OfflineBanner visible={connectionState !== "connected"} detail={connectionDetail} />
+          <OfflineBanner
+            visible={adapterType === "openclaw" ? connectionState !== "connected" : !adapterConnected}
+            detail={adapterType === "openclaw" ? connectionDetail : `${adapterType} adapter`}
+          />
 
           {/* Mobile bottom tab bar */}
           <div className="fixed bottom-0 left-0 right-0 z-20 flex border-t border-white/5 bg-canvas xl:hidden">

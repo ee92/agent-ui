@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { useGatewayStore } from "./gateway-store";
+import { getBackendAdapter } from "../adapters";
 import { inferMimeType, type FileMethodKind, type FilesStoreState, type MethodVariant } from "./shared";
 
 export const useFilesStore = create<FilesStoreState>((set, get) => ({
@@ -10,34 +10,15 @@ export const useFilesStore = create<FilesStoreState>((set, get) => ({
   methodsByKind: {},
   loadFiles: async () => {
     try {
-      const token = useGatewayStore.getState().gatewayToken;
-      const res = await fetch("/api/files/list?path=", {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (!res.ok) {
-        throw new Error("fetch failed");
-      }
-      const data = (await res.json()) as {
-        entries: Array<{
-          path: string;
-          name: string;
-          type: string;
-          size?: number;
-          childCount?: number;
-          mtime?: number | string;
-          ctime?: number | string;
-        }>;
-      };
+      const data = await getBackendAdapter().files.list("");
       set({
-        fileEntries: data.entries.map((entry) => ({
+        fileEntries: data.map((entry) => ({
           path: entry.path,
           name: entry.name,
-          type: entry.type === "directory" ? "directory" : "file",
+          type: entry.isDirectory ? "directory" : "file",
           depth: 0,
           size: entry.size,
-          childCount: entry.childCount,
-          mtime: typeof entry.mtime === "number" ? new Date(entry.mtime).toISOString() : entry.mtime,
-          ctime: typeof entry.ctime === "number" ? new Date(entry.ctime).toISOString() : entry.ctime
+          mtime: entry.modifiedAt
         })),
         filePreview: null,
         filesReady: true,
@@ -49,15 +30,8 @@ export const useFilesStore = create<FilesStoreState>((set, get) => ({
   },
   openFile: async (filePath) => {
     try {
-      const token = useGatewayStore.getState().gatewayToken;
-      const res = await fetch(`/api/files/read?path=${encodeURIComponent(filePath)}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (!res.ok) {
-        throw new Error("fetch failed");
-      }
-      const data = (await res.json()) as { content: string };
-      set({ filePreview: { path: filePath, content: data.content, mimeType: inferMimeType(filePath) } });
+      const content = await getBackendAdapter().files.read(filePath);
+      set({ filePreview: { path: filePath, content, mimeType: inferMimeType(filePath) } });
     } catch {
       set({
         filePreview: { path: filePath, content: "Unable to read this file.", mimeType: "text/plain" }

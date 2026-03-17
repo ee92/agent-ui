@@ -1,6 +1,7 @@
 import { create } from "zustand";
-import type { ChatMessage, SessionsListEntry } from "../types";
-import { useGatewayStore } from "./gateway-store";
+import type { ChatMessage } from "../types";
+import { getBackendAdapter } from "../adapters";
+import type { SessionEvent } from "../adapters/types";
 import { useSessionFlowStore } from "./session-flow-store";
 import { useTaskStore } from "./task-store-v2";
 import { useUiStore } from "./ui-store";
@@ -10,7 +11,6 @@ import {
   ensureConversation,
   extractMessageText,
   messageTextFromUnknown,
-  normalizeHistoryMessage,
   normalizeSession,
   nowIso,
   persistHiddenMessages,
@@ -20,6 +20,8 @@ import {
 
 const hiddenMessageIds = readHiddenMessages();
 const SELECTED_KEY = "openclaw-ui-selected-conversation";
+let unsubscribeSessionEvents: (() => void) | null = null;
+let activeSessionAdapterType: string | null = null;
 
 function saveSelectedKey(key: string | null) {
   if (key) localStorage.setItem(SELECTED_KEY, key);
@@ -30,6 +32,75 @@ function loadSelectedKey(): string | null {
   return localStorage.getItem(SELECTED_KEY);
 }
 
+function applySessionEventToChatStore(
+  event: SessionEvent,
+  set: (next: Partial<ChatStoreState> | ((state: ChatStoreState) => Partial<ChatStoreState>)) => void,
+  get: () => ChatStoreState
+) {
+  if (event.type === "streaming") {
+    set({
+      conversations: applyConversationUpdate(ensureConversation(get().conversations, event.sessionKey), event.sessionKey, {
+        isStreaming: event.isStreaming,
+        updatedAt: nowIso(),
+      }),
+    });
+    return;
+  }
+
+  if (event.type === "updated") {
+    return;
+  }
+
+  const currentMessages = [...(get().messagesByConversation[event.sessionKey] ?? [])];
+  const pendingAssistantIndex = [...currentMessages]
+    .reverse()
+    .findIndex((message) => message.role === "assistant" && message.pending);
+  const targetIndex = pendingAssistantIndex === -1 ? -1 : currentMessages.length - 1 - pendingAssistantIndex;
+
+  const nextMessage: ChatMessage = {
+    id: event.message.id,
+    role: event.message.role,
+    parts: [{ type: "text", text: event.message.content }],
+    createdAt: event.message.timestamp,
+    pending: false,
+    runId: event.message.id,
+  };
+
+  if (event.message.role === "assistant" && targetIndex >= 0) {
+    currentMessages[targetIndex] = { ...currentMessages[targetIndex], ...nextMessage, pending: false };
+  } else {
+    currentMessages.push(nextMessage);
+  }
+
+  set({
+    messagesByConversation: { ...get().messagesByConversation, [event.sessionKey]: currentMessages },
+    conversations: applyConversationUpdate(ensureConversation(get().conversations, event.sessionKey), event.sessionKey, {
+      preview: buildPreview(nextMessage.parts),
+      updatedAt: nowIso(),
+      isStreaming: false,
+      runId: null,
+    }),
+  });
+}
+
+function ensureSessionSubscription(
+  set: (next: Partial<ChatStoreState> | ((state: ChatStoreState) => Partial<ChatStoreState>)) => void,
+  get: () => ChatStoreState
+) {
+  const adapter = getBackendAdapter();
+  if (activeSessionAdapterType === adapter.type) {
+    return;
+  }
+  unsubscribeSessionEvents?.();
+  unsubscribeSessionEvents = null;
+  activeSessionAdapterType = adapter.type;
+  if (adapter.sessions.subscribe) {
+    unsubscribeSessionEvents = adapter.sessions.subscribe((event) => {
+      applySessionEventToChatStore(event, set, get);
+    });
+  }
+}
+
 export const useChatStore = create<ChatStoreState>((set, get) => ({
   conversations: [],
   sessionsReady: false,
@@ -38,19 +109,23 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
   queuedMessages: [],
   loadingConversationKey: null,
   refreshSessions: async () => {
-    const client = useGatewayStore.getState().gatewayClient;
-    if (!client || !client.isConnected()) {
+    const adapter = getBackendAdapter();
+    ensureSessionSubscription(set, get);
+    if (!adapter.isConnected()) {
       set({ sessionsReady: true });
       return;
     }
     try {
-      const response = await client.request<{ sessions?: SessionsListEntry[] }>("sessions.list", {
-        limit: 50,
-        includeDerivedTitles: true,
-        includeLastMessage: true
-      });
-
-      const sessions = Array.isArray(response.sessions) ? response.sessions.flatMap(normalizeSession) : [];
+      const sessions = (await adapter.sessions.list()).map((session) =>
+        normalizeSession({
+          key: session.key,
+          label: session.title,
+          lastMessagePreview: session.preview,
+          updatedAt: session.updatedAt,
+          createdAt: session.createdAt,
+          activeRunId: session.runId,
+        })
+      );
       const selectedConversationKey = get().selectedConversationKey ?? loadSelectedKey() ?? null;
       saveSelectedKey(selectedConversationKey);
       set({ conversations: sessions, selectedConversationKey, sessionsReady: true });
@@ -69,12 +144,11 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
         await get().selectConversation(selectedConversationKey);
       }
     } catch (error) {
-      useGatewayStore.setState({ connectionDetail: String(error) });
       set({ sessionsReady: true });
     }
   },
   createConversation: async () => {
-    const client = useGatewayStore.getState().gatewayClient;
+    const adapter = getBackendAdapter();
     const rawKey = `web-${crypto.randomUUID().slice(0, 8)}`;
     const now = nowIso();
     const localConversation = {
@@ -86,7 +160,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
       isStreaming: false,
       runId: null
     };
-    if (!client || !client.isConnected()) {
+    if (!adapter.isConnected()) {
       set({
         conversations: [localConversation, ...get().conversations],
         selectedConversationKey: rawKey,
@@ -96,14 +170,11 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
       return rawKey;
     }
     try {
-      const response = await client.request<{ key?: string; entry?: { label?: string } }>("sessions.patch", {
-        key: rawKey,
-        label: "New Chat"
-      });
-      const key = (typeof response.key === "string" && response.key) || rawKey;
+      const created = await adapter.sessions.create(rawKey);
+      const key = created.key || rawKey;
       set({
         conversations: [
-          { ...localConversation, key, title: response.entry?.label || "New Chat" },
+          { ...localConversation, key, title: created.title || "New Chat" },
           ...get().conversations.filter((conversation) => conversation.key !== key)
         ],
         selectedConversationKey: key,
@@ -122,7 +193,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
   },
   selectConversation: async (key) => {
     saveSelectedKey(key);
-    const client = useGatewayStore.getState().gatewayClient;
+    const adapter = getBackendAdapter();
     // Look up task title for the sidebar
     const taskTitle = useTaskStore.getState().tasks.find((t: { sessionKey?: string | null; sessionKeys?: string[] }) =>
       t.sessionKey === key || t.sessionKeys?.includes(key)
@@ -133,21 +204,20 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
       conversations: ensureConversation(get().conversations, key, taskTitle || undefined)
     });
     useUiStore.getState().closeMobileSidebar();
-    if (!client || !client.isConnected() || get().messagesByConversation[key]) {
+    if (!adapter.isConnected() || get().messagesByConversation[key]) {
       set({ loadingConversationKey: null });
       return;
     }
     try {
-      const response = await client.request<{ messages?: unknown[] }>("chat.history", {
-        sessionKey: key,
-        limit: 200
-      });
-      const messages = Array.isArray(response.messages)
-        ? response.messages
-            .flatMap(normalizeHistoryMessage)
-            .filter((message): message is ChatMessage => message !== null)
-            .flatMap((message) => (hiddenMessageIds.includes(message.id) ? { ...message, hidden: true } : message))
-        : [];
+      const messages = (await adapter.sessions.history(key)).map((message) => ({
+        id: message.id,
+        role: message.role,
+        parts: [{ type: "text" as const, text: message.content }],
+        createdAt: message.timestamp,
+        pending: false,
+        hidden: hiddenMessageIds.includes(message.id),
+        runId: message.id,
+      }));
       set({
         messagesByConversation: { ...get().messagesByConversation, [key]: messages },
         loadingConversationKey: null
@@ -179,21 +249,21 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
         updatedAt: nowIso()
       })
     });
-    const client = useGatewayStore.getState().gatewayClient;
-    if (!client || !client.isConnected()) {
+    const adapter = getBackendAdapter();
+    if (!adapter.isConnected()) {
       return;
     }
     try {
-      await client.request("sessions.patch", { key, label: trimmed });
+      await adapter.sessions.rename(key, trimmed);
     } catch {
       set({ conversations: previous });
     }
   },
   deleteConversation: async (key) => {
-    const client = useGatewayStore.getState().gatewayClient;
-    if (client && client.isConnected()) {
+    const adapter = getBackendAdapter();
+    if (adapter.isConnected()) {
       try {
-        await client.request("sessions.delete", { key });
+        await adapter.sessions.delete(key);
       } catch {
         // Preserve local delete even if gateway rejects it.
       }
@@ -210,7 +280,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
   },
   sendMessage: async () => {
     const ui = useUiStore.getState();
-    const client = useGatewayStore.getState().gatewayClient;
+    const adapter = getBackendAdapter();
     const selectedKey = get().selectedConversationKey ?? (await get().createConversation());
     if (!selectedKey) {
       return;
@@ -256,7 +326,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
         )
       ],
       createdAt: nowIso(),
-      pending: !client || !client.isConnected()
+      pending: !adapter.isConnected()
     };
     const assistantStub: ChatMessage = {
       id: crypto.randomUUID(),
@@ -279,37 +349,47 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
         runId: userMessage.id
       })
     });
-    if (!client || !client.isConnected()) {
+    if (!adapter.isConnected()) {
       set({
         queuedMessages: [...get().queuedMessages, { conversationKey: selectedKey, text, attachments }]
       });
       return;
     }
     try {
-      const response = await client.request<{ runId?: string }>("chat.send", {
-        sessionKey: selectedKey,
-        message: text,
-        idempotencyKey: userMessage.id,
-        thinking: "low",
-        timeoutMs: 300000,
-        attachments: attachments
-          .filter((attachment) => attachment.dataUrl)
-          .flatMap((attachment) => ({
-            type: "image",
-            mimeType: attachment.mimeType,
-            content: String(attachment.dataUrl).split(",")[1] ?? ""
-          }))
-      });
-      const runId = response.runId ?? userMessage.id;
-      set({
-        messagesByConversation: {
-          ...get().messagesByConversation,
-          [selectedKey]: (get().messagesByConversation[selectedKey] ?? []).flatMap((message) =>
-            message.id === assistantStub.id ? { ...message, runId } : message
-          )
-        },
-        conversations: applyConversationUpdate(get().conversations, selectedKey, { runId, isStreaming: true })
-      });
+      const response = await adapter.sessions.send(selectedKey, text, { cwd: undefined });
+      const responseText = response.content.trim();
+      if (responseText) {
+        set({
+          messagesByConversation: {
+            ...get().messagesByConversation,
+            [selectedKey]: (get().messagesByConversation[selectedKey] ?? []).flatMap((message) =>
+              message.id === assistantStub.id
+                ? {
+                    ...message,
+                    runId: response.id,
+                    pending: false,
+                    parts: [{ type: "text", text: response.content }],
+                  }
+                : message
+            ),
+          },
+          conversations: applyConversationUpdate(get().conversations, selectedKey, {
+            runId: null,
+            isStreaming: false,
+            preview: response.content.slice(0, 140),
+          }),
+        });
+      } else {
+        set({
+          messagesByConversation: {
+            ...get().messagesByConversation,
+            [selectedKey]: (get().messagesByConversation[selectedKey] ?? []).flatMap((message) =>
+              message.id === assistantStub.id ? { ...message, runId: response.id } : message
+            ),
+          },
+          conversations: applyConversationUpdate(get().conversations, selectedKey, { runId: response.id, isStreaming: true }),
+        });
+      }
     } catch (error) {
       set({
         messagesByConversation: {
@@ -390,15 +470,10 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
   },
 
   quickSend: async (sessionKey, text) => {
-    const client = useGatewayStore.getState().gatewayClient;
-    if (!client || !client.isConnected() || !text.trim()) return;
+    const adapter = getBackendAdapter();
+    if (!adapter.isConnected() || !text.trim()) return;
     try {
-      await client.request("chat.send", {
-        sessionKey,
-        message: text.trim(),
-        thinking: "low",
-        timeoutMs: 300000,
-      });
+      await adapter.sessions.send(sessionKey, text.trim());
       // Refresh to pick up the new messages
       void get().refreshSessions();
     } catch (error) {

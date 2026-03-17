@@ -1,24 +1,46 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import type { BackendAdapter } from "../adapters/types";
 import { useChatStore } from "./chat-store";
-import { useGatewayStore } from "./gateway-store";
 import { useUiStore } from "./ui-store";
+import { useAdapterStore } from "../adapters";
+
+const mockAdapter: BackendAdapter = {
+  type: "local",
+  sessions: {
+    send: async () => ({ id: "run-1", role: "assistant", content: "OK", timestamp: new Date().toISOString() }),
+    history: async () => [],
+    list: async () => [],
+    create: async () => ({
+      key: "c1",
+      title: "Chat",
+      preview: "",
+      updatedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      isStreaming: false,
+      runId: null,
+    }),
+    rename: async () => undefined,
+    delete: async () => undefined,
+  },
+  files: {
+    read: async () => "",
+    write: async () => undefined,
+    list: async () => [],
+    exists: async () => false,
+    delete: async () => undefined,
+  },
+  connect: async () => undefined,
+  disconnect: () => undefined,
+  isConnected: () => true,
+};
 
 describe("chat store", () => {
   beforeEach(() => {
     localStorage.clear();
-    useGatewayStore.setState({
-      connectionState: "connected",
-      connectionDetail: "",
-      gatewayUrl: "ws://localhost",
-      gatewayToken: "token",
-      gatewayClient: {
-        isConnected: () => true,
-        request: async () => ({ runId: "run-1" }),
-        connect: () => undefined,
-        disconnect: () => undefined
-      } as never,
-      lastGatewayEvent: null,
-      gatewayEventVersion: 0
+    useAdapterStore.setState({
+      config: { type: "local", gatewayUrl: "ws://localhost", gatewayToken: "token", workspace: "." },
+      adapter: mockAdapter,
+      connected: true,
     });
     useChatStore.setState({
       conversations: [{ key: "c1", title: "Chat", preview: "", updatedAt: new Date().toISOString(), createdAt: new Date().toISOString(), isStreaming: false, runId: null }],

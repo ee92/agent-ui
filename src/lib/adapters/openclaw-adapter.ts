@@ -164,18 +164,21 @@ class OpenClawSessionAdapter implements SessionAdapter {
 
   subscribe(callback: (event: SessionEvent) => void): () => void {
     return useGatewayStore.subscribe(
-      (state) => state.lastGatewayEvent,
-      (event) => {
+      (nextState, previousState) => {
+        const event = nextState.lastGatewayEvent;
+        if (event === previousState.lastGatewayEvent) {
+          return;
+        }
         if (!event || event.event !== "chat" || !event.data || typeof event.data !== "object") {
           return;
         }
         const payload = event.data as Record<string, unknown>;
         const key = typeof payload.sessionKey === "string" ? normalizeSessionKey(payload.sessionKey) : null;
-        const state = typeof payload.state === "string" ? payload.state : null;
-        if (!key || !state) {
+        const chatState = typeof payload.state === "string" ? payload.state : null;
+        if (!key || !chatState) {
           return;
         }
-        if (state === "delta") {
+        if (chatState === "delta") {
           callback({ type: "streaming", sessionKey: key, isStreaming: true });
           callback({
             type: "message",
@@ -188,7 +191,7 @@ class OpenClawSessionAdapter implements SessionAdapter {
             },
           });
         }
-        if (state === "final") {
+        if (chatState === "final") {
           callback({
             type: "message",
             sessionKey: key,
@@ -201,7 +204,7 @@ class OpenClawSessionAdapter implements SessionAdapter {
           });
           callback({ type: "streaming", sessionKey: key, isStreaming: false });
         }
-        if (state === "error" || state === "aborted") {
+        if (chatState === "error" || chatState === "aborted") {
           callback({ type: "streaming", sessionKey: key, isStreaming: false });
         }
       }
