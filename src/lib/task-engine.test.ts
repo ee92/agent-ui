@@ -20,11 +20,11 @@ import type { TaskNode } from "./task-types";
 
 function seed(): TaskNode[] {
   return [
-    { id: "t_root1", title: "Root 1", notes: "", status: "todo", parentId: null, order: 1, collapsed: false, sessionKey: null, repo: null, branch: null, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", completedAt: null },
-    { id: "t_root2", title: "Root 2", notes: "", status: "active", parentId: null, order: 2, collapsed: false, sessionKey: null, repo: null, branch: null, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", completedAt: null },
-    { id: "t_child1", title: "Child 1", notes: "", status: "todo", parentId: "t_root1", order: 1, collapsed: false, sessionKey: null, repo: null, branch: null, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", completedAt: null },
-    { id: "t_child2", title: "Child 2", notes: "", status: "review", parentId: "t_root1", order: 2, collapsed: false, sessionKey: null, repo: null, branch: null, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", completedAt: null },
-    { id: "t_grand1", title: "Grandchild 1", notes: "", status: "blocked", parentId: "t_child1", order: 1, collapsed: false, sessionKey: "session:abc", repo: "swap.win", branch: "feat/test", createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", completedAt: null },
+    { id: "t_root1", title: "Root 1", description: "", notes: "", status: "todo", parentId: null, order: 1, collapsed: false, sessionKey: null, repo: null, branch: null, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", completedAt: null, history: [] },
+    { id: "t_root2", title: "Root 2", description: "", notes: "", status: "active", parentId: null, order: 2, collapsed: false, sessionKey: null, repo: null, branch: null, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", completedAt: null, history: [] },
+    { id: "t_child1", title: "Child 1", description: "", notes: "", status: "todo", parentId: "t_root1", order: 1, collapsed: false, sessionKey: null, repo: null, branch: null, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", completedAt: null, history: [] },
+    { id: "t_child2", title: "Child 2", description: "", notes: "", status: "review", parentId: "t_root1", order: 2, collapsed: false, sessionKey: null, repo: null, branch: null, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", completedAt: null, history: [] },
+    { id: "t_grand1", title: "Grandchild 1", description: "", notes: "", status: "blocked", parentId: "t_child1", order: 1, collapsed: false, sessionKey: "session:abc", repo: "swap.win", branch: "feat/test", createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", completedAt: null, history: [] },
   ];
 }
 
@@ -225,10 +225,10 @@ describe("validation", () => {
   it("detects orphaned parent references", () => {
     const tasks = seed();
     tasks.push({
-      id: "t_orphan", title: "Orphan", notes: "", status: "todo",
+      id: "t_orphan", title: "Orphan", description: "", notes: "", status: "todo",
       parentId: "t_nonexistent", order: 1, collapsed: false,
       sessionKey: null, repo: null, branch: null,
-      createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", completedAt: null,
+      createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", completedAt: null, history: [],
     });
     const { valid, errors } = validate(tasks);
     expect(valid).toBe(false);

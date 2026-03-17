@@ -10,7 +10,19 @@
  */
 
 /** Task status — 5 states, color-coded in UI */
-export type TaskStatus = "todo" | "active" | "review" | "blocked" | "done";
+export type TaskStatus = "todo" | "plan" | "active" | "review" | "blocked" | "done";
+
+/** A state transition record */
+export interface TaskTransition {
+  /** Previous status */
+  from: TaskStatus;
+  /** New status */
+  to: TaskStatus;
+  /** ISO timestamp */
+  at: string;
+  /** Who triggered it (agent session key, "egor", etc.) */
+  by?: string;
+}
 
 /** A single task node in the tree */
 export interface TaskNode {
@@ -18,7 +30,9 @@ export interface TaskNode {
   readonly id: string;
   /** Human-readable title, single line */
   title: string;
-  /** Optional notes/context, multi-line */
+  /** What the task IS — written once, stable context */
+  description: string;
+  /** Append-only work diary (progress updates, status change reasons) */
   notes: string;
   /** Current status */
   status: TaskStatus;
@@ -40,6 +54,8 @@ export interface TaskNode {
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;
+  /** State transition history */
+  history?: TaskTransition[];
 }
 
 /** Persisted file format */
@@ -54,6 +70,7 @@ export const TASK_STATUS_META: Record<
   { label: string; dot: string; description: string }
 > = {
   todo: { label: "To Do", dot: "bg-zinc-500", description: "Not started" },
+  plan: { label: "Plan", dot: "bg-violet-400", description: "Awaiting plan approval" },
   active: { label: "Active", dot: "bg-blue-400", description: "In progress" },
   review: { label: "Review", dot: "bg-amber-400", description: "Needs attention" },
   blocked: { label: "Blocked", dot: "bg-red-400", description: "Waiting on something" },
@@ -62,7 +79,8 @@ export const TASK_STATUS_META: Record<
 
 /** Valid status transitions */
 export const TASK_TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
-  todo: ["active", "done"],
+  todo: ["active", "plan", "done"],
+  plan: ["active", "todo"],
   active: ["review", "blocked", "done"],
   review: ["active", "done"],
   blocked: ["active", "todo"],

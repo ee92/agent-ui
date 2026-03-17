@@ -7,7 +7,7 @@ import { TaskEditModal } from "./task-edit-modal";
 type VisibleTask = TaskNode & { depth: number };
 type DropHint = { status: TaskStatus; targetId: string; position: "before" | "after" } | null;
 
-const COLUMN_ORDER: TaskStatus[] = ["todo", "active", "review", "blocked", "done"];
+const COLUMN_ORDER: TaskStatus[] = ["todo", "plan", "active", "review", "blocked", "done"];
 
 function ColumnTab({ status, count, active, onClick }: { status: TaskStatus; count: number; active: boolean; onClick: () => void }) {
   const meta = TASK_STATUS_META[status];
@@ -665,7 +665,7 @@ export function TaskPipeline({
       </div>
 
       {/* Desktop: scrollable 5-col grid with more breathing room */}
-      <div className="hidden xl:grid xl:min-h-0 xl:flex-1 xl:grid-cols-5 xl:gap-3 xl:overflow-x-auto xl:pb-4">
+      <div className="hidden xl:grid xl:min-h-0 xl:flex-1 xl:grid-cols-6 xl:gap-3 xl:overflow-x-auto xl:pb-4">
         {COLUMN_ORDER.map((status) => (
           <Column
             key={status}

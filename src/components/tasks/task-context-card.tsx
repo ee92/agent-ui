@@ -4,6 +4,7 @@ import { useTaskStore } from "../../lib/stores/task-store-v2";
 
 const STATUS_COLORS: Record<TaskStatus, string> = {
   todo: "bg-zinc-500",
+  plan: "bg-violet-400",
   active: "bg-blue-400",
   review: "bg-amber-400",
   blocked: "bg-red-400",
@@ -11,6 +12,7 @@ const STATUS_COLORS: Record<TaskStatus, string> = {
 };
 
 const ACTION_LABELS: Partial<Record<TaskStatus, { label: string; next: TaskStatus }>> = {
+  plan: { label: "Approve plan", next: "active" },
   blocked: { label: "Unblock", next: "active" },
   review: { label: "Approve", next: "done" },
   active: { label: "Mark done", next: "done" },

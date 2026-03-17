@@ -95,6 +95,7 @@ export function createTask(
   const task: TaskNode = {
     id: generateTaskId(),
     title: title.trim(),
+    description: "",
     notes: opts.notes ?? "",
     status: "todo",
     parentId,
@@ -280,7 +281,12 @@ export function deserialize(raw: string): TaskNode[] {
     }
 
     if (parsed.version === 2 && Array.isArray(parsed.tasks)) {
-      return parsed.tasks;
+      // Backfill optional fields for backwards compatibility
+      return parsed.tasks.map((t: TaskNode) => ({
+        ...t,
+        description: t.description ?? "",
+        history: t.history ?? [],
+      }));
     }
 
     return [];
@@ -299,6 +305,7 @@ function migrateV1Task(v1: Record<string, unknown>): TaskNode {
   return {
     id: String(v1.id ?? generateTaskId()),
     title: String(v1.title ?? "Untitled"),
+    description: "",
     notes: String(v1.description ?? ""),
     status: statusMap[String(v1.status)] ?? "todo",
     parentId: null,
