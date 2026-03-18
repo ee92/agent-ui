@@ -33,6 +33,7 @@ export class ClaudeCodeAdapter implements BackendAdapter {
     read: (path: string) => Promise<string>;
     write: (path: string, content: string) => Promise<void>;
     list: (path: string) => Promise<FileEntry[]>;
+    search: (query: string) => Promise<FileEntry[]>;
     exists: (path: string) => Promise<boolean>;
     delete: (path: string) => Promise<void>;
   };
@@ -59,6 +60,7 @@ export class ClaudeCodeAdapter implements BackendAdapter {
       read: (path) => this.readFile(path),
       write: (path, content) => this.writeFile(path, content),
       list: (path) => this.listFiles(path),
+      search: (query) => this.searchFiles(query),
       exists: (path) => this.exists(path),
       delete: (path) => this.deletePath(path),
     };
@@ -92,6 +94,10 @@ export class ClaudeCodeAdapter implements BackendAdapter {
 
   isConnected(): boolean {
     return this.connected;
+  }
+
+  capabilities() {
+    return { crons: false, agents: false, realtime: true };
   }
 
   private async request<T>(input: string, init: RequestInit = {}): Promise<T> {
@@ -326,6 +332,24 @@ export class ClaudeCodeAdapter implements BackendAdapter {
   private async exists(path: string): Promise<boolean> {
     const data = await this.request<{ exists?: boolean }>(`/api/files/exists?path=${encodeURIComponent(path)}`);
     return Boolean(data.exists);
+  }
+
+  private async searchFiles(query: string): Promise<FileEntry[]> {
+    const data = await this.request<{
+      results?: Array<{
+        name?: unknown;
+        path?: unknown;
+        type?: unknown;
+        size?: unknown;
+      }>;
+    }>(`/api/files/search?q=${encodeURIComponent(query)}`);
+    const results = Array.isArray(data.results) ? data.results : [];
+    return results.map((entry) => ({
+      name: typeof entry.name === "string" ? entry.name : "",
+      path: typeof entry.path === "string" ? entry.path : "",
+      isDirectory: entry.type === "directory",
+      size: typeof entry.size === "number" ? entry.size : undefined,
+    }));
   }
 
   private async deletePath(path: string): Promise<void> {

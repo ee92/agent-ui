@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { FileEntry, FilePreview } from "../../lib/types";
-import { useGatewayStore } from "../../lib/store";
+import { useAdapterStore } from "../../lib/adapters";
 import { fileBreadcrumbs, fileLabelFromPath, formatFileSize } from "../../lib/ui-utils";
 import { LoadingSkeleton } from "../ui/loading-skeleton";
 import { JsonViewer } from "./json-viewer";
@@ -38,7 +38,7 @@ export function FileBrowser({
   preview: FilePreview | null;
   onOpen: (path: string) => Promise<void>;
 }) {
-  const gatewayToken = useGatewayStore((state) => state.gatewayToken);
+  const adapter = useAdapterStore((state) => state.adapter);
   const [currentPath, setCurrentPath] = useState("");
   const [cache, setCache] = useState<Record<string, FileEntry[]>>({ "": entries });
   const [search, setSearch] = useState("");
@@ -74,21 +74,17 @@ export function FileBrowser({
     const timeoutId = window.setTimeout(async () => {
       setSearching(true);
       try {
-        const response = await fetch(`/api/files/search?q=${encodeURIComponent(query)}`, {
-          headers: { Authorization: `Bearer ${gatewayToken}` }
-        });
-        if (!response.ok) {
-          throw new Error("search failed");
-        }
-        const data = (await response.json()) as {
-          results: Array<{ path: string; name: string; type: string; size?: number }>;
-        };
+        const results = adapter.files.search
+          ? await adapter.files.search(query)
+          : (await adapter.files.list("")).filter((entry) =>
+              entry.path.toLowerCase().includes(query.toLowerCase()) || entry.name.toLowerCase().includes(query.toLowerCase())
+            );
         if (!cancelled) {
           setSearchResults(
-            data.results.map((entry) => ({
+            results.map((entry) => ({
               path: entry.path,
               name: entry.name,
-              type: entry.type === "directory" ? "directory" : "file",
+              type: entry.isDirectory ? "directory" : "file",
               depth: 0,
               size: entry.size
             }))
@@ -108,7 +104,7 @@ export function FileBrowser({
       cancelled = true;
       window.clearTimeout(timeoutId);
     };
-  }, [gatewayToken, search]);
+  }, [adapter, search]);
 
   useEffect(() => {
     if (preview?.path === openingPath) {
@@ -285,34 +281,17 @@ export function FileBrowser({
     }
     setLoadingDirectory(path);
     try {
-      const response = await fetch(`/api/files/list?path=${encodeURIComponent(path)}`, {
-        headers: { Authorization: `Bearer ${gatewayToken}` }
-      });
-      if (!response.ok) {
-        throw new Error("list failed");
-      }
-      const data = (await response.json()) as {
-        entries: Array<{
-          path: string;
-          name: string;
-          type: string;
-          size?: number;
-          childCount?: number;
-          mtime?: number | string;
-          ctime?: number | string;
-        }>;
-      };
+      const data = await adapter.files.list(path);
       setCache((current) => ({
         ...current,
-        [path]: data.entries.map((entry) => ({
+        [path]: data.map((entry) => ({
           path: entry.path,
           name: entry.name,
-          type: entry.type === "directory" ? "directory" : "file",
+          type: entry.isDirectory ? "directory" : "file",
           depth: 0,
           size: entry.size,
-          childCount: entry.childCount,
-          mtime: typeof entry.mtime === "number" ? new Date(entry.mtime).toISOString() : entry.mtime,
-          ctime: typeof entry.ctime === "number" ? new Date(entry.ctime).toISOString() : entry.ctime
+          childCount: undefined,
+          mtime: entry.modifiedAt
         }))
       }));
       setCurrentPath(path);

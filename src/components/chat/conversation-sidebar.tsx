@@ -159,6 +159,7 @@ export function ConversationSidebar({
   const [menuPos, setMenuPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
   const [filterChannel, setFilterChannel] = useState<FilterChannel>(null);
   const [activeTab, setActiveTab] = useState<FilterTab>("chats");
+  const adapter = useAdapterStore((state) => state.adapter);
   const adapterType = useAdapterStore((state) => state.config.type);
   const setAdapterType = useAdapterStore((state) => state.setAdapterType);
   const revealTimerRef = useRef<number | null>(null);
@@ -197,6 +198,7 @@ export function ConversationSidebar({
     })
   );
   const grouped = useMemo(() => groupConversations(filtered), [filtered]);
+  const capabilities = adapter.capabilities();
 
   useEffect(() => {
     const input = document.querySelector<HTMLInputElement>("[data-conversation-search='true']");
@@ -503,12 +505,17 @@ export function ConversationSidebar({
               </span>
             </div>
             <div className="space-y-2">
-              {agents.length === 0 ? (
+              {!capabilities.agents ? (
+                <div className="rounded-2xl border border-dashed border-white/8 px-3 py-4 text-sm text-zinc-500">
+                  Agent monitoring requires OpenClaw gateway.
+                </div>
+              ) : null}
+              {capabilities.agents && agents.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-white/8 px-3 py-4 text-sm text-zinc-500">
                   Active runs will appear here.
                 </div>
               ) : null}
-              {agents.slice(0, 8).map((agent) => (
+              {capabilities.agents && agents.slice(0, 8).map((agent) => (
                 <button
                   key={agent.id}
                   type="button"

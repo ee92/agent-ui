@@ -21,31 +21,149 @@ import { startRun, cancelRun, getRunStatus } from "./server/claude/run-manager.m
 import { createBroker } from "./server/claude/ws-broker.mjs";
 
 const DIST = resolve(import.meta.dirname, "dist");
-const GATEWAY = { host: "127.0.0.1", port: 18790 };
 const PORT = 18789;
-const LOCAL_ORIGIN = `http://localhost:${GATEWAY.port}`;
-const WORKSPACE = resolve(homedir(), ".openclaw", "workspace");
-const CONFIG_PATH = resolve(homedir(), ".openclaw", "openclaw.json");
 const CLAUDE_OVERRIDES_PATH = resolve(homedir(), ".openclaw", "claude-session-overrides.json");
 const CLAUDE_TRASH_DIR = resolve(homedir(), ".openclaw", ".trash", "claude-sessions");
 
 const broker = createBroker();
 
-const CONFIG = (() => {
+function readJson(path) {
   try {
-    return JSON.parse(readFileSync(CONFIG_PATH, "utf8"));
+    return JSON.parse(readFileSync(path, "utf8"));
   } catch {
     return {};
   }
+}
+
+function fileExists(path) {
+  try {
+    return existsSync(path);
+  } catch {
+    return false;
+  }
+}
+
+function expandHome(path) {
+  if (typeof path !== "string" || !path.trim()) {
+    return "";
+  }
+  if (path === "~") {
+    return homedir();
+  }
+  if (path.startsWith("~/")) {
+    return resolve(homedir(), path.slice(2));
+  }
+  return path;
+}
+
+function parseGatewayUrl(value) {
+  if (typeof value !== "string" || !value.trim()) {
+    return null;
+  }
+  try {
+    const parsed = new URL(value);
+    if (!parsed.hostname || !parsed.port) {
+      return null;
+    }
+    const port = Number(parsed.port);
+    if (!Number.isFinite(port)) {
+      return null;
+    }
+    return { host: parsed.hostname, port };
+  } catch {
+    return null;
+  }
+}
+
+const LOCAL_CONFIG_PATH = resolve(process.cwd(), "mc.config.json");
+const USER_CONFIG_PATH = resolve(homedir(), ".mc", "config.json");
+const OPENCLAW_CONFIG_PATH = resolve(homedir(), ".openclaw", "openclaw.json");
+const CLAUDE_DIR = resolve(homedir(), ".claude");
+const CLAUDE_SETTINGS_PATH = resolve(CLAUDE_DIR, "settings.json");
+const CLAUDE_CONFIG_PATH = resolve(CLAUDE_DIR, "config.json");
+
+const MC_CONFIG_SOURCE_PATH = fileExists(LOCAL_CONFIG_PATH)
+  ? LOCAL_CONFIG_PATH
+  : fileExists(USER_CONFIG_PATH)
+    ? USER_CONFIG_PATH
+    : null;
+const MC_CONFIG = MC_CONFIG_SOURCE_PATH ? readJson(MC_CONFIG_SOURCE_PATH) : {};
+const OPENCLAW_CONFIG = fileExists(OPENCLAW_CONFIG_PATH) ? readJson(OPENCLAW_CONFIG_PATH) : {};
+const CLAUDE_SETTINGS = fileExists(CLAUDE_SETTINGS_PATH) ? readJson(CLAUDE_SETTINGS_PATH) : {};
+const CLAUDE_CONFIG = fileExists(CLAUDE_CONFIG_PATH) ? readJson(CLAUDE_CONFIG_PATH) : {};
+
+const detectedAgent = (() => {
+  if (MC_CONFIG?.agent && MC_CONFIG.agent !== "auto") {
+    return MC_CONFIG.agent;
+  }
+  if (fileExists(OPENCLAW_CONFIG_PATH)) {
+    return "openclaw";
+  }
+  if (fileExists(CLAUDE_DIR)) {
+    return "claude-code";
+  }
+  return "local";
 })();
 
+const workspaceFromConfig =
+  process.env.MC_WORKSPACE ||
+  MC_CONFIG?.workspace ||
+  OPENCLAW_CONFIG?.workspace ||
+  (detectedAgent === "openclaw" ? resolve(homedir(), ".openclaw", "workspace") : process.cwd());
+const WORKSPACE = resolve(expandHome(workspaceFromConfig));
+
+const tokenFromOpenClaw =
+  OPENCLAW_CONFIG?.gateway?.auth?.token ||
+  OPENCLAW_CONFIG?.token ||
+  OPENCLAW_CONFIG?.gatewayToken ||
+  OPENCLAW_CONFIG?.authToken ||
+  "";
+const tokenFromClaude =
+  CLAUDE_SETTINGS?.anthropicApiKey ||
+  CLAUDE_CONFIG?.anthropicApiKey ||
+  process.env.MC_ANTHROPIC_KEY ||
+  process.env.ANTHROPIC_API_KEY ||
+  "";
 const TOKEN =
+  process.env.MC_TOKEN ||
   process.env.OPENCLAW_TOKEN ||
-  CONFIG?.gateway?.auth?.token ||
-  CONFIG?.token ||
-  CONFIG?.gatewayToken ||
-  CONFIG?.authToken ||
-  "openclaw";
+  (typeof MC_CONFIG?.token === "string" && MC_CONFIG.token !== "auto" ? MC_CONFIG.token : "") ||
+  tokenFromOpenClaw ||
+  tokenFromClaude ||
+  randomUUID();
+
+const gatewayFromUrl = parseGatewayUrl(process.env.MC_GATEWAY_URL || "");
+const gatewayPortFromEnv = Number(process.env.MC_GATEWAY_PORT || "");
+const gatewayConfigFromFile = MC_CONFIG?.gateway && typeof MC_CONFIG.gateway === "object" ? MC_CONFIG.gateway : {};
+const defaultGatewayEnabled = detectedAgent === "openclaw";
+const gatewayHost =
+  gatewayFromUrl?.host ||
+  gatewayConfigFromFile?.host ||
+  "127.0.0.1";
+const gatewayPort =
+  gatewayFromUrl?.port ||
+  (Number.isFinite(gatewayPortFromEnv) && gatewayPortFromEnv > 0 ? gatewayPortFromEnv : null) ||
+  (Number.isFinite(Number(gatewayConfigFromFile?.port)) ? Number(gatewayConfigFromFile?.port) : null) ||
+  18790;
+const gatewayEnabled = process.env.MC_GATEWAY_URL
+  ? true
+  : process.env.MC_GATEWAY_PORT
+    ? true
+    : typeof gatewayConfigFromFile?.enabled === "boolean"
+      ? gatewayConfigFromFile.enabled
+      : defaultGatewayEnabled;
+const GATEWAY = gatewayEnabled ? { host: gatewayHost, port: gatewayPort } : null;
+const LOCAL_ORIGIN = GATEWAY ? `http://localhost:${GATEWAY.port}` : "";
+
+function adapterCapabilities(agent) {
+  if (agent === "openclaw") {
+    return { crons: true, agents: true, realtime: true };
+  }
+  if (agent === "claude-code") {
+    return { crons: false, agents: false, realtime: true };
+  }
+  return { crons: false, agents: false, realtime: false };
+}
 
 const MIME_MAP = {
   ".html": "text/html",
@@ -221,13 +339,20 @@ const server = createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
 
   if (url.pathname === "/api/config") {
-    return jsonResponse(res, { token: TOKEN });
+    return jsonResponse(res, {
+      token: TOKEN,
+      agent: detectedAgent,
+      workspace: WORKSPACE,
+      gateway: GATEWAY ? { host: GATEWAY.host, port: GATEWAY.port, enabled: true } : { enabled: false },
+      capabilities: adapterCapabilities(detectedAgent),
+      configSource: MC_CONFIG_SOURCE_PATH || "defaults",
+    });
   }
 
   if (url.pathname === "/api/health") {
     return jsonResponse(res, {
       ok: true,
-      gateway: `${GATEWAY.host}:${GATEWAY.port}`,
+      gateway: GATEWAY ? `${GATEWAY.host}:${GATEWAY.port}` : "disabled",
       workspace: WORKSPACE,
       time: new Date().toISOString(),
     });
@@ -551,6 +676,12 @@ server.on("upgrade", (req, socket, head) => {
       return;
     }
     broker.addClient({ req, socket, head });
+    return;
+  }
+
+  if (!GATEWAY) {
+    socket.write("HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n");
+    socket.destroy();
     return;
   }
 

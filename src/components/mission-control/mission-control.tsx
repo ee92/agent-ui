@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AgentRun, Conversation } from "../../lib/types";
-import { useGatewayStore } from "../../lib/store";
+import { getBackendAdapter } from "../../lib/adapters";
 
 /* ─── helpers ─── */
 
@@ -76,21 +76,22 @@ function InlinePreview({
 
   useEffect(() => {
     let cancelled = false;
-    const client = useGatewayStore.getState().gatewayClient;
-    if (!client?.isConnected()) {
+    const adapter = getBackendAdapter();
+    if (!adapter.isConnected()) {
       setLoading(false);
       return;
     }
-    client
-      .request<{ previews?: Array<{ items?: PreviewItem[] }> }>("sessions.preview", {
-        keys: [sessionKey],
-        limit: 4,
-        maxChars: 200,
-      })
-      .then((res) => {
+    adapter.sessions
+      .history(sessionKey)
+      .then((messages) => {
         if (cancelled) return;
-        const preview = res.previews?.[0];
-        setItems(preview?.items ?? []);
+        const previewItems = messages
+          .slice(-4)
+          .map((message) => ({
+            role: message.role,
+            text: message.content.slice(0, 200),
+          }));
+        setItems(previewItems);
         setLoading(false);
       })
       .catch(() => {

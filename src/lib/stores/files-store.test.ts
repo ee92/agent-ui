@@ -31,6 +31,7 @@ const mockAdapter: BackendAdapter = {
   connect: async () => undefined,
   disconnect: () => undefined,
   isConnected: () => true,
+  capabilities: () => ({ crons: false, agents: false, realtime: false }),
 };
 
 describe("files store", () => {

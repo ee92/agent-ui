@@ -1,7 +1,7 @@
 import { GatewayClient } from "../gateway";
 import { useGatewayStore } from "../stores/gateway-store";
 import { fetchServerToken, messageTextFromUnknown, normalizeTime } from "../stores/shared";
-import type { BackendAdapter, FileEntry, Message, SessionAdapter, SessionEvent, SessionInfo } from "./types";
+import type { BackendAdapter, CronAdapter, CronJob, CronRunEntry, FileEntry, Message, SessionAdapter, SessionEvent, SessionInfo } from "./types";
 
 function normalizeSessionKey(key: string): string {
   return key.replace(/^agent:[^:]+:/, "");
@@ -274,6 +274,25 @@ class OpenClawFileAdapter {
     }));
   }
 
+  async search(query: string): Promise<FileEntry[]> {
+    const res = await fetch(`/api/files/search?q=${encodeURIComponent(query)}`, {
+      headers: await this.authHeaders(),
+    });
+    if (!res.ok) {
+      throw new Error(`Failed to search files: ${query}`);
+    }
+    const data = (await res.json()) as {
+      results?: Array<{ path?: string; name?: string; type?: string; size?: number }>;
+    };
+    const results = Array.isArray(data.results) ? data.results : [];
+    return results.map((entry) => ({
+      path: typeof entry.path === "string" ? entry.path : "",
+      name: typeof entry.name === "string" ? entry.name : "",
+      isDirectory: entry.type === "directory",
+      size: typeof entry.size === "number" ? entry.size : undefined,
+    }));
+  }
+
   async exists(path: string): Promise<boolean> {
     try {
       await this.read(path);
@@ -298,10 +317,53 @@ class OpenClawFileAdapter {
   }
 }
 
+class OpenClawCronAdapter implements CronAdapter {
+  private get client() {
+    const client = useGatewayStore.getState().gatewayClient;
+    if (!client || !client.isConnected()) {
+      throw new Error("Gateway not connected");
+    }
+    return client;
+  }
+
+  async list(): Promise<CronJob[]> {
+    const response = await this.client.request<{ jobs?: CronJob[] }>("cron.list", {
+      includeDisabled: true,
+      limit: 100,
+      sortBy: "nextRunAtMs",
+      sortDir: "asc",
+    });
+    return Array.isArray(response.jobs) ? response.jobs : [];
+  }
+
+  async runs(jobId?: string): Promise<CronRunEntry[]> {
+    const params: Record<string, unknown> = { limit: 50, sortDir: "desc" };
+    if (jobId) {
+      params.jobId = jobId;
+      params.scope = "job";
+    }
+    const response = await this.client.request<{ runs?: CronRunEntry[] }>("cron.runs", params);
+    return Array.isArray(response.runs) ? response.runs : [];
+  }
+
+  async update(id: string, patch: Record<string, unknown>): Promise<void> {
+    await this.client.request("cron.update", { id, patch });
+  }
+
+  async remove(id: string): Promise<void> {
+    await this.client.request("cron.remove", { id });
+  }
+
+  async run(id: string): Promise<void> {
+    await this.client.request("cron.run", { id, mode: "force" });
+  }
+}
+
 export class OpenClawAdapter implements BackendAdapter {
   readonly type = "openclaw" as const;
   readonly sessions = new OpenClawSessionAdapter();
   readonly files = new OpenClawFileAdapter();
+  readonly crons = new OpenClawCronAdapter();
 
   constructor(
     private readonly gatewayUrl: string,
@@ -336,6 +398,10 @@ export class OpenClawAdapter implements BackendAdapter {
 
   isConnected(): boolean {
     return useGatewayStore.getState().gatewayClient?.isConnected() ?? false;
+  }
+
+  capabilities() {
+    return { crons: true, agents: true, realtime: true };
   }
 }
 

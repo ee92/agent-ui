@@ -2,10 +2,12 @@ import { randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { getSession, refreshIndex, parseSessionKey } from "./session-index.mjs";
 
-const AUTH_PROFILE_PATH = join(homedir(), ".openclaw", "agents", "main", "agent", "auth-profiles.json");
+const DEFAULT_AUTH_PROFILE_PATH = join(homedir(), ".openclaw", "agents", "main", "agent", "auth-profiles.json");
+const CLAUDE_SETTINGS_PATH = join(homedir(), ".claude", "settings.json");
+const CLAUDE_CONFIG_PATH = join(homedir(), ".claude", "config.json");
 
 const activeRuns = new Map();
 
@@ -14,21 +16,46 @@ function nowIso() {
 }
 
 async function resolveAnthropicApiKey() {
+  if (process.env.MC_ANTHROPIC_KEY?.trim()) {
+    return process.env.MC_ANTHROPIC_KEY.trim();
+  }
   if (process.env.ANTHROPIC_API_KEY?.trim()) {
     return process.env.ANTHROPIC_API_KEY.trim();
   }
 
-  try {
-    const raw = await readFile(AUTH_PROFILE_PATH, "utf8");
-    const parsed = JSON.parse(raw);
-    const profile = parsed?.profiles?.["anthropic:manual"];
-    // Support both formats: .token (direct key) and .headers.authorization (Bearer key)
-    const authValue = profile?.token || profile?.headers?.authorization;
-    if (typeof authValue === "string" && authValue.trim()) {
-      return authValue.replace(/^Bearer\s+/i, "").trim();
+  const authProfileCandidates = [
+    process.env.MC_AUTH_PROFILE_PATH,
+    process.env.AUTH_PROFILE_PATH,
+    DEFAULT_AUTH_PROFILE_PATH,
+  ].filter((value) => typeof value === "string" && value.trim()).map((value) => resolve(value));
+
+  for (const profilePath of authProfileCandidates) {
+    try {
+      const raw = await readFile(profilePath, "utf8");
+      const parsed = JSON.parse(raw);
+      const profile = parsed?.profiles?.["anthropic:manual"];
+      // Support both formats: .token (direct key) and .headers.authorization (Bearer key)
+      const authValue = profile?.token || profile?.headers?.authorization;
+      if (typeof authValue === "string" && authValue.trim()) {
+        return authValue.replace(/^Bearer\s+/i, "").trim();
+      }
+    } catch {
+      // Keep trying the next source.
     }
-  } catch {
-    // Keep fallback behavior.
+  }
+
+  const claudeConfigPaths = [CLAUDE_SETTINGS_PATH, CLAUDE_CONFIG_PATH];
+  for (const configPath of claudeConfigPaths) {
+    try {
+      const raw = await readFile(configPath, "utf8");
+      const parsed = JSON.parse(raw);
+      const key = parsed?.anthropicApiKey || parsed?.apiKey || parsed?.anthropic_api_key;
+      if (typeof key === "string" && key.trim()) {
+        return key.trim();
+      }
+    } catch {
+      // Keep trying other sources.
+    }
   }
 
   return "";

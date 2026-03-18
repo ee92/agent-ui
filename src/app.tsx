@@ -17,10 +17,10 @@ import { TaskCreateModalGlobal } from "./components/workflow/task-create-modal";
 import { useTaskCreateStore } from "./lib/stores/task-create-store";
 import { WorkflowDashboard } from "./components/workflow/workflow-dashboard";
 import {
+  useAppStore,
   useAgentsStore,
   useChatStore,
   useFilesStore,
-  useGatewayStore,
   useUiStore
 } from "./lib/store";
 import { useAdapterStore } from "./lib/adapters";
@@ -159,10 +159,10 @@ function ChatView({
 export function App() {
   const { route } = useHashRouter();
 
-  const connectionState = useGatewayStore((s) => s.connectionState);
-  const connectionDetail = useGatewayStore((s) => s.connectionDetail);
-  const lastGatewayEvent = useGatewayStore((s) => s.lastGatewayEvent);
-  const gatewayEventVersion = useGatewayStore((s) => s.gatewayEventVersion);
+  const connectionState = useAppStore((s) => s.connectionState);
+  const connectionDetail = useAppStore((s) => s.connectionDetail);
+  const lastGatewayEvent = useAppStore((s) => s.lastGatewayEvent);
+  const gatewayEventVersion = useAppStore((s) => s.gatewayEventVersion);
   const adapterType = useAdapterStore((s) => s.config.type);
   const adapterConnected = useAdapterStore((s) => s.connected);
   const connectAdapter = useAdapterStore((s) => s.connect);

@@ -203,6 +203,15 @@ class LocalFileAdapter {
     }
   }
 
+  async search(query: string): Promise<FileEntry[]> {
+    const normalized = query.trim().toLowerCase();
+    if (!normalized) {
+      return [];
+    }
+    const baseEntries = await this.list("");
+    return baseEntries.filter((entry) => entry.name.toLowerCase().includes(normalized));
+  }
+
   async delete(path: string): Promise<void> {
     if (isBrowser()) {
       localStorage.removeItem(`${LOCAL_FILES_PREFIX}${path}`);
@@ -220,6 +229,7 @@ export class LocalAdapter implements BackendAdapter {
     read: (path: string) => Promise<string>;
     write: (path: string, content: string) => Promise<void>;
     list: (path: string) => Promise<FileEntry[]>;
+    search: (query: string) => Promise<FileEntry[]>;
     exists: (path: string) => Promise<boolean>;
     delete: (path: string) => Promise<void>;
   };
@@ -232,6 +242,7 @@ export class LocalAdapter implements BackendAdapter {
       read: (path) => files.read(path),
       write: (path, content) => files.write(path, content),
       list: (path) => files.list(path),
+      search: (query) => files.search(query),
       exists: (path) => files.exists(path),
       delete: (path) => files.delete(path),
     };
@@ -247,5 +258,9 @@ export class LocalAdapter implements BackendAdapter {
 
   isConnected(): boolean {
     return this.connected;
+  }
+
+  capabilities() {
+    return { crons: false, agents: false, realtime: false };
   }
 }

@@ -3,7 +3,7 @@ import type { ActivityEvent, ActivityEventKind } from "../../lib/types";
 import { useActivityStore } from "../../lib/stores/activity-store";
 import { useCronStore, type CronJob } from "../../lib/stores/cron-store";
 import { useTaskCreateStore } from "../../lib/stores/task-create-store";
-import { useGatewayStore } from "../../lib/store";
+import { useAdapterStore } from "../../lib/adapters";
 import { navigate } from "../../lib/use-hash-router";
 
 /* ─── Styling ─── */
@@ -379,7 +379,8 @@ type TimelineTab = "activity" | "schedule" | "crons";
 
 export function TimelinePage() {
   const events = useActivityStore((s) => s.events);
-  const connectionState = useGatewayStore((s) => s.connectionState);
+  const adapter = useAdapterStore((s) => s.adapter);
+  const adapterConnected = useAdapterStore((s) => s.connected);
   const { jobs, loading, loadJobs, updateJob, runJob } = useCronStore();
   const openTaskCreate = useTaskCreateStore((s) => s.openTaskCreate);
   const [activeTab, setActiveTab] = useState<TimelineTab>("schedule");
@@ -396,11 +397,14 @@ export function TimelinePage() {
   };
 
   useEffect(() => {
-    if (connectionState === "connected") void loadJobs();
-  }, [connectionState, loadJobs]);
+    if (adapter.capabilities().crons) {
+      void loadJobs();
+    }
+  }, [adapter, adapterConnected, loadJobs]);
 
   const activityGroups = buildActivityGroups(events);
   const enabledJobs = jobs.filter((j) => j.enabled);
+  const cronsAvailable = adapter.capabilities().crons;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col px-3 pt-3 xl:px-5">
@@ -416,13 +420,18 @@ export function TimelinePage() {
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto pb-[calc(env(safe-area-inset-bottom)+1rem)]">
+        {!cronsAvailable && activeTab !== "activity" && (
+          <div className="flex min-h-40 items-center justify-center rounded-xl border border-dashed border-white/10 text-sm text-zinc-500">
+            Cron jobs require OpenClaw gateway.
+          </div>
+        )}
         {loading && <div className="flex min-h-40 items-center justify-center text-sm text-zinc-500">Loading cron jobs...</div>}
-        {!loading && activeTab === "schedule" && <CronSchedulePanel jobs={enabledJobs} onEdit={setEditingJob} onRun={runJob} />}
-        {!loading && activeTab === "crons" && <CronJobsList jobs={jobs} onEdit={setEditingJob} onRun={runJob} onCreateTask={handleCreateTaskFromCron} />}
+        {!loading && cronsAvailable && activeTab === "schedule" && <CronSchedulePanel jobs={enabledJobs} onEdit={setEditingJob} onRun={runJob} />}
+        {!loading && cronsAvailable && activeTab === "crons" && <CronJobsList jobs={jobs} onEdit={setEditingJob} onRun={runJob} onCreateTask={handleCreateTaskFromCron} />}
         {activeTab === "activity" && <ActivityTimeline groups={activityGroups} />}
       </div>
 
-      {editingJob && <CronEditor job={editingJob} onClose={() => setEditingJob(null)} onSave={updateJob} />}
+      {editingJob && cronsAvailable && <CronEditor job={editingJob} onClose={() => setEditingJob(null)} onSave={updateJob} />}
     </div>
   );
 }

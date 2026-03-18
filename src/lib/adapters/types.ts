@@ -72,6 +72,9 @@ export interface FileAdapter {
   
   /** List directory contents */
   list(path: string): Promise<FileEntry[]>;
+
+  /** Search files by name/path */
+  search?(query: string): Promise<FileEntry[]>;
   
   /** Check if file/directory exists */
   exists(path: string): Promise<boolean>;
@@ -87,6 +90,7 @@ export interface BackendAdapter {
   readonly type: 'openclaw' | 'claude-code' | 'local';
   readonly sessions: SessionAdapter;
   readonly files: FileAdapter;
+  readonly crons?: CronAdapter;
   
   /** Initialize/connect the adapter */
   connect(): Promise<void>;
@@ -96,4 +100,53 @@ export interface BackendAdapter {
   
   /** Connection state */
   isConnected(): boolean;
+
+  /** Runtime feature flags supported by this backend */
+  capabilities(): { crons: boolean; agents: boolean; realtime: boolean };
+}
+
+export type CronJob = {
+  id: string;
+  name: string;
+  description?: string;
+  enabled: boolean;
+  deleteAfterRun?: boolean;
+  createdAtMs: number;
+  updatedAtMs: number;
+  schedule: { kind: "at"; at: string } | { kind: "every"; everyMs: number; anchorMs?: number } | { kind: "cron"; expr: string; tz?: string; staggerMs?: number };
+  sessionTarget: "main" | "isolated";
+  wakeMode: "next-heartbeat" | "now";
+  payload:
+    | { kind: "systemEvent"; text: string }
+    | { kind: "agentTurn"; message: string; model?: string; thinking?: string; deliver?: boolean; channel?: string; to?: string };
+  delivery?: { mode: "none" | "announce" | "webhook"; channel?: string; to?: string; bestEffort?: boolean };
+  state: {
+    nextRunAtMs?: number;
+    lastRunAtMs?: number;
+    lastRunStatus?: "ok" | "error" | "skipped";
+    lastError?: string;
+    lastDurationMs?: number;
+    consecutiveErrors?: number;
+  };
+  sessionKey?: string;
+  agentId?: string;
+};
+
+export type CronRunEntry = {
+  ts: number;
+  jobId: string;
+  status?: string;
+  error?: string;
+  summary?: string;
+  durationMs?: number;
+  nextRunAtMs?: number;
+  jobName?: string;
+};
+
+export interface CronAdapter {
+  list(): Promise<CronJob[]>;
+  runs(jobId?: string): Promise<CronRunEntry[]>;
+  update(id: string, patch: Record<string, unknown>): Promise<void>;
+  remove(id: string): Promise<void>;
+  run(id: string): Promise<void>;
 }

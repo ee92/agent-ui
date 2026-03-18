@@ -1,8 +1,8 @@
 import { useEffect, useState, useMemo } from "react";
-import { useGatewayStore, useChatStore } from "../../lib/store";
 import { useTaskStore } from "../../lib/stores/task-store-v2";
 import { useTaskCreateStore } from "../../lib/stores/task-create-store";
 import { useCronStore } from "../../lib/stores/cron-store";
+import { useServerToken } from "../../lib/hooks/use-server-auth";
 import { tasksForProject } from "../../lib/link-resolver";
 import { TASK_STATUS_META } from "../../lib/task-types";
 import { navigate } from "../../lib/use-hash-router";
@@ -182,7 +182,7 @@ function RepoCard({ repo, expanded, onToggle, relatedTasks, relatedCrons, onCrea
 }
 
 export function ProjectsPage() {
-  const gatewayToken = useGatewayStore((s) => s.gatewayToken);
+  const serverToken = useServerToken();
   const allTasks = useTaskStore((s) => s.tasks);
   const cronJobs = useCronStore((s) => s.jobs);
   const openTaskCreate = useTaskCreateStore((s) => s.openTaskCreate);
@@ -195,7 +195,7 @@ export function ProjectsPage() {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    fetch("/api/repos", { headers: { Authorization: `Bearer ${gatewayToken}` } })
+    fetch("/api/repos", { headers: { Authorization: `Bearer ${serverToken}` } })
       .then((r) => { if (!r.ok) throw new Error("Failed to load repos"); return r.json(); })
       .then((data: { repos: Repo[] }) => {
         if (!cancelled) {
@@ -210,7 +210,7 @@ export function ProjectsPage() {
       })
       .catch((e) => { if (!cancelled) { setError(String(e)); setLoading(false); } });
     return () => { cancelled = true; };
-  }, [gatewayToken]);
+  }, [serverToken]);
 
   const toggle = (dir: string) => {
     setExpanded((prev) => {
