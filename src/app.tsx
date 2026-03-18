@@ -365,12 +365,14 @@ export function App() {
           <div className="hidden shrink-0 items-center justify-between gap-3 border-b border-white/5 px-4 py-2 xl:flex">
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-1">
-                <StatusPulse connectionState={connectionState} blockedCount={blockedCount} reviewCount={reviewCount} agents={agents} />
-                <span className="text-xs font-medium text-zinc-300">OpenClaw</span>
+                <StatusPulse connectionState={adapterType === "openclaw" ? connectionState : (adapterConnected ? "connected" : "disconnected")} blockedCount={blockedCount} reviewCount={reviewCount} agents={agents} />
+                <span className="text-xs font-medium text-zinc-300">
+                  {adapterType === "openclaw" ? "OpenClaw" : adapterType === "claude-code" ? "Claude Code" : "Mission Control"}
+                </span>
               </div>
               <div className="h-4 w-px bg-white/10" />
               <NavLink href="#/" label="Dashboard" active={currentPage === "dashboard"} />
-              <NavLink href="#/flow" label="Flow" active={currentPage === "flow"} />
+              {adapterType === "openclaw" && <NavLink href="#/flow" label="Flow" active={currentPage === "flow"} />}
               <NavLink href="#/files" label="Files" active={currentPage === "files"} />
               <NavLink href="#/timeline" label="Timeline" active={currentPage === "timeline"} />
               <NavLink href="#/projects" label="Projects" active={currentPage === "projects"} />

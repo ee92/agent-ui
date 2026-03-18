@@ -239,11 +239,12 @@ export function ConversationSidebar({
     }
   };
 
+  const caps = adapter.capabilities();
   const TABS: { key: FilterTab; label: string }[] = [
     { key: "chats", label: "Chats" },
-    { key: "groups", label: "Groups" },
-    { key: "cron", label: "Cron" },
-    { key: "agents", label: "Agents" },
+    ...(caps.realtime ? [{ key: "groups" as FilterTab, label: "Groups" }] : []),
+    ...(caps.crons ? [{ key: "cron" as FilterTab, label: "Cron" }] : []),
+    ...(caps.agents ? [{ key: "agents" as FilterTab, label: "Agents" }] : []),
     { key: "all", label: "All" },
   ];
 
@@ -251,7 +252,7 @@ export function ConversationSidebar({
     <aside className="flex h-full min-w-0 flex-col overflow-hidden rounded-[1.75rem] bg-white/[0.03] p-3 backdrop-blur-xl xl:rounded-[2rem] xl:border xl:border-white/8 xl:p-4">
       <div className="mb-4 hidden items-center justify-between gap-3 xl:flex">
         <div>
-          <p className="text-xs uppercase tracking-[0.28em] text-zinc-500">OpenClaw</p>
+          <p className="text-xs uppercase tracking-[0.28em] text-zinc-500">Mission Control</p>
           <h1 className="text-lg font-semibold text-white">Workspace</h1>
         </div>
         <div className="flex items-center gap-2">
@@ -265,7 +266,6 @@ export function ConversationSidebar({
           >
             <option value="openclaw">OpenClaw</option>
             <option value="claude-code">Claude Code</option>
-            <option value="local">Local</option>
           </select>
           <IconButton label="Browse files" onClick={onToggleFilesMode}>
             <FolderIcon />
