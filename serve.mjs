@@ -1,9 +1,24 @@
 import { createServer } from "node:http";
-import { readFileSync, writeFileSync, mkdirSync, existsSync, statSync, readdirSync, realpathSync } from "node:fs";
-import { join, extname, relative, resolve } from "node:path";
+import {
+  readFileSync,
+  writeFileSync,
+  mkdirSync,
+  existsSync,
+  statSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+  renameSync,
+} from "node:fs";
+import { join, extname, relative, resolve, dirname } from "node:path";
 import { homedir } from "node:os";
 import { createConnection } from "node:net";
 import { execSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
+import { listSessions, getSession, refreshIndex } from "./server/claude/session-index.mjs";
+import { parseTranscript } from "./server/claude/transcript-parser.mjs";
+import { startRun, cancelRun, getRunStatus } from "./server/claude/run-manager.mjs";
+import { createBroker } from "./server/claude/ws-broker.mjs";
 
 const DIST = resolve(import.meta.dirname, "dist");
 const GATEWAY = { host: "127.0.0.1", port: 18790 };
@@ -11,6 +26,11 @@ const PORT = 18789;
 const LOCAL_ORIGIN = `http://localhost:${GATEWAY.port}`;
 const WORKSPACE = resolve(homedir(), ".openclaw", "workspace");
 const CONFIG_PATH = resolve(homedir(), ".openclaw", "openclaw.json");
+const CLAUDE_OVERRIDES_PATH = resolve(homedir(), ".openclaw", "claude-session-overrides.json");
+const CLAUDE_TRASH_DIR = resolve(homedir(), ".openclaw", ".trash", "claude-sessions");
+
+const broker = createBroker();
+
 const CONFIG = (() => {
   try {
     return JSON.parse(readFileSync(CONFIG_PATH, "utf8"));
@@ -18,6 +38,7 @@ const CONFIG = (() => {
     return {};
   }
 })();
+
 const TOKEN =
   process.env.OPENCLAW_TOKEN ||
   CONFIG?.gateway?.auth?.token ||
@@ -27,13 +48,18 @@ const TOKEN =
   "openclaw";
 
 const MIME_MAP = {
-  ".html": "text/html", ".js": "application/javascript", ".css": "text/css",
-  ".json": "application/json", ".png": "image/png", ".svg": "image/svg+xml",
-  ".ico": "image/x-icon", ".webmanifest": "application/manifest+json",
-  ".woff2": "font/woff2", ".woff": "font/woff",
+  ".html": "text/html",
+  ".js": "application/javascript",
+  ".css": "text/css",
+  ".json": "application/json",
+  ".png": "image/png",
+  ".svg": "image/svg+xml",
+  ".ico": "image/x-icon",
+  ".webmanifest": "application/manifest+json",
+  ".woff2": "font/woff2",
+  ".woff": "font/woff",
 };
 
-// List immediate children of a directory (lazy — one level only)
 function listDir(dirPath) {
   const results = [];
   try {
@@ -50,18 +76,24 @@ function listDir(dirPath) {
           name: entry.name,
           type: isDir ? "directory" : "file",
           mtime: stat.mtimeMs,
-          ctime: stat.birthtimeMs
+          ctime: stat.birthtimeMs,
         };
         if (!isDir) item.size = stat.size;
         if (isDir) {
-          // Include child count so UI knows if expandable
-          try { item.childCount = readdirSync(fullPath).filter(n => !n.startsWith(".") && n !== "node_modules").length; } catch { item.childCount = 0; }
+          try {
+            item.childCount = readdirSync(fullPath).filter((n) => !n.startsWith(".") && n !== "node_modules").length;
+          } catch {
+            item.childCount = 0;
+          }
         }
         results.push(item);
-      } catch {}
+      } catch {
+        // Keep scanning.
+      }
     }
-  } catch {}
-  // Sort: directories first, then alphabetical
+  } catch {
+    // Keep empty result.
+  }
   results.sort((a, b) => {
     if (a.type !== b.type) return a.type === "directory" ? -1 : 1;
     return a.name.localeCompare(b.name);
@@ -69,7 +101,6 @@ function listDir(dirPath) {
   return results;
 }
 
-// Recursive search
 function searchFiles(dir, query, maxResults = 50) {
   const results = [];
   const q = query.toLowerCase();
@@ -83,11 +114,18 @@ function searchFiles(dir, query, maxResults = 50) {
         const relPath = relative(WORKSPACE, fullPath);
         if (entry.name.toLowerCase().includes(q)) {
           const stat = statSync(fullPath);
-          results.push({ path: relPath, name: entry.name, type: entry.isDirectory() ? "directory" : "file", size: entry.isDirectory() ? undefined : stat.size });
+          results.push({
+            path: relPath,
+            name: entry.name,
+            type: entry.isDirectory() ? "directory" : "file",
+            size: entry.isDirectory() ? undefined : stat.size,
+          });
         }
         if (entry.isDirectory()) walk(fullPath);
       }
-    } catch {}
+    } catch {
+      // Keep scanning.
+    }
   }
   walk(dir);
   return results;
@@ -95,6 +133,13 @@ function searchFiles(dir, query, maxResults = 50) {
 
 function checkAuth(req) {
   return req.headers.authorization === `Bearer ${TOKEN}`;
+}
+
+function checkWsAuth(req, url) {
+  if (checkAuth(req)) {
+    return true;
+  }
+  return url.searchParams.get("token") === TOKEN;
 }
 
 function resolveWorkspacePath(inputPath = "") {
@@ -114,11 +159,65 @@ function resolveWorkspacePath(inputPath = "") {
 }
 
 function jsonResponse(res, data, status = 200) {
-  res.writeHead(status, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
+  res.writeHead(status, {
+    "Content-Type": "application/json",
+    "Access-Control-Allow-Origin": "*",
+  });
   res.end(JSON.stringify(data));
 }
 
-const server = createServer((req, res) => {
+function parseJsonBody(req, maxBytes = 5 * 1024 * 1024) {
+  return new Promise((resolveBody, rejectBody) => {
+    let body = "";
+    req.on("data", (chunk) => {
+      body += chunk;
+      if (body.length > maxBytes) {
+        rejectBody(new Error("body too large"));
+        req.destroy();
+      }
+    });
+    req.on("end", () => {
+      try {
+        resolveBody(body ? JSON.parse(body) : {});
+      } catch {
+        rejectBody(new Error("invalid json"));
+      }
+    });
+    req.on("error", rejectBody);
+  });
+}
+
+function readOverrides() {
+  try {
+    const raw = readFileSync(CLAUDE_OVERRIDES_PATH, "utf8");
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeOverrides(overrides) {
+  mkdirSync(dirname(CLAUDE_OVERRIDES_PATH), { recursive: true });
+  writeFileSync(CLAUDE_OVERRIDES_PATH, JSON.stringify(overrides, null, 2), "utf8");
+}
+
+function applySessionOverrides(session) {
+  const overrides = readOverrides();
+  const customTitle = overrides?.[session.key]?.title;
+  if (typeof customTitle === "string" && customTitle.trim()) {
+    return { ...session, title: customTitle.trim() };
+  }
+  return session;
+}
+
+function decodeSessionKeyFromPath(pathname, marker) {
+  const suffix = pathname.slice(marker.length);
+  const firstSegment = suffix.split("/")[0] || "";
+  return decodeURIComponent(firstSegment);
+}
+
+const server = createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
 
   if (url.pathname === "/api/config") {
@@ -130,11 +229,10 @@ const server = createServer((req, res) => {
       ok: true,
       gateway: `${GATEWAY.host}:${GATEWAY.port}`,
       workspace: WORKSPACE,
-      time: new Date().toISOString()
+      time: new Date().toISOString(),
     });
   }
 
-  // API: list directory children (lazy)
   if (url.pathname === "/api/files/list") {
     if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);
     const subpath = url.searchParams.get("path") || "";
@@ -143,7 +241,6 @@ const server = createServer((req, res) => {
     return jsonResponse(res, { path: subpath, entries: listDir(dir) });
   }
 
-  // API: search files
   if (url.pathname === "/api/files/search") {
     if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);
     const query = url.searchParams.get("q") || "";
@@ -151,7 +248,6 @@ const server = createServer((req, res) => {
     return jsonResponse(res, { query, results: searchFiles(WORKSPACE, query) });
   }
 
-  // API: read file
   if (url.pathname === "/api/files/read") {
     if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);
     const filePath = url.searchParams.get("path") || "";
@@ -163,85 +259,301 @@ const server = createServer((req, res) => {
     try {
       const content = readFileSync(fullPath, "utf-8");
       return jsonResponse(res, { path: filePath, content, size: stat.size });
-    } catch { return jsonResponse(res, { error: "read error" }, 500); }
+    } catch {
+      return jsonResponse(res, { error: "read error" }, 500);
+    }
   }
 
-  // API: write file
   if (url.pathname === "/api/files/write" && req.method === "POST") {
     if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);
-    let body = "";
-    req.on("data", (chunk) => { body += chunk; if (body.length > 5 * 1024 * 1024) { req.destroy(); } });
-    req.on("end", () => {
-      try {
-        const { path: filePath, content } = JSON.parse(body);
-        if (!filePath || typeof content !== "string") return jsonResponse(res, { error: "missing path or content" }, 400);
-        const fullPath = resolveWorkspacePath(filePath);
-        if (!fullPath) return jsonResponse(res, { error: "invalid path" }, 400);
-        const dir = fullPath.substring(0, fullPath.lastIndexOf("/"));
-        mkdirSync(dir, { recursive: true });
-        writeFileSync(fullPath, content, "utf-8");
-        return jsonResponse(res, { ok: true, path: filePath });
-      } catch (e) { return jsonResponse(res, { error: "write error", detail: e.message }, 500); }
-    });
-    return;
+    try {
+      const body = await parseJsonBody(req);
+      const filePath = body.path;
+      const content = body.content;
+      if (!filePath || typeof content !== "string") return jsonResponse(res, { error: "missing path or content" }, 400);
+      const fullPath = resolveWorkspacePath(filePath);
+      if (!fullPath) return jsonResponse(res, { error: "invalid path" }, 400);
+      const dir = fullPath.substring(0, fullPath.lastIndexOf("/"));
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(fullPath, content, "utf-8");
+      return jsonResponse(res, { ok: true, path: filePath });
+    } catch (error) {
+      return jsonResponse(res, { error: "write error", detail: error.message }, 500);
+    }
   }
 
-  // API: list git repos
+  if (url.pathname === "/api/files/delete" && req.method === "POST") {
+    if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);
+    try {
+      const body = await parseJsonBody(req);
+      const filePath = typeof body.path === "string" ? body.path : "";
+      const fullPath = resolveWorkspacePath(filePath);
+      if (!fullPath) return jsonResponse(res, { error: "invalid path" }, 400);
+      rmSync(fullPath, { recursive: true, force: true });
+      return jsonResponse(res, { ok: true, path: filePath });
+    } catch (error) {
+      return jsonResponse(res, { error: "delete error", detail: error.message }, 500);
+    }
+  }
+
+  if (url.pathname === "/api/files/exists") {
+    if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);
+    const filePath = url.searchParams.get("path") || "";
+    const fullPath = resolveWorkspacePath(filePath);
+    if (!fullPath) return jsonResponse(res, { error: "invalid path" }, 400);
+    return jsonResponse(res, { exists: existsSync(fullPath), path: filePath });
+  }
+
+  if (url.pathname === "/api/claude-code/sessions" && req.method === "GET") {
+    if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);
+    const limit = Number(url.searchParams.get("limit") || "100");
+    const cursor = Number(url.searchParams.get("cursor") || "0");
+    const listed = await listSessions({ limit, cursor });
+    return jsonResponse(res, {
+      sessions: listed.sessions.map(applySessionOverrides),
+      nextCursor: listed.nextCursor,
+    });
+  }
+
+  if (url.pathname === "/api/claude-code/sessions" && req.method === "POST") {
+    if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);
+    try {
+      const body = await parseJsonBody(req);
+      const requestedKey = typeof body.key === "string" && body.key.trim() ? body.key.trim() : `pending-${randomUUID()}`;
+      const now = new Date().toISOString();
+      return jsonResponse(res, {
+        session: {
+          key: requestedKey,
+          title: "New Chat",
+          preview: "",
+          updatedAt: now,
+          createdAt: now,
+          isStreaming: false,
+          runId: null,
+        },
+      });
+    } catch (error) {
+      return jsonResponse(res, { error: "create session error", detail: error.message }, 500);
+    }
+  }
+
+  if (url.pathname.startsWith("/api/claude-code/sessions/") && url.pathname.endsWith("/history") && req.method === "GET") {
+    if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);
+
+    const marker = "/api/claude-code/sessions/";
+    const sessionKeyPath = url.pathname.slice(marker.length, url.pathname.length - "/history".length);
+    const sessionKey = decodeURIComponent(sessionKeyPath);
+
+    const session = await getSession(sessionKey);
+    if (!session) {
+      return jsonResponse(res, { error: "not found" }, 404);
+    }
+
+    const limit = Number(url.searchParams.get("limit") || "500");
+    const parsed = await parseTranscript(session.transcriptPath, { limit });
+
+    return jsonResponse(res, {
+      session: applySessionOverrides(session),
+      messages: parsed.messages,
+    });
+  }
+
+  if (url.pathname.startsWith("/api/claude-code/sessions/") && req.method === "PATCH") {
+    if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);
+    const sessionKey = decodeSessionKeyFromPath(url.pathname, "/api/claude-code/sessions/");
+    try {
+      const body = await parseJsonBody(req);
+      const title = typeof body.title === "string" ? body.title.trim() : "";
+      if (!title) {
+        return jsonResponse(res, { error: "title required" }, 400);
+      }
+      const overrides = readOverrides();
+      overrides[sessionKey] = { ...(overrides[sessionKey] || {}), title, updatedAt: new Date().toISOString() };
+      writeOverrides(overrides);
+      return jsonResponse(res, { ok: true });
+    } catch (error) {
+      return jsonResponse(res, { error: "rename error", detail: error.message }, 500);
+    }
+  }
+
+  if (url.pathname.startsWith("/api/claude-code/sessions/") && req.method === "DELETE") {
+    if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);
+    const sessionKey = decodeSessionKeyFromPath(url.pathname, "/api/claude-code/sessions/");
+    const session = await getSession(sessionKey);
+    if (!session) {
+      return jsonResponse(res, { ok: true });
+    }
+
+    try {
+      mkdirSync(CLAUDE_TRASH_DIR, { recursive: true });
+      const destination = resolve(CLAUDE_TRASH_DIR, `${Date.now()}-${session.sessionId}.jsonl`);
+      renameSync(session.transcriptPath, destination);
+
+      const overrides = readOverrides();
+      delete overrides[sessionKey];
+      writeOverrides(overrides);
+
+      await refreshIndex();
+      return jsonResponse(res, { ok: true });
+    } catch (error) {
+      return jsonResponse(res, { error: "delete session error", detail: error.message }, 500);
+    }
+  }
+
+  if (url.pathname.startsWith("/api/claude-code/sessions/") && url.pathname.endsWith("/messages") && req.method === "POST") {
+    if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);
+
+    const marker = "/api/claude-code/sessions/";
+    const sessionKeyPath = url.pathname.slice(marker.length, url.pathname.length - "/messages".length);
+    const sessionKey = decodeURIComponent(sessionKeyPath);
+
+    try {
+      const body = await parseJsonBody(req);
+      const message = typeof body.message === "string" ? body.message : "";
+      const cwd = typeof body.cwd === "string" && body.cwd.trim() ? body.cwd.trim() : undefined;
+      if (!message.trim()) {
+        return jsonResponse(res, { error: "message required" }, 400);
+      }
+
+      const run = await startRun(sessionKey, message, {
+        cwd,
+        onEvent: (event) => broker.publish(event),
+      });
+
+      return jsonResponse(res, run, 202);
+    } catch (error) {
+      return jsonResponse(res, { error: "send error", detail: error.message }, 500);
+    }
+  }
+
+  if (url.pathname.startsWith("/api/claude-code/runs/") && req.method === "GET") {
+    if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);
+    const runId = decodeSessionKeyFromPath(url.pathname, "/api/claude-code/runs/");
+    const status = getRunStatus(runId);
+    if (!status) {
+      return jsonResponse(res, { error: "not found" }, 404);
+    }
+    return jsonResponse(res, status);
+  }
+
+  if (url.pathname.startsWith("/api/claude-code/runs/") && url.pathname.endsWith("/cancel") && req.method === "POST") {
+    if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);
+    const runId = decodeURIComponent(
+      url.pathname.slice("/api/claude-code/runs/".length, url.pathname.length - "/cancel".length)
+    );
+    const cancelled = cancelRun(runId);
+    if (!cancelled) {
+      return jsonResponse(res, { error: "not found" }, 404);
+    }
+    return jsonResponse(res, { ok: true });
+  }
+
   if (url.pathname === "/api/repos") {
     if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);
     try {
       const home = process.env.HOME || "/home/clawd";
-      const run = (cmd, cwd) => { try { return execSync(cmd, { cwd, encoding: "utf8", timeout: 10000 }).trim(); } catch { return ""; } };
-      const gitDirs = run(`find ${home} -maxdepth 4 -name ".git" -type d 2>/dev/null`);
-      const repos = gitDirs ? gitDirs.split("\n").filter(Boolean).map(g => {
-        const dir = g.replace(/\/\.git$/, "");
-        const name = dir.split("/").pop() || dir;
-        const branch = run("git branch --show-current", dir) || run("git rev-parse --short HEAD", dir);
-        const status = run("git status --porcelain", dir);
-        const dirtyFiles = status ? status.split("\n").length : 0;
-        const tracking = run("git rev-parse --abbrev-ref @{upstream} 2>/dev/null", dir);
-        let ahead = 0, behind = 0;
-        if (tracking) {
-          const ab = run("git rev-list --left-right --count HEAD...@{upstream} 2>/dev/null", dir);
-          if (ab) { const [a, b] = ab.split(/\s+/).map(Number); ahead = a || 0; behind = b || 0; }
+      const run = (cmd, cwd) => {
+        try {
+          return execSync(cmd, { cwd, encoding: "utf8", timeout: 10000 }).trim();
+        } catch {
+          return "";
         }
-        const lastMsg = run("git log -1 --format=%s 2>/dev/null", dir);
-        const lastTs = run("git log -1 --format=%ct 2>/dev/null", dir);
-        const lastCommitAge = lastTs ? Math.round((Date.now() / 1000 - parseInt(lastTs)) / 3600) : null;
-        const branches = run('git branch --format="%(refname:short)"', dir).split("\n").filter(Boolean);
-        const stashList = run("git stash list", dir);
-        const stashes = stashList ? stashList.split("\n").length : 0;
-        const duRaw = run(`du -sh ${dir} 2>/dev/null`, dir);
-        const diskUsage = duRaw ? duRaw.split("\t")[0] : "?";
-        const problems = [];
-        if (dirtyFiles > 0) problems.push(`${dirtyFiles} dirty files`);
-        if (behind > 0) problems.push(`${behind} behind remote`);
-        if (ahead > 0) problems.push(`${ahead} unpushed`);
-        if (stashes > 0) problems.push(`${stashes} stashes`);
-        if (!tracking) problems.push("no upstream");
-        return { name, dir, branch, dirtyFiles, ahead, behind, lastCommitMsg: lastMsg, lastCommitAgeHours: lastCommitAge, branches: branches.length, branchNames: branches.slice(0, 20), stashes, diskUsage, problems, hasUpstream: !!tracking };
-      }) : [];
+      };
+      const gitDirs = run(`find ${home} -maxdepth 4 -name ".git" -type d 2>/dev/null`);
+      const repos = gitDirs
+        ? gitDirs
+            .split("\n")
+            .filter(Boolean)
+            .map((g) => {
+              const dir = g.replace(/\/\.git$/, "");
+              const name = dir.split("/").pop() || dir;
+              const branch = run("git branch --show-current", dir) || run("git rev-parse --short HEAD", dir);
+              const status = run("git status --porcelain", dir);
+              const dirtyFiles = status ? status.split("\n").length : 0;
+              const tracking = run("git rev-parse --abbrev-ref @{upstream} 2>/dev/null", dir);
+              let ahead = 0;
+              let behind = 0;
+              if (tracking) {
+                const ab = run("git rev-list --left-right --count HEAD...@{upstream} 2>/dev/null", dir);
+                if (ab) {
+                  const [a, b] = ab.split(/\s+/).map(Number);
+                  ahead = a || 0;
+                  behind = b || 0;
+                }
+              }
+              const lastMsg = run("git log -1 --format=%s 2>/dev/null", dir);
+              const lastTs = run("git log -1 --format=%ct 2>/dev/null", dir);
+              const lastCommitAge = lastTs ? Math.round((Date.now() / 1000 - parseInt(lastTs, 10)) / 3600) : null;
+              const branches = run('git branch --format="%(refname:short)"', dir)
+                .split("\n")
+                .filter(Boolean);
+              const stashList = run("git stash list", dir);
+              const stashes = stashList ? stashList.split("\n").length : 0;
+              const duRaw = run(`du -sh ${dir} 2>/dev/null`, dir);
+              const diskUsage = duRaw ? duRaw.split("\t")[0] : "?";
+              const problems = [];
+              if (dirtyFiles > 0) problems.push(`${dirtyFiles} dirty files`);
+              if (behind > 0) problems.push(`${behind} behind remote`);
+              if (ahead > 0) problems.push(`${ahead} unpushed`);
+              if (stashes > 0) problems.push(`${stashes} stashes`);
+              if (!tracking) problems.push("no upstream");
+              return {
+                name,
+                dir,
+                branch,
+                dirtyFiles,
+                ahead,
+                behind,
+                lastCommitMsg: lastMsg,
+                lastCommitAgeHours: lastCommitAge,
+                branches: branches.length,
+                branchNames: branches.slice(0, 20),
+                stashes,
+                diskUsage,
+                problems,
+                hasUpstream: !!tracking,
+              };
+            })
+        : [];
       return jsonResponse(res, { repos });
-    } catch (e) { return jsonResponse(res, { error: "scan failed", detail: e.message }, 500); }
+    } catch (error) {
+      return jsonResponse(res, { error: "scan failed", detail: error.message }, 500);
+    }
   }
 
-  // CORS preflight
   if (req.method === "OPTIONS") {
-    res.writeHead(204, { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, POST, OPTIONS", "Access-Control-Allow-Headers": "Content-Type, Authorization" });
+    res.writeHead(204, {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    });
     return res.end();
   }
 
-  // Static files
   let filePath = resolve(DIST, url.pathname === "/" ? "index.html" : url.pathname.split("?")[0].replace(/^\/+/, ""));
   if (!filePath.startsWith(DIST) || !existsSync(filePath) || statSync(filePath).isDirectory()) {
     filePath = resolve(DIST, "index.html");
   }
   const ext = extname(filePath);
-  res.writeHead(200, { "Content-Type": MIME_MAP[ext] || "application/octet-stream", "Cache-Control": ext === ".html" ? "no-cache" : "public, max-age=31536000, immutable" });
+  res.writeHead(200, {
+    "Content-Type": MIME_MAP[ext] || "application/octet-stream",
+    "Cache-Control": ext === ".html" ? "no-cache" : "public, max-age=31536000, immutable",
+  });
   res.end(readFileSync(filePath));
 });
 
 server.on("upgrade", (req, socket, head) => {
+  const url = new URL(req.url, `http://${req.headers.host}`);
+  if (url.pathname.startsWith("/ws/claude-code/")) {
+    if (!checkWsAuth(req, url)) {
+      socket.write("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n");
+      socket.destroy();
+      return;
+    }
+    broker.addClient({ req, socket, head });
+    return;
+  }
+
   const upstream = createConnection(GATEWAY, () => {
     upstream.write(`GET ${req.url} HTTP/1.1\r\n`);
     for (let i = 0; i < req.rawHeaders.length; i += 2) {
