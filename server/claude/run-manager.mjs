@@ -21,7 +21,9 @@ async function resolveAnthropicApiKey() {
   try {
     const raw = await readFile(AUTH_PROFILE_PATH, "utf8");
     const parsed = JSON.parse(raw);
-    const authValue = parsed?.profiles?.["anthropic:manual"]?.headers?.authorization;
+    const profile = parsed?.profiles?.["anthropic:manual"];
+    // Support both formats: .token (direct key) and .headers.authorization (Bearer key)
+    const authValue = profile?.token || profile?.headers?.authorization;
     if (typeof authValue === "string" && authValue.trim()) {
       return authValue.replace(/^Bearer\s+/i, "").trim();
     }
@@ -126,7 +128,7 @@ export async function startRun(sessionKey, message, options = {}) {
 
   const apiKey = await resolveAnthropicApiKey();
 
-  const args = ["--print", "--output-format", "stream-json"];
+  const args = ["--print", "--verbose", "--output-format", "stream-json"];
   if (resumeSessionId && !String(sessionKey || "").startsWith("pending-")) {
     args.push("--resume", resumeSessionId);
   }

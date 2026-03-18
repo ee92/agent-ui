@@ -16,6 +16,24 @@ function decodeCwd(encoded) {
   if (!encoded) {
     return "";
   }
+  // Claude CLI encodes paths: / -> -, literal - -> --
+  // e.g. -home-clawd--openclaw-workspace = /home/clawd/.openclaw/workspace
+  // Wait — actually the . is preserved as . in dir names. Let's check the actual pattern.
+  // The dir name is the cwd with / replaced by - and leading / kept as leading -
+  // But .openclaw has a dot, not a dash. The -- means the original had a - char? No...
+  // Actually looking at the real dir: -home-clawd--openclaw-workspace
+  // Real path: /home/clawd/.openclaw/workspace
+  // So: -home = /home, -clawd = /clawd, --openclaw = /.openclaw, -workspace = /workspace
+  // Pattern: -- encodes /. (slash-dot), - encodes /
+  if (encoded.startsWith("-") && !encoded.includes("/") && !encoded.includes("%")) {
+    // Replace -- with a placeholder, then - with /, then placeholder with /.
+    const placeholder = "\x00";
+    return encoded
+      .replace(/--/g, placeholder)
+      .replace(/^-/, "/")
+      .replace(/-/g, "/")
+      .replace(new RegExp(placeholder, "g"), "/.");
+  }
   try {
     return decodeURIComponent(encoded);
   } catch {
@@ -23,8 +41,8 @@ function decodeCwd(encoded) {
   }
 }
 
-function toSessionKey(cwd, sessionId) {
-  return `${encodeURIComponent(cwd)}::${sessionId}`;
+function toSessionKey(encodedCwd, sessionId) {
+  return `${encodedCwd}::${sessionId}`;
 }
 
 export function parseSessionKey(sessionKey) {
@@ -86,7 +104,7 @@ async function indexOneTranscript(transcriptPath) {
   const encodedCwd = dirRel.split(sep).join("/");
   const cwd = decodeCwd(encodedCwd);
   const session = {
-    key: toSessionKey(cwd, sessionId),
+    key: toSessionKey(encodedCwd, sessionId),
     sessionId,
     title: metadata.title || "New Chat",
     preview: metadata.preview || "",
