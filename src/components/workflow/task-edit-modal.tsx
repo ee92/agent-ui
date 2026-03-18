@@ -164,7 +164,7 @@ export function TaskEditModal({
                 value={repo}
                 onChange={(e) => setRepo(e.target.value)}
                 className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-white placeholder-zinc-500 outline-none focus:border-blue-500/50"
-                placeholder="swap.win"
+                placeholder="my-project"
               />
             </div>
             <div>

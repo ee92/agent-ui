@@ -1,11 +1,13 @@
 {
   "workspace": "~/projects",
-  "token": "auto",
   "agent": "auto",
   "gateway": {
     "host": "127.0.0.1",
-    "port": 18790,
-    "enabled": true
+    "port": 18790
+  },
+  "repos": {
+    "roots": ["~/projects"],
+    "depth": 4
   },
   "notifications": {
     "type": "none"

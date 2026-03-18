@@ -29,6 +29,12 @@ export interface FileEntry {
   modifiedAt?: string;
 }
 
+export type SlashCommandSuggestion = {
+  label: string;
+  insert: string;
+  meta: string;
+};
+
 /**
  * Session adapter — handles chat/agent communication
  */
@@ -103,6 +109,9 @@ export interface BackendAdapter {
 
   /** Runtime feature flags supported by this backend */
   capabilities(): { crons: boolean; agents: boolean; realtime: boolean };
+
+  /** Optional command suggestions used by the chat composer */
+  slashCommands?(): SlashCommandSuggestion[];
 }
 
 export type CronJob = {

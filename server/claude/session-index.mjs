@@ -16,17 +16,8 @@ function decodeCwd(encoded) {
   if (!encoded) {
     return "";
   }
-  // Claude CLI encodes paths: / -> -, literal - -> --
-  // e.g. -home-clawd--openclaw-workspace = /home/clawd/.openclaw/workspace
-  // Wait — actually the . is preserved as . in dir names. Let's check the actual pattern.
-  // The dir name is the cwd with / replaced by - and leading / kept as leading -
-  // But .openclaw has a dot, not a dash. The -- means the original had a - char? No...
-  // Actually looking at the real dir: -home-clawd--openclaw-workspace
-  // Real path: /home/clawd/.openclaw/workspace
-  // So: -home = /home, -clawd = /clawd, --openclaw = /.openclaw, -workspace = /workspace
-  // Pattern: -- encodes /. (slash-dot), - encodes /
+  // Claude CLI encodes cwd paths where `-` maps to `/` and `--` maps to `/.`.
   if (encoded.startsWith("-") && !encoded.includes("/") && !encoded.includes("%")) {
-    // Replace -- with a placeholder, then - with /, then placeholder with /.
     const placeholder = "\x00";
     return encoded
       .replace(/--/g, placeholder)

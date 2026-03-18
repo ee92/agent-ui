@@ -1,7 +1,18 @@
 import { GatewayClient } from "../gateway";
 import { useGatewayStore } from "../stores/gateway-store";
 import { fetchServerToken, messageTextFromUnknown, normalizeTime } from "../stores/shared";
-import type { BackendAdapter, CronAdapter, CronJob, CronRunEntry, FileEntry, Message, SessionAdapter, SessionEvent, SessionInfo } from "./types";
+import type {
+  BackendAdapter,
+  CronAdapter,
+  CronJob,
+  CronRunEntry,
+  FileEntry,
+  Message,
+  SessionAdapter,
+  SessionEvent,
+  SessionInfo,
+  SlashCommandSuggestion,
+} from "./types";
 
 function normalizeSessionKey(key: string): string {
   return key.replace(/^agent:[^:]+:/, "");
@@ -402,6 +413,17 @@ export class OpenClawAdapter implements BackendAdapter {
 
   capabilities() {
     return { crons: true, agents: true, realtime: true };
+  }
+
+  slashCommands(): SlashCommandSuggestion[] {
+    return [
+      { label: "/tasks", insert: "/tasks", meta: "Show task board" },
+      { label: "/status", insert: "/status", meta: "System status" },
+      { label: "/cron", insert: "/cron", meta: "Cron jobs" },
+      { label: "/repos", insert: "/repos", meta: "Repository overview" },
+      { label: "/search", insert: "/search ", meta: "Search transcripts" },
+      { label: "/cost", insert: "/cost", meta: "Usage and cost summary" },
+    ];
   }
 }
 

@@ -1,8 +1,10 @@
 {
-  "name": "openclaw-ui",
-  "private": true,
-  "version": "1.0.0",
+  "name": "agent-ui",
+  "version": "0.1.0",
   "type": "module",
+  "bin": {
+    "agent-ui": "./bin/agent-ui.mjs"
+  },
   "scripts": {
     "dev": "vite",
     "typecheck": "tsc -b",
@@ -25,6 +27,7 @@
     "typescript": "^5.8.3",
     "vite": "^7.1.0",
     "vite-plugin-pwa": "^1.0.3",
+    "vitest": "^4.0.0",
     "workbox-window": "^7.4.0"
   }
 }

@@ -1,38 +1,17 @@
 import { type ChangeEvent, type KeyboardEvent, useEffect, useRef, useState } from "react";
+import { getBackendAdapter } from "../../lib/adapters";
+import type { SlashCommandSuggestion } from "../../lib/adapters/types";
 import type { TaskNode } from "../../lib/task-types";
 import type { AgentRun, AttachmentDraft } from "../../lib/types";
 import { SendIcon } from "../ui/icons";
 
-type Suggestion = {
-  label: string;
-  insert: string;
-  meta: string;
-};
+type Suggestion = SlashCommandSuggestion;
 
-const SLASH_COMMANDS: Suggestion[] = [
-  { label: "/briefing", insert: "/briefing", meta: "Morning briefing" },
-  { label: "/portfolio", insert: "/portfolio", meta: "Wallet portfolio" },
-  { label: "/balances", insert: "/balances", meta: "Token balances" },
-  { label: "/phiat", insert: "/phiat", meta: "Phiat health factors" },
-  { label: "/cost", insert: "/cost", meta: "Token usage & API cost" },
-  { label: "/costs", insert: "/costs", meta: "Session cost breakdown" },
-  { label: "/workstreams", insert: "/workstreams", meta: "Active workstreams" },
-  { label: "/health", insert: "/health", meta: "System health overview" },
-  { label: "/containers", insert: "/containers", meta: "Docker containers" },
-  { label: "/deploy", insert: "/deploy", meta: "Deploy swap.win" },
-  { label: "/cron", insert: "/cron", meta: "Cron job dashboard" },
-  { label: "/search", insert: "/search ", meta: "Search session transcripts" },
-  { label: "/repos", insert: "/repos", meta: "Git repo health" },
-  { label: "/branches", insert: "/branches", meta: "Stale branch cleaner" },
-  { label: "/deps", insert: "/deps", meta: "Outdated npm deps" },
-  { label: "/disk", insert: "/disk", meta: "Disk usage treemap" },
-  { label: "/gas", insert: "/gas", meta: "PulseChain gas tracker" },
-  { label: "/audit", insert: "/audit", meta: "Docker security scan" },
-  { label: "/preview", insert: "/preview ", meta: "Spin up local preview" },
-  { label: "/pr-summary", insert: "/pr-summary", meta: "Git PR changelog" },
-  { label: "/docker-prune", insert: "/docker-prune", meta: "Prune Docker images" },
-  { label: "/nginx", insert: "/nginx", meta: "Nginx log analysis" },
-  { label: "/status", insert: "/status", meta: "Session status" },
+const DEFAULT_SUGGESTIONS: Suggestion[] = [
+  { label: "/help", insert: "/help", meta: "Show available commands" },
+  { label: "/status", insert: "/status", meta: "System status" },
+  { label: "/tasks", insert: "/tasks", meta: "Show task board" },
+  { label: "/search", insert: "/search ", meta: "Search sessions and files" },
 ];
 
 export function ChatComposer({
@@ -74,8 +53,9 @@ export function ChatComposer({
     if (token.startsWith("/") && value.trimStart() === token) {
       // Only show slash commands when it's the first token
       const query = token.toLowerCase();
+      const slashCommands = getBackendAdapter().slashCommands?.() ?? DEFAULT_SUGGESTIONS;
       setSuggestions(
-        SLASH_COMMANDS
+        slashCommands
           .filter((cmd) => cmd.label.startsWith(query) || cmd.meta.toLowerCase().includes(query.slice(1)))
           .slice(0, 8)
       );
@@ -211,7 +191,7 @@ export function ChatComposer({
             value={draft}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
-            placeholder="Message OpenClaw — type / for commands, # for tasks, @ for agents"
+            placeholder="Message agent — type / for commands, # for tasks, @ for agents"
             className="max-h-[220px] min-h-11 flex-1 resize-none bg-transparent py-2 text-base leading-6 text-white outline-none placeholder:text-zinc-600 xl:min-h-[56px]"
           />
           <button

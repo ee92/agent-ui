@@ -576,7 +576,7 @@ const server = createServer(async (req, res) => {
   if (url.pathname === "/api/repos") {
     if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);
     try {
-      const home = process.env.HOME || "/home/clawd";
+      const home = process.env.HOME;
       const run = (cmd, cwd) => {
         try {
           return execSync(cmd, { cwd, encoding: "utf8", timeout: 10000 }).trim();

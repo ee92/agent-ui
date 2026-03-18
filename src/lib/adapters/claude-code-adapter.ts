@@ -1,4 +1,4 @@
-import type { BackendAdapter, FileEntry, Message, SessionAdapter, SessionEvent, SessionInfo } from "./types";
+import type { BackendAdapter, FileEntry, Message, SessionAdapter, SessionEvent, SessionInfo, SlashCommandSuggestion } from "./types";
 
 type ClaudeEventEnvelope = {
   type?: string;
@@ -98,6 +98,15 @@ export class ClaudeCodeAdapter implements BackendAdapter {
 
   capabilities() {
     return { crons: false, agents: false, realtime: true };
+  }
+
+  slashCommands(): SlashCommandSuggestion[] {
+    return [
+      { label: "/compact", insert: "/compact", meta: "Compact conversation" },
+      { label: "/review", insert: "/review", meta: "Code review" },
+      { label: "/cost", insert: "/cost", meta: "Show costs" },
+      { label: "/init", insert: "/init", meta: "Initialize project" },
+    ];
   }
 
   private async request<T>(input: string, init: RequestInit = {}): Promise<T> {
