@@ -106,8 +106,8 @@ const SETTINGS_KEY = "openclaw-ui-settings-v1";
 const HIDDEN_MESSAGES_KEY = "openclaw-ui-hidden-messages-v1";
 export const DEFAULT_GATEWAY_URL =
   typeof window !== "undefined" && window.location.host
-    ? `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}`
-    : "ws://127.0.0.1:18789";
+    ? `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host.replace(/:18789$/, ':18790')}/gateway`
+    : "ws://127.0.0.1:18790/gateway";
 export const DEFAULT_GATEWAY_TOKEN = "openclaw";
 
 export async function fetchServerToken(): Promise<string | null> {

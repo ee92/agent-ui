@@ -1,6 +1,6 @@
 import { GatewayClient } from "../gateway";
 import { useGatewayStore } from "../stores/gateway-store";
-import { messageTextFromUnknown, normalizeTime } from "../stores/shared";
+import { fetchServerToken, messageTextFromUnknown, normalizeTime } from "../stores/shared";
 import type { BackendAdapter, FileEntry, Message, SessionAdapter, SessionEvent, SessionInfo } from "./types";
 
 function normalizeSessionKey(key: string): string {
@@ -310,8 +310,24 @@ export class OpenClawAdapter implements BackendAdapter {
 
   async connect(): Promise<void> {
     const gateway = useGatewayStore.getState();
-    gateway.setGatewayConfig(this.gatewayUrl, this.gatewayToken);
+    let token = this.gatewayToken;
+    // Auto-fetch server token if using default
+    if (token === "openclaw" || !token) {
+      const serverToken = await fetchServerToken();
+      if (serverToken) {
+        token = serverToken;
+      }
+    }
+    gateway.setGatewayConfig(this.gatewayUrl, token);
     await gateway.connect();
+    
+    // Wait for WebSocket to actually connect (up to 5s)
+    const maxWait = 5000;
+    const start = Date.now();
+    while (Date.now() - start < maxWait) {
+      if (this.isConnected()) return;
+      await new Promise((r) => setTimeout(r, 100));
+    }
   }
 
   disconnect(): void {

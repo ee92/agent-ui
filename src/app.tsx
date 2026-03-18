@@ -225,6 +225,7 @@ export function App() {
   // Startup effects
   useEffect(() => { void connectAdapter(); }, [connectAdapter]);
   useEffect(() => {
+    if (!adapterConnected) return; // Wait for adapter to connect first
     let cancelled = false;
     const initTasks = async () => {
       const store = useTaskStore.getState();
@@ -236,7 +237,7 @@ export function App() {
       cancelled = true;
       useTaskStore.getState().stopPolling();
     };
-  }, []);
+  }, [adapterConnected]);
 
   useEffect(() => {
     const readyForInitialLoad =

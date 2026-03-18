@@ -139,7 +139,7 @@ export class GatewayClient {
         ...protocol,
         auth: { token: this.options.token },
         client: {
-          id: "gateway-client",
+          id: "openclaw-control-ui",
           version: "1.0.0",
           platform: "web",
           mode: "ui"
