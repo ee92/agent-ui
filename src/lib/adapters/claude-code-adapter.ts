@@ -189,22 +189,15 @@ export class ClaudeCodeAdapter implements BackendAdapter {
     }
 
     if (event.event === "session.delta") {
-      const messageId = typeof event.payload?.messageId === "string" ? event.payload.messageId : event.runId || crypto.randomUUID();
-      const content = typeof event.payload?.accumulated === "string" ? event.payload.accumulated : "";
-      this.emit({
-        type: "message",
-        sessionKey: mappedSessionKey,
-        message: {
-          id: messageId,
-          role: "assistant",
-          content,
-          timestamp: nowIso(),
-        },
-      });
+      // Delta updates the streaming message — emit as "updated" so the store
+      // refreshes from the server rather than appending a duplicate message.
+      // The actual content is shown via the streaming indicator / pending message.
+      this.emit({ type: "updated", sessionKey: mappedSessionKey });
       return;
     }
 
     if (event.event === "session.message") {
+      // Final message — emit once so the store picks it up
       this.emit({
         type: "message",
         sessionKey: mappedSessionKey,
