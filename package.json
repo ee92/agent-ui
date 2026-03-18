@@ -10,7 +10,8 @@
     "typecheck": "tsc -b",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "test": "node ./node_modules/vitest/vitest.mjs run"
+    "test": "node ./node_modules/vitest/vitest.mjs run",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "react": "^19.1.0",
@@ -29,5 +30,30 @@
     "vite-plugin-pwa": "^1.0.3",
     "vitest": "^4.0.0",
     "workbox-window": "^7.4.0"
-  }
+  },
+  "description": "A self-hosted dashboard for AI agent workflows. Works with Claude Code, OpenClaw, and more.",
+  "files": [
+    "bin/",
+    "dist/",
+    "server/",
+    "serve.mjs",
+    "public/",
+    "index.html",
+    "LICENSE",
+    "README.md"
+  ],
+  "keywords": [
+    "ai",
+    "agent",
+    "dashboard",
+    "claude-code",
+    "openclaw",
+    "task-board"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ee92/agent-ui.git"
+  },
+  "author": "Egor Torba"
 }
