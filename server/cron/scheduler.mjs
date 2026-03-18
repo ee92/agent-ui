@@ -3,6 +3,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
+import { dispatch } from "../dispatcher.mjs";
 
 const DATA_DIR = resolve(homedir(), ".agent-ui");
 const JOBS_PATH = join(DATA_DIR, "crons.json");
@@ -196,6 +197,19 @@ function withUpdatedTimestamps(job, patch) {
 }
 
 function runCommand(job) {
+  if (job.command.trim() === "@dispatch") {
+    return dispatch().then((report) => ({
+      status: "ok",
+      summary: `Dispatched ${Array.isArray(report?.picked) ? report.picked.length : 0} task(s)`,
+      durationMs: 0,
+    })).catch((error) => ({
+      status: "error",
+      error: error instanceof Error ? error.message : String(error),
+      summary: "Dispatcher run failed",
+      durationMs: 0,
+    }));
+  }
+
   return new Promise((resolveRun) => {
     const startedAt = Date.now();
     const child = spawn(job.command, {

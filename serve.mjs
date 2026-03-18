@@ -20,6 +20,13 @@ import { parseTranscript } from "./server/claude/transcript-parser.mjs";
 import { startRun, cancelRun, getRunStatus } from "./server/claude/run-manager.mjs";
 import { createBroker } from "./server/claude/ws-broker.mjs";
 import {
+  configureDispatcherRuntime,
+  dispatch,
+  getDispatchStatus,
+  loadDispatcherConfig,
+  saveDispatcherConfig,
+} from "./server/dispatcher.mjs";
+import {
   createJob as createCronJob,
   getRuns as getCronRuns,
   listJobs as listCronJobs,
@@ -120,6 +127,7 @@ const workspaceFromConfig =
   OPENCLAW_CONFIG?.workspace ||
   (detectedAgent === "openclaw" ? resolve(homedir(), ".openclaw", "workspace") : process.cwd());
 const WORKSPACE = resolve(expandHome(workspaceFromConfig));
+const TASKS_PATH = join(WORKSPACE, "tasks.json");
 
 const tokenFromOpenClaw =
   OPENCLAW_CONFIG?.gateway?.auth?.token ||
@@ -714,6 +722,35 @@ const server = createServer(async (req, res) => {
     }
   }
 
+  if (url.pathname === "/api/dispatch" && req.method === "POST") {
+    if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);
+    try {
+      const report = await dispatch(TASKS_PATH, { force: true });
+      return jsonResponse(res, { report });
+    } catch (error) {
+      return jsonResponse(res, { error: "dispatch failed", detail: error.message }, 500);
+    }
+  }
+
+  if (url.pathname === "/api/dispatch/status" && req.method === "GET") {
+    if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);
+    return jsonResponse(res, {
+      config: loadDispatcherConfig(),
+      report: getDispatchStatus(),
+    });
+  }
+
+  if (url.pathname === "/api/dispatch/config" && req.method === "PATCH") {
+    if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);
+    try {
+      const body = await parseJsonBody(req);
+      const config = saveDispatcherConfig(body);
+      return jsonResponse(res, { config });
+    } catch (error) {
+      return jsonResponse(res, { error: "config update failed", detail: error.message }, 400);
+    }
+  }
+
   if (req.method === "OPTIONS") {
     res.writeHead(204, {
       "Access-Control-Allow-Origin": "*",
@@ -770,5 +807,6 @@ server.on("upgrade", (req, socket, head) => {
   socket.on("error", () => upstream.destroy());
 });
 
+configureDispatcherRuntime({ tasksPath: TASKS_PATH });
 startScheduler();
 server.listen(PORT, "127.0.0.1", () => console.log(`UI serving on http://127.0.0.1:${PORT}`));

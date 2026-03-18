@@ -15,6 +15,7 @@ export function TaskEditModal({
   const [notes, setNotes] = useState(task.notes);
   const [repo, setRepo] = useState(task.repo ?? "");
   const [branch, setBranch] = useState(task.branch ?? "");
+  const [blockedBy, setBlockedBy] = useState((task.blockedBy || []).join(", "));
   const [status, setStatus] = useState<TaskStatus>(task.status);
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -45,13 +46,17 @@ export function TaskEditModal({
         notes,
         repo: repo.trim() || null,
         branch: branch.trim() || null,
+        blockedBy: blockedBy
+          .split(",")
+          .map((value) => value.trim())
+          .filter(Boolean),
         status,
       });
       onClose();
     } catch {
       setSaving(false);
     }
-  }, [task.id, title, notes, repo, branch, status, update, onClose]);
+  }, [task.id, title, notes, repo, branch, blockedBy, status, update, onClose]);
 
   const handleDelete = useCallback(async () => {
     if (!confirmDelete) {
@@ -80,6 +85,11 @@ export function TaskEditModal({
     notes !== task.notes ||
     (repo.trim() || null) !== (task.repo ?? null) ||
     (branch.trim() || null) !== (task.branch ?? null) ||
+    blockedBy
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean)
+      .join(",") !== (task.blockedBy || []).join(",") ||
     status !== task.status;
 
   return (
@@ -177,6 +187,17 @@ export function TaskEditModal({
                 placeholder="feat/my-feature"
               />
             </div>
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-zinc-400">Blocked By (task IDs)</label>
+            <input
+              type="text"
+              value={blockedBy}
+              onChange={(e) => setBlockedBy(e.target.value)}
+              className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-white placeholder-zinc-500 outline-none focus:border-blue-500/50"
+              placeholder="t_1234abcd, t_9876wxyz"
+            />
           </div>
 
           {/* Meta info */}
