@@ -1,6 +1,7 @@
 import { GatewayClient } from "../gateway";
 import { useGatewayStore } from "../stores/gateway-store";
 import { fetchServerToken, messageTextFromUnknown, normalizeTime } from "../stores/shared";
+import { HttpCronAdapter } from "./cron-http";
 import type {
   BackendAdapter,
   CronAdapter,
@@ -329,16 +330,50 @@ class OpenClawFileAdapter {
 }
 
 class OpenClawCronAdapter implements CronAdapter {
+  private readonly fallback = new HttpCronAdapter((input, init) => this.request(input, init));
+
   private get client() {
     const client = useGatewayStore.getState().gatewayClient;
     if (!client || !client.isConnected()) {
-      throw new Error("Gateway not connected");
+      return null;
     }
     return client;
   }
 
+  private async request<T>(input: string, init: RequestInit = {}): Promise<T> {
+    let token = useGatewayStore.getState().gatewayToken;
+    if (!token || token === "openclaw") {
+      const serverToken = await fetchServerToken();
+      if (serverToken) {
+        token = serverToken;
+      }
+    }
+
+    const headers = new Headers(init.headers || {});
+    if (token) {
+      headers.set("Authorization", `Bearer ${token}`);
+    }
+    if (init.body && !headers.has("Content-Type")) {
+      headers.set("Content-Type", "application/json");
+    }
+
+    const res = await fetch(input, { ...init, headers });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(text || `Request failed: ${res.status}`);
+    }
+    if (res.status === 204) {
+      return undefined as T;
+    }
+    return (await res.json()) as T;
+  }
+
   async list(): Promise<CronJob[]> {
-    const response = await this.client.request<{ jobs?: CronJob[] }>("cron.list", {
+    const client = this.client;
+    if (!client) {
+      return this.fallback.list();
+    }
+    const response = await client.request<{ jobs?: CronJob[] }>("cron.list", {
       includeDisabled: true,
       limit: 100,
       sortBy: "nextRunAtMs",
@@ -348,25 +383,44 @@ class OpenClawCronAdapter implements CronAdapter {
   }
 
   async runs(jobId?: string): Promise<CronRunEntry[]> {
+    const client = this.client;
+    if (!client) {
+      return this.fallback.runs(jobId);
+    }
     const params: Record<string, unknown> = { limit: 50, sortDir: "desc" };
     if (jobId) {
       params.jobId = jobId;
       params.scope = "job";
     }
-    const response = await this.client.request<{ runs?: CronRunEntry[] }>("cron.runs", params);
+    const response = await client.request<{ runs?: CronRunEntry[] }>("cron.runs", params);
     return Array.isArray(response.runs) ? response.runs : [];
   }
 
   async update(id: string, patch: Record<string, unknown>): Promise<void> {
-    await this.client.request("cron.update", { id, patch });
+    const client = this.client;
+    if (!client) {
+      await this.fallback.update(id, patch);
+      return;
+    }
+    await client.request("cron.update", { id, patch });
   }
 
   async remove(id: string): Promise<void> {
-    await this.client.request("cron.remove", { id });
+    const client = this.client;
+    if (!client) {
+      await this.fallback.remove(id);
+      return;
+    }
+    await client.request("cron.remove", { id });
   }
 
   async run(id: string): Promise<void> {
-    await this.client.request("cron.run", { id, mode: "force" });
+    const client = this.client;
+    if (!client) {
+      await this.fallback.run(id);
+      return;
+    }
+    await client.request("cron.run", { id, mode: "force" });
   }
 }
 

@@ -1,4 +1,5 @@
-import type { BackendAdapter, FileEntry, Message, SessionAdapter, SessionInfo } from "./types";
+import type { BackendAdapter, CronAdapter, FileEntry, Message, SessionAdapter, SessionInfo } from "./types";
+import { HttpCronAdapter } from "./cron-http";
 
 type NodeFsPromises = {
   readdir: (path: string, options?: unknown) => Promise<unknown[]>;
@@ -225,6 +226,7 @@ class LocalFileAdapter {
 export class LocalAdapter implements BackendAdapter {
   readonly type = "local" as const;
   readonly sessions = new LocalSessionAdapter();
+  readonly crons: CronAdapter;
   readonly files: {
     read: (path: string) => Promise<string>;
     write: (path: string, content: string) => Promise<void>;
@@ -235,6 +237,7 @@ export class LocalAdapter implements BackendAdapter {
   };
 
   private connected = false;
+  private token = "";
 
   constructor(workspace: string = ".") {
     const files = new LocalFileAdapter(workspace);
@@ -246,9 +249,20 @@ export class LocalAdapter implements BackendAdapter {
       exists: (path) => files.exists(path),
       delete: (path) => files.delete(path),
     };
+    this.crons = new HttpCronAdapter((input, init) => this.request(input, init));
   }
 
   async connect(): Promise<void> {
+    if (!this.token && typeof window !== "undefined") {
+      const res = await fetch("/api/config");
+      if (!res.ok) {
+        throw new Error("Failed to load API config");
+      }
+      const data = (await res.json()) as { token?: string };
+      if (typeof data.token === "string" && data.token) {
+        this.token = data.token;
+      }
+    }
     this.connected = true;
   }
 
@@ -261,6 +275,30 @@ export class LocalAdapter implements BackendAdapter {
   }
 
   capabilities() {
-    return { crons: false, agents: false, realtime: false };
+    return { crons: true, agents: false, realtime: false };
+  }
+
+  private async request<T>(input: string, init: RequestInit = {}): Promise<T> {
+    if (!this.token) {
+      await this.connect();
+    }
+
+    const headers = new Headers(init.headers || {});
+    if (this.token) {
+      headers.set("Authorization", `Bearer ${this.token}`);
+    }
+    if (init.body && !headers.has("Content-Type")) {
+      headers.set("Content-Type", "application/json");
+    }
+
+    const res = await fetch(input, { ...init, headers });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(text || `Request failed: ${res.status}`);
+    }
+    if (res.status === 204) {
+      return undefined as T;
+    }
+    return (await res.json()) as T;
   }
 }

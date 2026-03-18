@@ -19,6 +19,15 @@ import { listSessions, getSession, refreshIndex } from "./server/claude/session-
 import { parseTranscript } from "./server/claude/transcript-parser.mjs";
 import { startRun, cancelRun, getRunStatus } from "./server/claude/run-manager.mjs";
 import { createBroker } from "./server/claude/ws-broker.mjs";
+import {
+  createJob as createCronJob,
+  getRuns as getCronRuns,
+  listJobs as listCronJobs,
+  removeJob as removeCronJob,
+  runJobNow as runCronJobNow,
+  startScheduler,
+  updateJob as updateCronJob,
+} from "./server/cron/scheduler.mjs";
 
 const DIST = resolve(import.meta.dirname, "dist");
 const PORT = 18789;
@@ -160,9 +169,9 @@ function adapterCapabilities(agent) {
     return { crons: true, agents: true, realtime: true };
   }
   if (agent === "claude-code") {
-    return { crons: false, agents: false, realtime: true };
+    return { crons: true, agents: false, realtime: true };
   }
-  return { crons: false, agents: false, realtime: false };
+  return { crons: true, agents: false, realtime: false };
 }
 
 const MIME_MAP = {
@@ -646,6 +655,65 @@ const server = createServer(async (req, res) => {
     }
   }
 
+  if (url.pathname === "/api/crons" && req.method === "GET") {
+    if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);
+    return jsonResponse(res, { jobs: listCronJobs() });
+  }
+
+  if (url.pathname === "/api/crons/runs" && req.method === "GET") {
+    if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);
+    const jobId = url.searchParams.get("jobId") || undefined;
+    return jsonResponse(res, { runs: getCronRuns(jobId) });
+  }
+
+  if (url.pathname === "/api/crons" && req.method === "POST") {
+    if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);
+    try {
+      const body = await parseJsonBody(req);
+      const job = createCronJob(body);
+      return jsonResponse(res, { job }, 201);
+    } catch (error) {
+      return jsonResponse(res, { error: "invalid cron job", detail: error.message }, 400);
+    }
+  }
+
+  if (url.pathname.startsWith("/api/crons/") && url.pathname.endsWith("/run") && req.method === "POST") {
+    if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);
+    const id = decodeURIComponent(url.pathname.slice("/api/crons/".length, url.pathname.length - "/run".length));
+    try {
+      await runCronJobNow(id);
+      return jsonResponse(res, { ok: true });
+    } catch (error) {
+      const status = error instanceof Error && error.message === "Job not found" ? 404 : 400;
+      return jsonResponse(res, { error: "run failed", detail: error.message }, status);
+    }
+  }
+
+  if (url.pathname.startsWith("/api/crons/") && req.method === "PATCH") {
+    if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);
+    const id = decodeURIComponent(url.pathname.slice("/api/crons/".length));
+    try {
+      const body = await parseJsonBody(req);
+      const job = updateCronJob(id, body);
+      return jsonResponse(res, { job });
+    } catch (error) {
+      const status = error instanceof Error && error.message === "Job not found" ? 404 : 400;
+      return jsonResponse(res, { error: "update failed", detail: error.message }, status);
+    }
+  }
+
+  if (url.pathname.startsWith("/api/crons/") && req.method === "DELETE") {
+    if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);
+    const id = decodeURIComponent(url.pathname.slice("/api/crons/".length));
+    try {
+      removeCronJob(id);
+      return jsonResponse(res, { ok: true });
+    } catch (error) {
+      const status = error instanceof Error && error.message === "Job not found" ? 404 : 400;
+      return jsonResponse(res, { error: "delete failed", detail: error.message }, status);
+    }
+  }
+
   if (req.method === "OPTIONS") {
     res.writeHead(204, {
       "Access-Control-Allow-Origin": "*",
@@ -702,4 +770,5 @@ server.on("upgrade", (req, socket, head) => {
   socket.on("error", () => upstream.destroy());
 });
 
+startScheduler();
 server.listen(PORT, "127.0.0.1", () => console.log(`UI serving on http://127.0.0.1:${PORT}`));

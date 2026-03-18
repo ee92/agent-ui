@@ -1,4 +1,14 @@
-import type { BackendAdapter, FileEntry, Message, SessionAdapter, SessionEvent, SessionInfo, SlashCommandSuggestion } from "./types";
+import type {
+  BackendAdapter,
+  CronAdapter,
+  FileEntry,
+  Message,
+  SessionAdapter,
+  SessionEvent,
+  SessionInfo,
+  SlashCommandSuggestion,
+} from "./types";
+import { HttpCronAdapter } from "./cron-http";
 
 type ClaudeEventEnvelope = {
   type?: string;
@@ -29,6 +39,7 @@ function normalizeMessage(raw: unknown): Message {
 export class ClaudeCodeAdapter implements BackendAdapter {
   readonly type = "claude-code" as const;
   readonly sessions: SessionAdapter;
+  readonly crons: CronAdapter;
   readonly files: {
     read: (path: string) => Promise<string>;
     write: (path: string, content: string) => Promise<void>;
@@ -64,6 +75,7 @@ export class ClaudeCodeAdapter implements BackendAdapter {
       exists: (path) => this.exists(path),
       delete: (path) => this.deletePath(path),
     };
+    this.crons = new HttpCronAdapter((input, init) => this.request(input, init));
   }
 
   async connect(): Promise<void> {
@@ -97,7 +109,7 @@ export class ClaudeCodeAdapter implements BackendAdapter {
   }
 
   capabilities() {
-    return { crons: false, agents: false, realtime: true };
+    return { crons: true, agents: false, realtime: true };
   }
 
   slashCommands(): SlashCommandSuggestion[] {
