@@ -185,17 +185,10 @@ export async function startRun(sessionKey, message, options = {}) {
       return;
     }
 
-    const streamText = extractText(payload.delta || payload);
-    if (streamText) {
-      state.accumulated += streamText;
-      emit(state, "session.delta", {
-        messageId: state.messageId,
-        role: "assistant",
-        delta: streamText,
-        accumulated: state.accumulated,
-      });
-    }
+    // Claude CLI stream-json event types: system, assistant, result
+    const eventType = payload.type;
 
+    // Extract session ID from any event that has one
     const discoveredSessionId = extractSessionId(payload);
     if (discoveredSessionId && !String(state.sessionKey || "").includes("::")) {
       const remapped = `${encodeURIComponent(state.cwd)}::${discoveredSessionId}`;
@@ -206,9 +199,45 @@ export async function startRun(sessionKey, message, options = {}) {
       state.sessionKey = remapped;
     }
 
-    const finalText = extractText(payload.result || payload.message || payload.final || "");
-    if (finalText && finalText.length > state.accumulated.length) {
-      state.accumulated = finalText;
+    // Skip system/init events — they contain tools list, not chat content
+    if (eventType === "system") {
+      return;
+    }
+
+    // assistant events contain the actual response in message.content[]
+    if (eventType === "assistant" && payload.message) {
+      const text = extractText(payload.message);
+      if (text) {
+        state.accumulated = text;
+        emit(state, "session.delta", {
+          messageId: state.messageId,
+          role: "assistant",
+          delta: text,
+          accumulated: state.accumulated,
+        });
+      }
+      return;
+    }
+
+    // result events contain final text in .result
+    if (eventType === "result") {
+      const finalText = typeof payload.result === "string" ? payload.result : "";
+      if (finalText && finalText.length >= state.accumulated.length) {
+        state.accumulated = finalText;
+      }
+      return;
+    }
+
+    // Fallback for unknown event types — try to extract text
+    const streamText = extractText(payload.delta || payload.message || "");
+    if (streamText) {
+      state.accumulated += streamText;
+      emit(state, "session.delta", {
+        messageId: state.messageId,
+        role: "assistant",
+        delta: streamText,
+        accumulated: state.accumulated,
+      });
     }
   };
 
