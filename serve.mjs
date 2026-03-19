@@ -123,25 +123,12 @@ const workspaceFromConfig =
 const WORKSPACE = resolve(expandHome(workspaceFromConfig));
 const TASKS_PATH = join(WORKSPACE, "tasks.json");
 
-const tokenFromOpenClaw =
-  OPENCLAW_CONFIG?.gateway?.auth?.token ||
-  OPENCLAW_CONFIG?.token ||
-  OPENCLAW_CONFIG?.gatewayToken ||
-  OPENCLAW_CONFIG?.authToken ||
-  "";
-const tokenFromClaude =
-  CLAUDE_SETTINGS?.anthropicApiKey ||
-  CLAUDE_CONFIG?.anthropicApiKey ||
-  process.env.MC_ANTHROPIC_KEY ||
-  process.env.ANTHROPIC_API_KEY ||
-  "";
+// Token only used for gateway connection (OpenClaw mode). No auth needed for local API.
 const TOKEN =
   process.env.MC_TOKEN ||
-  process.env.OPENCLAW_TOKEN ||
-  (typeof MC_CONFIG?.token === "string" && MC_CONFIG.token !== "auto" ? MC_CONFIG.token : "") ||
-  tokenFromOpenClaw ||
-  tokenFromClaude ||
-  randomUUID();
+  OPENCLAW_CONFIG?.gateway?.auth?.token ||
+  OPENCLAW_CONFIG?.token ||
+  "";
 
 const gatewayFromUrl = parseGatewayUrl(process.env.MC_GATEWAY_URL || "");
 const gatewayPortFromEnv = Number(process.env.MC_GATEWAY_PORT || "");
@@ -261,14 +248,12 @@ function searchFiles(dir, query, maxResults = 50) {
 }
 
 function checkAuth(req) {
-  return req.headers.authorization === `Bearer ${TOKEN}`;
+  // Local-only server (127.0.0.1) — no auth needed
+  return true;
 }
 
 function checkWsAuth(req, url) {
-  if (checkAuth(req)) {
-    return true;
-  }
-  return url.searchParams.get("token") === TOKEN;
+  return true;
 }
 
 function resolveWorkspacePath(inputPath = "") {
