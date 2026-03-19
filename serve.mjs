@@ -92,6 +92,9 @@ const CLAUDE_DIR = resolve(homedir(), ".claude");
 const CLAUDE_SETTINGS_PATH = resolve(CLAUDE_DIR, "settings.json");
 const CLAUDE_CONFIG_PATH = resolve(CLAUDE_DIR, "config.json");
 
+const AGENT_UI_CONFIG_PATH = resolve(homedir(), ".agent-ui", "config.json");
+const AGENT_UI_CONFIG = fileExists(AGENT_UI_CONFIG_PATH) ? readJson(AGENT_UI_CONFIG_PATH) : {};
+
 const MC_CONFIG_SOURCE_PATH = fileExists(LOCAL_CONFIG_PATH)
   ? LOCAL_CONFIG_PATH
   : fileExists(USER_CONFIG_PATH)
@@ -135,13 +138,26 @@ const tokenFromClaude =
   process.env.MC_ANTHROPIC_KEY ||
   process.env.ANTHROPIC_API_KEY ||
   "";
-const TOKEN =
-  process.env.MC_TOKEN ||
-  process.env.OPENCLAW_TOKEN ||
-  (typeof MC_CONFIG?.token === "string" && MC_CONFIG.token !== "auto" ? MC_CONFIG.token : "") ||
-  tokenFromOpenClaw ||
-  tokenFromClaude ||
-  randomUUID();
+const TOKEN = (() => {
+  const resolved =
+    process.env.MC_TOKEN ||
+    process.env.OPENCLAW_TOKEN ||
+    (typeof AGENT_UI_CONFIG?.token === "string" && AGENT_UI_CONFIG.token ? AGENT_UI_CONFIG.token : "") ||
+    (typeof MC_CONFIG?.token === "string" && MC_CONFIG.token !== "auto" ? MC_CONFIG.token : "") ||
+    tokenFromOpenClaw ||
+    tokenFromClaude ||
+    "";
+  if (resolved) return resolved;
+  // No token found anywhere — generate and persist so it survives restarts
+  const generated = randomUUID();
+  try {
+    const configDir = resolve(homedir(), ".agent-ui");
+    mkdirSync(configDir, { recursive: true });
+    const existing = fileExists(AGENT_UI_CONFIG_PATH) ? readJson(AGENT_UI_CONFIG_PATH) : {};
+    writeFileSync(AGENT_UI_CONFIG_PATH, JSON.stringify({ ...existing, token: generated }, null, 2) + "\n");
+  } catch {}
+  return generated;
+})();
 
 const gatewayFromUrl = parseGatewayUrl(process.env.MC_GATEWAY_URL || "");
 const gatewayPortFromEnv = Number(process.env.MC_GATEWAY_PORT || "");

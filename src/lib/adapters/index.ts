@@ -5,7 +5,7 @@ import { LocalAdapter } from "./local-adapter";
 import type { BackendAdapter } from "./types";
 import { DEFAULT_GATEWAY_TOKEN, DEFAULT_GATEWAY_URL, safeJsonParse } from "../stores/shared";
 
-export type AdapterType = BackendAdapter["type"];
+export type AdapterType = BackendAdapter["type"] | "auto";
 
 export type AdapterConfig = {
   type: AdapterType;
@@ -26,7 +26,8 @@ function getDefaultWorkspace(): string {
 function loadAdapterConfig(): AdapterConfig {
   const raw = safeJsonParse<Partial<AdapterConfig>>(localStorage.getItem(ADAPTER_CONFIG_KEY), {});
   return {
-    type: raw.type === "claude-code" || raw.type === "local" || raw.type === "openclaw" ? raw.type : "openclaw",
+    // "auto" means no saved preference — will be resolved on first connect
+    type: raw.type === "claude-code" || raw.type === "local" || raw.type === "openclaw" ? raw.type : "auto" as AdapterType,
     gatewayUrl: raw.gatewayUrl?.trim() || DEFAULT_GATEWAY_URL,
     gatewayToken: raw.gatewayToken?.trim() || DEFAULT_GATEWAY_TOKEN,
     workspace: raw.workspace?.trim() || getDefaultWorkspace(),
@@ -45,8 +46,32 @@ export function createAdapter(config: AdapterConfig): BackendAdapter {
       return new ClaudeCodeAdapter(config.workspace);
     case "local":
       return new LocalAdapter(config.workspace);
+    case "auto":
     default:
-      return new OpenClawAdapter(config.gatewayUrl, config.gatewayToken);
+      // Temporary adapter — will be replaced after auto-detection
+      return new LocalAdapter(config.workspace);
+  }
+}
+
+async function autoDetectAdapter(currentConfig: AdapterConfig): Promise<{ config: AdapterConfig; adapter: BackendAdapter } | null> {
+  try {
+    const res = await fetch("/api/config");
+    if (!res.ok) return null;
+    const data = (await res.json()) as { agent?: string; token?: string; workspace?: string };
+    const detectedType: AdapterType =
+      data.agent === "claude-code" ? "claude-code" :
+      data.agent === "openclaw" ? "openclaw" :
+      "local";
+    const resolvedConfig: AdapterConfig = {
+      ...currentConfig,
+      type: detectedType,
+      ...(data.token ? { gatewayToken: data.token } : {}),
+      ...(data.workspace ? { workspace: data.workspace } : {}),
+    };
+    persistAdapterConfig(resolvedConfig);
+    return { config: resolvedConfig, adapter: createAdapter(resolvedConfig) };
+  } catch {
+    return null;
   }
 }
 
@@ -68,6 +93,14 @@ export const useAdapterStore = create<AdapterStoreState>((set, get) => ({
   connected: false,
   connect: async () => {
     try {
+      // Auto-detect adapter type on first connect if no saved preference
+      if (get().config.type === "auto") {
+        const detected = await autoDetectAdapter(get().config);
+        if (detected) {
+          get().adapter.disconnect();
+          set({ config: detected.config, adapter: detected.adapter });
+        }
+      }
       await get().adapter.connect();
       set({ connected: get().adapter.isConnected() });
     } catch {

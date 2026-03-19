@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { execSync, spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { homedir, platform } from "node:os";
@@ -157,9 +158,11 @@ switch (cmd) {
 
     const agent = detectAgent();
     const workspace = detectWorkspace(agent);
+    const token = randomUUID();
     const config = {
       workspace,
       agent,
+      token,
       maxConcurrent: 3,
     };
     const tasksPath = resolve(workspace, "tasks.json");
