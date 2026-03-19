@@ -597,11 +597,12 @@ const server = createServer(async (req, res) => {
       const run = (cmd, cwd) => {
         try {
           return execSync(cmd, { cwd, encoding: "utf8", timeout: 10000 }).trim();
-        } catch {
-          return "";
+        } catch (e) {
+          // find exits non-zero on permission errors (macOS) but still has valid stdout
+          return (typeof e.stdout === "string" ? e.stdout.trim() : "");
         }
       };
-      const gitDirs = run(`find ${home} -maxdepth 4 -name ".git" -type d 2>/dev/null`);
+      const gitDirs = run(`find ${home} -maxdepth 4 -name ".git" -type d 2>/dev/null || true`);
       const repos = gitDirs
         ? gitDirs
             .split("\n")
