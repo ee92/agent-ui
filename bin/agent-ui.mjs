@@ -13,6 +13,7 @@ const DATA_DIR = resolve(homedir(), ".agent-ui");
 const PID_FILE = resolve(DATA_DIR, "agent-ui.pid");
 const LOG_FILE = resolve(DATA_DIR, "agent-ui.log");
 const PORT = process.env.PORT || 18789;
+const CONFIG_PATH = resolve(DATA_DIR, "config.json");
 
 function ensureDataDir() {
   mkdirSync(DATA_DIR, { recursive: true });
@@ -42,6 +43,20 @@ function detectAgent() {
   if (existsSync(resolve(homedir(), ".openclaw", "openclaw.json"))) return "openclaw";
   if (existsSync(resolve(homedir(), ".claude"))) return "claude-code";
   return "none";
+}
+
+function detectWorkspace(agent) {
+  if (process.env.MC_WORKSPACE) return resolve(process.env.MC_WORKSPACE);
+  if (agent === "openclaw") return resolve(homedir(), ".openclaw", "workspace");
+  return process.cwd();
+}
+
+function readJsonFile(path) {
+  try {
+    return JSON.parse(readFileSync(path, "utf8"));
+  } catch {
+    return null;
+  }
 }
 
 // ── systemd user service (Linux) ──
@@ -125,6 +140,66 @@ function uninstallLaunchd() {
 const cmd = process.argv[2] || "start";
 
 switch (cmd) {
+  case "init": {
+    ensureDataDir();
+
+    if (existsSync(CONFIG_PATH)) {
+      console.log("agent-ui already configured");
+      console.log(`Config path: ${CONFIG_PATH}`);
+      const currentConfig = readJsonFile(CONFIG_PATH);
+      if (currentConfig) {
+        console.log(JSON.stringify(currentConfig, null, 2));
+      } else {
+        console.log(readFileSync(CONFIG_PATH, "utf8"));
+      }
+      break;
+    }
+
+    const agent = detectAgent();
+    const workspace = detectWorkspace(agent);
+    const config = {
+      workspace,
+      agent,
+      maxConcurrent: 3,
+    };
+    const tasksPath = resolve(workspace, "tasks.json");
+    const tasksTemplate = {
+      version: 2,
+      config: { maxConcurrent: 3 },
+      tasks: [],
+    };
+
+    console.log(`Detected agent: ${agent}`);
+    console.log(`Detected workspace: ${workspace}`);
+
+    writeFileSync(CONFIG_PATH, `${JSON.stringify(config, null, 2)}\n`);
+    mkdirSync(workspace, { recursive: true });
+
+    let createdTasksFile = false;
+    if (!existsSync(tasksPath)) {
+      writeFileSync(tasksPath, `${JSON.stringify(tasksTemplate, null, 2)}\n`);
+      createdTasksFile = true;
+    }
+
+    let claudePath = "";
+    try {
+      claudePath = execSync("which claude", {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+      }).trim();
+    } catch {}
+
+    console.log("\nSetup summary:");
+    console.log(`  Data directory: ${DATA_DIR}`);
+    console.log(`  Config file:    ${CONFIG_PATH} (created)`);
+    console.log(`  Tasks file:     ${tasksPath} (${createdTasksFile ? "created" : "already exists"})`);
+    console.log(`  Claude CLI:     ${claudePath ? `found at ${claudePath}` : "not found"}`);
+    console.log("\nNext steps:");
+    console.log("  agent-ui start");
+    console.log("  task list");
+    break;
+  }
+
   case "start": {
     const existing = readPid();
     if (existing) {
@@ -246,13 +321,12 @@ switch (cmd) {
   }
 
   case "config": {
-    const configPath = resolve(DATA_DIR, "config.json");
-    if (existsSync(configPath)) {
-      console.log(readFileSync(configPath, "utf8"));
+    if (existsSync(CONFIG_PATH)) {
+      console.log(readFileSync(CONFIG_PATH, "utf8"));
     } else {
       console.log("No config file. Using auto-detected defaults.");
-      console.log(`Config path: ${configPath}`);
-      console.log(`\nCreate it with:\n  echo '{}' > ${configPath}`);
+      console.log(`Config path: ${CONFIG_PATH}`);
+      console.log(`\nCreate it with:\n  echo '{}' > ${CONFIG_PATH}`);
     }
     break;
   }
@@ -272,6 +346,7 @@ switch (cmd) {
     console.log(`agent-ui — self-hosted dashboard for AI agent workflows
 
 Usage:
+  agent-ui init       Detect agent/workspace and create default config
   agent-ui start      Start the dashboard (installs as service)
   agent-ui stop       Stop the dashboard
   agent-ui status     Show status

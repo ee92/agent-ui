@@ -46,6 +46,8 @@ export interface TaskNode {
   sessionKey: string | null;
   /** All session keys that have worked on this task */
   sessionKeys?: string[];
+  /** Task IDs that must be done before this task can be picked up */
+  blockedBy?: string[];
   /** Linked git repo name (e.g. "my-project") */
   repo: string | null;
   /** Linked git branch */

@@ -17,8 +17,9 @@ import { execSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { listSessions, getSession, refreshIndex } from "./server/claude/session-index.mjs";
 import { parseTranscript } from "./server/claude/transcript-parser.mjs";
-import { startRun, cancelRun, getRunStatus } from "./server/claude/run-manager.mjs";
+import { startRun, cancelRun, getRunStatus } from "./server/claude/standalone-runner.mjs";
 import { createBroker } from "./server/claude/ws-broker.mjs";
+import { validateTransition } from "./lib/task-guards.mjs";
 import {
   createJob as createCronJob,
   getRuns as getCronRuns,
@@ -120,6 +121,7 @@ const workspaceFromConfig =
   OPENCLAW_CONFIG?.workspace ||
   (detectedAgent === "openclaw" ? resolve(homedir(), ".openclaw", "workspace") : process.cwd());
 const WORKSPACE = resolve(expandHome(workspaceFromConfig));
+const TASKS_PATH = join(WORKSPACE, "tasks.json");
 
 const tokenFromOpenClaw =
   OPENCLAW_CONFIG?.gateway?.auth?.token ||
@@ -312,6 +314,23 @@ function parseJsonBody(req, maxBytes = 5 * 1024 * 1024) {
     });
     req.on("error", rejectBody);
   });
+}
+
+function readTasksFile() {
+  try {
+    const raw = JSON.parse(readFileSync(TASKS_PATH, "utf8"));
+    if (raw && raw.version === 2 && Array.isArray(raw.tasks)) {
+      return raw;
+    }
+  } catch {
+    // Fall through to empty format.
+  }
+  return { version: 2, tasks: [] };
+}
+
+function writeTasksFile(file) {
+  mkdirSync(dirname(TASKS_PATH), { recursive: true });
+  writeFileSync(TASKS_PATH, JSON.stringify(file, null, 2), "utf8");
 }
 
 function readOverrides() {
@@ -652,6 +671,59 @@ const server = createServer(async (req, res) => {
       return jsonResponse(res, { repos });
     } catch (error) {
       return jsonResponse(res, { error: "scan failed", detail: error.message }, 500);
+    }
+  }
+
+  if (url.pathname.startsWith("/api/tasks/") && req.method === "PATCH") {
+    if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);
+    const taskId = decodeURIComponent(url.pathname.slice("/api/tasks/".length));
+
+    try {
+      const body = await parseJsonBody(req);
+      if (!body || typeof body !== "object") {
+        return jsonResponse(res, { error: "invalid patch payload" }, 400);
+      }
+
+      const file = readTasksFile();
+      const index = file.tasks.findIndex((task) => task.id === taskId);
+      if (index < 0) {
+        return jsonResponse(res, { error: "task not found" }, 404);
+      }
+
+      const current = file.tasks[index];
+      if (typeof body.status === "string") {
+        const transition = validateTransition(current, body.status);
+        if (!transition.valid) {
+          return jsonResponse(res, { error: transition.error || "invalid task status transition" }, 400);
+        }
+      }
+
+      const next = {
+        ...current,
+        ...(body || {}),
+        id: current.id,
+        createdAt: current.createdAt,
+        updatedAt: new Date().toISOString(),
+      };
+
+      if (typeof body.status === "string" && body.status !== current.status) {
+        next.history = [
+          ...(Array.isArray(current.history) ? current.history : []),
+          {
+            from: current.status,
+            to: body.status,
+            at: next.updatedAt,
+            by: "api",
+          },
+        ];
+        next.completedAt = body.status === "done" ? next.updatedAt : null;
+      }
+
+      file.tasks[index] = next;
+      writeTasksFile(file);
+      return jsonResponse(res, { task: next });
+    } catch (error) {
+      return jsonResponse(res, { error: "task update failed", detail: error.message }, 400);
     }
   }
 

@@ -725,6 +725,11 @@ export function TaskList({
                       ) : null}
                       {(linkedSessionKeys.length > 0 || (task.repo && task.branch)) ? (
                         <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
+                          {task.sessionKey && task.status === "active" ? (
+                            <span className="inline-flex min-h-8 items-center rounded-full bg-emerald-500/15 px-2.5 py-1 text-emerald-300">
+                              🤖 Agent working
+                            </span>
+                          ) : null}
                           {linkedSessionKeys.map((key) => (
                             <button
                               key={key}
