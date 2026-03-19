@@ -151,6 +151,11 @@ function TaskCard({
           </div>
           {blockedReason && <p className="mt-1 text-xs text-zinc-400">⚠️ {blockedReason}</p>}
           <div className="mt-2 flex flex-wrap gap-1.5">
+            {task.sessionKey && task.status === "active" && (
+              <span className="rounded-full bg-emerald-500/15 px-2 py-1 text-[11px] text-emerald-300">
+                🤖 Agent working
+              </span>
+            )}
             {childCount > 0 && (
               <span className="rounded-full bg-white/[0.04] px-2 py-1 text-[11px] text-zinc-400">
                 {childCount} child{childCount === 1 ? "" : "ren"}

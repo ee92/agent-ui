@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { getDescendantIds } from "../../lib/task-engine";
 import { useTaskStore } from "../../lib/stores/task-store-v2";
 import { TASK_STATUS_META, TASK_TRANSITIONS, type TaskNode, type TaskStatus } from "../../lib/task-types";
 
@@ -11,11 +12,13 @@ export function TaskEditModal({
 }) {
   const update = useTaskStore((s) => s.update);
   const remove = useTaskStore((s) => s.remove);
+  const tasks = useTaskStore((s) => s.tasks);
   const [title, setTitle] = useState(task.title);
   const [notes, setNotes] = useState(task.notes);
   const [repo, setRepo] = useState(task.repo ?? "");
   const [branch, setBranch] = useState(task.branch ?? "");
-  const [blockedBy, setBlockedBy] = useState((task.blockedBy || []).join(", "));
+  const [blockedBy, setBlockedBy] = useState<string[]>(task.blockedBy ?? []);
+  const [dependencyQuery, setDependencyQuery] = useState("");
   const [status, setStatus] = useState<TaskStatus>(task.status);
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -35,6 +38,31 @@ export function TaskEditModal({
     return () => window.removeEventListener("keydown", handler);
   }, [onClose]);
 
+  const tasksById = useMemo(() => {
+    return new Map(tasks.map((entry) => [entry.id, entry]));
+  }, [tasks]);
+
+  const invalidDependencyRoots = useMemo(() => {
+    return new Set([task.id, ...getDescendantIds(tasks, task.id)]);
+  }, [tasks, task.id]);
+
+  const dependencyOptions = useMemo(() => {
+    return tasks
+      .filter((entry) => !invalidDependencyRoots.has(entry.id))
+      .sort((a, b) => a.title.localeCompare(b.title));
+  }, [invalidDependencyRoots, tasks]);
+
+  const filteredDependencyOptions = useMemo(() => {
+    const query = dependencyQuery.trim().toLowerCase();
+    if (!query) {
+      return dependencyOptions.filter((entry) => !blockedBy.includes(entry.id)).slice(0, 8);
+    }
+    return dependencyOptions
+      .filter((entry) => !blockedBy.includes(entry.id))
+      .filter((entry) => entry.title.toLowerCase().includes(query) || entry.id.toLowerCase().includes(query))
+      .slice(0, 8);
+  }, [blockedBy, dependencyOptions, dependencyQuery]);
+
   const handleSave = useCallback(async () => {
     const trimmedTitle = title.trim();
     if (!trimmedTitle) return;
@@ -46,10 +74,7 @@ export function TaskEditModal({
         notes,
         repo: repo.trim() || null,
         branch: branch.trim() || null,
-        blockedBy: blockedBy
-          .split(",")
-          .map((value) => value.trim())
-          .filter(Boolean),
+        blockedBy,
         status,
       });
       onClose();
@@ -85,11 +110,7 @@ export function TaskEditModal({
     notes !== task.notes ||
     (repo.trim() || null) !== (task.repo ?? null) ||
     (branch.trim() || null) !== (task.branch ?? null) ||
-    blockedBy
-      .split(",")
-      .map((value) => value.trim())
-      .filter(Boolean)
-      .join(",") !== (task.blockedBy || []).join(",") ||
+    [...blockedBy].sort().join(",") !== [...(task.blockedBy ?? [])].sort().join(",") ||
     status !== task.status;
 
   return (
@@ -190,14 +211,62 @@ export function TaskEditModal({
           </div>
 
           <div>
-            <label className="mb-1.5 block text-xs font-medium text-zinc-400">Blocked By (task IDs)</label>
-            <input
-              type="text"
-              value={blockedBy}
-              onChange={(e) => setBlockedBy(e.target.value)}
-              className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-white placeholder-zinc-500 outline-none focus:border-blue-500/50"
-              placeholder="t_1234abcd, t_9876wxyz"
-            />
+            <label className="mb-1.5 block text-xs font-medium text-zinc-400">Blocked By</label>
+            <div className="rounded-xl border border-white/10 bg-black/30 p-2.5">
+              <div className="mb-2 flex flex-wrap gap-1.5">
+                {blockedBy.length === 0 ? (
+                  <span className="text-xs text-zinc-500">No dependencies</span>
+                ) : (
+                  blockedBy.map((dependencyId) => {
+                    const dependencyTask = tasksById.get(dependencyId);
+                    return (
+                      <span
+                        key={dependencyId}
+                        className="inline-flex items-center gap-1 rounded-full bg-white/[0.08] px-2 py-1 text-xs text-zinc-200"
+                      >
+                        <span className={`h-1.5 w-1.5 rounded-full ${TASK_STATUS_META[dependencyTask?.status ?? "todo"].dot}`} />
+                        <span className="max-w-[220px] truncate">
+                          {dependencyTask ? dependencyTask.title : dependencyId}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setBlockedBy((current) => current.filter((id) => id !== dependencyId))}
+                          className="rounded text-zinc-400 transition-colors hover:text-white"
+                          aria-label={`Remove dependency ${dependencyTask?.title ?? dependencyId}`}
+                        >
+                          ✕
+                        </button>
+                      </span>
+                    );
+                  })
+                )}
+              </div>
+              <input
+                type="text"
+                value={dependencyQuery}
+                onChange={(e) => setDependencyQuery(e.target.value)}
+                className="w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white placeholder-zinc-500 outline-none focus:border-blue-500/50"
+                placeholder="Search tasks to add dependency..."
+              />
+              {filteredDependencyOptions.length > 0 && (
+                <div className="mt-2 max-h-36 space-y-1 overflow-y-auto">
+                  {filteredDependencyOptions.map((option) => (
+                    <button
+                      key={option.id}
+                      type="button"
+                      onClick={() => {
+                        setBlockedBy((current) => [...current, option.id]);
+                        setDependencyQuery("");
+                      }}
+                      className="flex w-full items-center justify-between rounded-lg bg-white/[0.03] px-2.5 py-2 text-left text-xs text-zinc-300 transition-colors hover:bg-white/[0.08] hover:text-white"
+                    >
+                      <span className="truncate">{option.title}</span>
+                      <span className="ml-3 shrink-0 text-zinc-500">{option.id}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Meta info */}
@@ -208,6 +277,34 @@ export function TaskEditModal({
             {task.sessionKeys && task.sessionKeys.length > 0 && (
               <span>Sessions: {task.sessionKeys.length}</span>
             )}
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-zinc-400">Status History</label>
+            <div className="max-h-44 space-y-2 overflow-y-auto rounded-xl border border-white/10 bg-black/30 p-2.5">
+              {(task.history ?? []).length === 0 ? (
+                <p className="text-xs text-zinc-500">No transition history yet.</p>
+              ) : (
+                [...(task.history ?? [])].slice().reverse().map((entry, index) => (
+                  <div
+                    key={`${entry.at}-${entry.from}-${entry.to}-${index}`}
+                    className="rounded-lg bg-white/[0.03] px-2.5 py-2 text-xs text-zinc-300"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span className={`h-2 w-2 rounded-full ${TASK_STATUS_META[entry.from].dot}`} />
+                      <span>{TASK_STATUS_META[entry.from].label}</span>
+                      <span className="text-zinc-500">→</span>
+                      <span className={`h-2 w-2 rounded-full ${TASK_STATUS_META[entry.to].dot}`} />
+                      <span>{TASK_STATUS_META[entry.to].label}</span>
+                    </div>
+                    <div className="mt-1 text-[11px] text-zinc-500">
+                      {new Date(entry.at).toLocaleString()}
+                      {entry.by ? ` • by ${entry.by}` : ""}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         </div>
 
