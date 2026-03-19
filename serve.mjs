@@ -604,7 +604,6 @@ const server = createServer(async (req, res) => {
   if (url.pathname === "/api/repos") {
     if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);
     try {
-      const home = process.env.HOME;
       const run = (cmd, cwd) => {
         try {
           return execSync(cmd, { cwd, encoding: "utf8", timeout: 10000 }).trim();
@@ -613,7 +612,16 @@ const server = createServer(async (req, res) => {
           return (typeof e.stdout === "string" ? e.stdout.trim() : "");
         }
       };
-      const gitDirs = run(`find ${home} -maxdepth 4 -name ".git" -type d 2>/dev/null || true`);
+      // Use configured repo roots, fall back to workspace, never blindly scan $HOME
+      const repoRoots = (MC_CONFIG?.repos?.roots || [])
+        .map((r) => expandHome(r))
+        .filter((r) => r && fileExists(r));
+      if (repoRoots.length === 0) repoRoots.push(WORKSPACE);
+      const maxDepth = MC_CONFIG?.repos?.depth || 4;
+      const gitDirs = repoRoots
+        .map((root) => run(`find ${root} -maxdepth ${maxDepth} -name ".git" -type d 2>/dev/null || true`))
+        .filter(Boolean)
+        .join("\n");
       const repos = gitDirs
         ? gitDirs
             .split("\n")
