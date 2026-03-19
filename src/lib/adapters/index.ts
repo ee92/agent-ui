@@ -16,20 +16,14 @@ export type AdapterConfig = {
 
 const ADAPTER_CONFIG_KEY = "mission-control-adapter";
 
-function getDefaultWorkspace(): string {
-  if (typeof window !== "undefined" && window.location?.pathname) {
-    return ".";
-  }
-  return ".";
-}
-
 function loadAdapterConfig(): AdapterConfig {
   const raw = safeJsonParse<Partial<AdapterConfig>>(localStorage.getItem(ADAPTER_CONFIG_KEY), {});
   return {
-    type: raw.type === "claude-code" || raw.type === "local" || raw.type === "openclaw" ? raw.type : "openclaw",
+    // Default to claude-code (serve.mjs). User can switch to openclaw if they have a gateway.
+    type: raw.type === "claude-code" || raw.type === "local" || raw.type === "openclaw" ? raw.type : "claude-code",
     gatewayUrl: raw.gatewayUrl?.trim() || DEFAULT_GATEWAY_URL,
     gatewayToken: raw.gatewayToken?.trim() || DEFAULT_GATEWAY_TOKEN,
-    workspace: raw.workspace?.trim() || getDefaultWorkspace(),
+    workspace: raw.workspace?.trim() || ".",
   };
 }
 
@@ -46,7 +40,7 @@ export function createAdapter(config: AdapterConfig): BackendAdapter {
     case "local":
       return new LocalAdapter(config.workspace);
     default:
-      return new OpenClawAdapter(config.gatewayUrl, config.gatewayToken);
+      return new ClaudeCodeAdapter(config.workspace);
   }
 }
 

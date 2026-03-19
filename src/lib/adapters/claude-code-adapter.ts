@@ -84,10 +84,7 @@ export class ClaudeCodeAdapter implements BackendAdapter {
       throw new Error("Failed to load API config");
     }
     const data = (await res.json()) as { token?: string };
-    if (!data.token) {
-      throw new Error("Missing auth token");
-    }
-    this.token = data.token;
+    this.token = data.token || "";
     this.connected = true;
     this.ensureWs();
   }
@@ -122,12 +119,14 @@ export class ClaudeCodeAdapter implements BackendAdapter {
   }
 
   private async request<T>(input: string, init: RequestInit = {}): Promise<T> {
-    if (!this.token) {
+    if (!this.connected) {
       await this.connect();
     }
 
     const headers = new Headers(init.headers || {});
-    headers.set("Authorization", `Bearer ${this.token}`);
+    if (this.token) {
+      headers.set("Authorization", `Bearer ${this.token}`);
+    }
     if (init.body && !headers.has("Content-Type")) {
       headers.set("Content-Type", "application/json");
     }
