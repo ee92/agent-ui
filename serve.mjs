@@ -13,7 +13,9 @@ import {
 import { join, extname, relative, resolve, dirname } from "node:path";
 import { homedir } from "node:os";
 import { createConnection } from "node:net";
-import { execSync } from "node:child_process";
+import { execSync, exec as execAsyncCb } from "node:child_process";
+import { promisify } from "node:util";
+const execP = promisify(execAsyncCb);
 import { randomUUID } from "node:crypto";
 import { listSessions, getSession, refreshIndex } from "./server/claude/session-index.mjs";
 import { parseTranscript } from "./server/claude/transcript-parser.mjs";
@@ -348,6 +350,121 @@ function decodeSessionKeyFromPath(pathname, marker) {
   return decodeURIComponent(firstSegment);
 }
 
+/* ─── Repo scanner with cache ─── */
+const repoCache = (() => {
+
+  const CACHE_TTL_MS = 30_000; // 30 seconds
+  let cached = null;   // { repos, ts }
+  let pending = null;  // deduplication: in-flight scan promise
+
+  function findRepoDirs() {
+    const roots = (MC_CONFIG?.repos?.roots || [])
+      .map((r) => expandHome(r))
+      .filter((r) => r && fileExists(r));
+    if (roots.length === 0) roots.push(WORKSPACE);
+    const maxDepth = MC_CONFIG?.repos?.depth || 4;
+    const raw = roots
+      .map((root) => {
+        try { return execSync(`find ${root} -maxdepth ${maxDepth} -name ".git" -type d 2>/dev/null`, { encoding: "utf8", timeout: 5000 }).trim(); }
+        catch (e) { return typeof e.stdout === "string" ? e.stdout.trim() : ""; }
+      })
+      .filter(Boolean)
+      .join("\n");
+    return raw ? raw.split("\n").filter(Boolean).map((g) => g.replace(/\/\.git$/, "")) : [];
+  }
+
+  // Parse git status --porcelain=v2 --branch for structured data
+  // Header lines: # branch.oid <sha> / # branch.head <name> / # branch.upstream <name> / # branch.ab +N -M
+  // Changed entries: 1 .M ... / 2 R. ... / u UU ... / ? untracked
+  function parseStatusV2(output) {
+    let head = "", upstream = "", ahead = 0, behind = 0, dirty = 0;
+    for (const line of output.split("\n")) {
+      if (line.startsWith("# branch.head ")) head = line.slice(14);
+      else if (line.startsWith("# branch.upstream ")) upstream = line.slice(18);
+      else if (line.startsWith("# branch.ab ")) {
+        const m = line.match(/\+(\d+)\s+-(\d+)/);
+        if (m) { ahead = parseInt(m[1], 10); behind = parseInt(m[2], 10); }
+      }
+      else if (line.length > 0 && !line.startsWith("#")) dirty++;
+    }
+    return { head, upstream, ahead, behind, dirty };
+  }
+
+  async function scanRepo(dir) {
+    try {
+      // Two commands: status+branch in one, and supplementary info in another
+      // git status --porcelain=v2 --branch gives: branch, upstream, ahead/behind, dirty files
+      const [statusResult, extraResult] = await Promise.all([
+        execP("git status --porcelain=v2 --branch 2>/dev/null", { cwd: dir, timeout: 5000 }),
+        execP(
+          'git log -1 --format="%s%n%ct" 2>/dev/null; echo "---"; git branch --format="%(refname:short)" 2>/dev/null; echo "---"; git stash list 2>/dev/null | wc -l',
+          { cwd: dir, timeout: 5000 }
+        ),
+      ]);
+
+      const { head, upstream, ahead, behind, dirty } = parseStatusV2(statusResult.stdout);
+
+      // Parse extra: last commit msg, timestamp, branches, stash count
+      const sections = extraResult.stdout.split("---\n");
+      const commitLines = (sections[0] || "").trim().split("\n");
+      const lastMsg = commitLines[0] || "";
+      const lastTs = commitLines[1] || "";
+      const branchNames = (sections[1] || "").trim().split("\n").filter(Boolean);
+      const stashes = parseInt((sections[2] || "").trim(), 10) || 0;
+
+      const lastCommitAge = lastTs ? Math.round((Date.now() / 1000 - parseInt(lastTs, 10)) / 3600) : null;
+      const name = dir.split("/").pop() || dir;
+
+      const problems = [];
+      if (dirty > 0) problems.push(`${dirty} dirty files`);
+      if (behind > 0) problems.push(`${behind} behind remote`);
+      if (ahead > 0) problems.push(`${ahead} unpushed`);
+      if (stashes > 0) problems.push(`${stashes} stashes`);
+      if (!upstream) problems.push("no upstream");
+
+      return {
+        name, dir, branch: head || "HEAD", dirtyFiles: dirty, ahead, behind,
+        lastCommitMsg: lastMsg, lastCommitAgeHours: lastCommitAge,
+        branches: branchNames.length, branchNames: branchNames.slice(0, 20),
+        stashes, diskUsage: "—", problems, hasUpstream: !!upstream,
+      };
+    } catch {
+      const name = dir.split("/").pop() || dir;
+      return {
+        name, dir, branch: "?", dirtyFiles: 0, ahead: 0, behind: 0,
+        lastCommitMsg: "", lastCommitAgeHours: null, branches: 0, branchNames: [],
+        stashes: 0, diskUsage: "?", problems: ["scan error"], hasUpstream: false,
+      };
+    }
+  }
+
+  async function scan() {
+    const dirs = findRepoDirs();
+    return Promise.all(dirs.map(scanRepo));
+  }
+
+  return {
+    async get(force = false) {
+      if (!force && cached && Date.now() - cached.ts < CACHE_TTL_MS) {
+        return cached.repos;
+      }
+      // Deduplicate concurrent requests — only one scan runs at a time
+      if (!pending) {
+        pending = scan().then((repos) => {
+          cached = { repos, ts: Date.now() };
+          pending = null;
+          return repos;
+        }).catch((err) => {
+          pending = null;
+          throw err;
+        });
+      }
+      return pending;
+    },
+    invalidate() { cached = null; },
+  };
+})();
+
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
 
@@ -588,80 +705,9 @@ const server = createServer(async (req, res) => {
 
   if (url.pathname === "/api/repos") {
     if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);
+    const forceRefresh = url.searchParams.has("refresh");
     try {
-      const run = (cmd, cwd) => {
-        try {
-          return execSync(cmd, { cwd, encoding: "utf8", timeout: 10000 }).trim();
-        } catch (e) {
-          // find exits non-zero on permission errors (macOS) but still has valid stdout
-          return (typeof e.stdout === "string" ? e.stdout.trim() : "");
-        }
-      };
-      // Use configured repo roots, fall back to workspace, never blindly scan $HOME
-      const repoRoots = (MC_CONFIG?.repos?.roots || [])
-        .map((r) => expandHome(r))
-        .filter((r) => r && fileExists(r));
-      if (repoRoots.length === 0) repoRoots.push(WORKSPACE);
-      const maxDepth = MC_CONFIG?.repos?.depth || 4;
-      const gitDirs = repoRoots
-        .map((root) => run(`find ${root} -maxdepth ${maxDepth} -name ".git" -type d 2>/dev/null || true`))
-        .filter(Boolean)
-        .join("\n");
-      const repos = gitDirs
-        ? gitDirs
-            .split("\n")
-            .filter(Boolean)
-            .map((g) => {
-              const dir = g.replace(/\/\.git$/, "");
-              const name = dir.split("/").pop() || dir;
-              const branch = run("git branch --show-current", dir) || run("git rev-parse --short HEAD", dir);
-              const status = run("git status --porcelain", dir);
-              const dirtyFiles = status ? status.split("\n").length : 0;
-              const tracking = run("git rev-parse --abbrev-ref @{upstream} 2>/dev/null", dir);
-              let ahead = 0;
-              let behind = 0;
-              if (tracking) {
-                const ab = run("git rev-list --left-right --count HEAD...@{upstream} 2>/dev/null", dir);
-                if (ab) {
-                  const [a, b] = ab.split(/\s+/).map(Number);
-                  ahead = a || 0;
-                  behind = b || 0;
-                }
-              }
-              const lastMsg = run("git log -1 --format=%s 2>/dev/null", dir);
-              const lastTs = run("git log -1 --format=%ct 2>/dev/null", dir);
-              const lastCommitAge = lastTs ? Math.round((Date.now() / 1000 - parseInt(lastTs, 10)) / 3600) : null;
-              const branches = run('git branch --format="%(refname:short)"', dir)
-                .split("\n")
-                .filter(Boolean);
-              const stashList = run("git stash list", dir);
-              const stashes = stashList ? stashList.split("\n").length : 0;
-              const duRaw = run(`du -sh ${dir} 2>/dev/null`, dir);
-              const diskUsage = duRaw ? duRaw.split("\t")[0] : "?";
-              const problems = [];
-              if (dirtyFiles > 0) problems.push(`${dirtyFiles} dirty files`);
-              if (behind > 0) problems.push(`${behind} behind remote`);
-              if (ahead > 0) problems.push(`${ahead} unpushed`);
-              if (stashes > 0) problems.push(`${stashes} stashes`);
-              if (!tracking) problems.push("no upstream");
-              return {
-                name,
-                dir,
-                branch,
-                dirtyFiles,
-                ahead,
-                behind,
-                lastCommitMsg: lastMsg,
-                lastCommitAgeHours: lastCommitAge,
-                branches: branches.length,
-                branchNames: branches.slice(0, 20),
-                stashes,
-                diskUsage,
-                problems,
-                hasUpstream: !!tracking,
-              };
-            })
-        : [];
+      const repos = await repoCache.get(forceRefresh);
       return jsonResponse(res, { repos });
     } catch (error) {
       return jsonResponse(res, { error: "scan failed", detail: error.message }, 500);
