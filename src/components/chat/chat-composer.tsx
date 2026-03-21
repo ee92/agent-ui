@@ -138,7 +138,7 @@ export function ChatComposer({
   };
 
   return (
-    <div className="bg-white/[0.03] p-2.5 shadow-[0_-12px_80px_rgba(0,0,0,0.28)] xl:rounded-[2rem] xl:border xl:border-white/8 xl:p-3">
+    <div className="bg-white/[0.03] p-2.5 xl:rounded-lg xl:border xl:border-white/4 xl:p-3">
       {attachments.length > 0 ? (
         <div className="mb-3 flex flex-wrap gap-2">
           {attachments.map((attachment) => (
@@ -146,7 +146,7 @@ export function ChatComposer({
               key={attachment.id}
               type="button"
               onClick={() => onRemoveAttachment(attachment.id)}
-              className="min-h-11 rounded-2xl border border-white/8 bg-black/20 px-3 py-2 text-sm text-zinc-200"
+              className="min-h-9 rounded-lg border border-white/4 bg-surface-1 px-3 py-2 text-sm text-zinc-200"
             >
               {attachment.name} ×
             </button>
@@ -154,8 +154,8 @@ export function ChatComposer({
         </div>
       ) : null}
       {suggestions.length > 0 ? (
-        <div className="mb-3 rounded-2xl border border-white/8 bg-black/40 p-2">
-          <div className="mb-2 px-2 text-[11px] uppercase tracking-[0.2em] text-zinc-500">
+        <div className="mb-3 rounded-lg border border-white/4 bg-surface-1 p-2">
+          <div className="mb-2 px-2 text-[10px] uppercase tracking-wide text-zinc-500">
             {trigger === "/" ? "Commands" : trigger === "#" ? "Task references" : "Agent mentions"}
           </div>
           <div className="space-y-0.5">
@@ -165,7 +165,7 @@ export function ChatComposer({
                 type="button"
                 onClick={() => applySuggestion(suggestion)}
                 onMouseEnter={() => setSelectedIndex(si)}
-                className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm ${si === selectedIndex ? "bg-white/[0.08] text-white" : "text-zinc-200 hover:bg-white/[0.04]"}`}
+                className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm ${si === selectedIndex ? "bg-white/[0.08] text-white" : "text-zinc-200 hover:bg-white/[0.04]"}`}
               >
                 <span className="font-medium">{suggestion.label}</span>
                 <span className="text-xs text-zinc-500">{suggestion.meta}</span>
@@ -182,7 +182,7 @@ export function ChatComposer({
             onAttach(event.dataTransfer.files);
           }
         }}
-        className="rounded-[1.5rem] bg-black/25 p-2.5 xl:border xl:border-white/8 xl:p-3"
+        className="rounded-lg bg-black/25 p-2.5 xl:border xl:border-white/4 xl:p-3"
       >
         <div className="flex items-end gap-2">
           <textarea
@@ -192,7 +192,7 @@ export function ChatComposer({
             onChange={handleChange}
             onKeyDown={handleKeyDown}
             placeholder="Message agent — type / for commands, # for tasks, @ for agents"
-            className="max-h-[220px] min-h-11 flex-1 resize-none bg-transparent py-2 text-base leading-6 text-white outline-none placeholder:text-zinc-600 xl:min-h-[56px]"
+            className="max-h-[220px] min-h-9 flex-1 resize-none bg-transparent py-2 text-base leading-6 text-white outline-none placeholder:text-zinc-600 xl:min-h-[56px]"
           />
           <button
             type="button"
@@ -201,7 +201,7 @@ export function ChatComposer({
                 onSend();
               }
             }}
-            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-blue-500 text-white hover:bg-blue-400 xl:h-auto xl:w-auto xl:gap-2 xl:rounded-2xl xl:px-4 xl:py-2.5 xl:text-sm xl:font-medium"
+            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-blue-500 text-white hover:bg-blue-400 xl:h-auto xl:w-auto xl:gap-2 xl:rounded-lg xl:px-4 xl:py-2.5 xl:text-sm xl:font-medium"
           >
             <SendIcon />
             <span className="hidden xl:inline">Send</span>
@@ -212,7 +212,7 @@ export function ChatComposer({
             <button
               type="button"
               onClick={() => fileRef.current?.click()}
-              className="min-h-11 rounded-full border border-white/8 px-3 py-2 text-sm text-zinc-300 hover:bg-white/[0.04]"
+              className="min-h-9 rounded-full border border-white/4 px-3 py-2 text-sm text-zinc-300 hover:bg-white/[0.04]"
             >
               Attach
             </button>

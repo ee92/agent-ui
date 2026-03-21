@@ -22,7 +22,7 @@ const TONE_BG: Record<MetricTone, string> = {
   urgent: "bg-red-500/10 border-red-500/20",
   warn: "bg-amber-500/10 border-amber-500/20",
   ok: "bg-emerald-500/10 border-emerald-500/20",
-  neutral: "bg-white/[0.03] border-white/5",
+  neutral: "bg-white/[0.03] border-white/4",
 };
 
 function Metric({
@@ -35,7 +35,7 @@ function Metric({
   tone: MetricTone;
 }) {
   return (
-    <div className={`flex-1 min-w-[120px] rounded-xl border px-3 py-2.5 ${TONE_BG[tone]}`}>
+    <div className={`flex-1 min-w-[120px] rounded-lg border px-3 py-2.5 ${TONE_BG[tone]}`}>
       <div className={`text-lg font-semibold leading-tight ${TONE_COLORS[tone]}`}>
         {value}
       </div>

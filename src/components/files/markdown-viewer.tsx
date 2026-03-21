@@ -223,9 +223,9 @@ function renderBlock(block: MarkdownBlock, index: number) {
 
   if (block.type === "code") {
     return (
-      <div key={`code-${index}`} className="overflow-hidden rounded-2xl border border-white/8 bg-zinc-800/90">
+      <div key={`code-${index}`} className="overflow-hidden rounded-lg border border-white/4 bg-zinc-800/90">
         {block.language ? (
-          <div className="border-b border-white/8 px-4 py-2 text-[11px] uppercase tracking-[0.18em] text-zinc-400">
+          <div className="border-b border-white/4 px-4 py-2 text-[10px] uppercase tracking-[0.18em] text-zinc-400">
             {block.language}
           </div>
         ) : null}
@@ -267,7 +267,7 @@ function renderBlock(block: MarkdownBlock, index: number) {
   }
 
   if (block.type === "hr") {
-    return <hr key={`hr-${index}`} className="border-white/10" />;
+    return <hr key={`hr-${index}`} className="border-white/4" />;
   }
 
   return (

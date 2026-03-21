@@ -1,6 +1,6 @@
 export function LoadingSkeleton({
   rows = 4,
-  className = "h-14 rounded-3xl"
+  className = "h-14 rounded-lg"
 }: {
   rows?: number;
   className?: string;
@@ -10,7 +10,7 @@ export function LoadingSkeleton({
       {Array.from({ length: rows }).map((_, index) => (
         <div
           key={index}
-          className={`animate-pulse border border-white/8 bg-white/[0.03] ${className}`}
+          className={`animate-pulse border border-white/4 bg-white/[0.03] ${className}`}
         />
       ))}
     </div>

@@ -45,7 +45,7 @@ function EntityRefCard({ ref: entity, onClose }: { ref: EntityRef; onClose: () =
       type="button"
       onClick={handleClick}
       disabled={!isClickable}
-      className={`flex w-full items-center gap-2.5 rounded-lg border border-white/6 bg-zinc-950/60 px-3 py-2.5 text-left transition ${isClickable ? "cursor-pointer hover:border-white/12 hover:bg-zinc-900/80" : "cursor-default"}`}
+      className={`flex w-full items-center gap-2.5 rounded-lg border border-white/6 bg-zinc-950/60 px-3 py-2.5 text-left transition ${isClickable ? "cursor-pointer hover:border-white/4 hover:bg-surface-1" : "cursor-default"}`}
     >
       <span className="shrink-0 text-sm">{KIND_ICONS[entity.kind]}</span>
       <div className="min-w-0 flex-1">
@@ -94,13 +94,13 @@ export function EntityContextPanel({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-stretch justify-end bg-black/40" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-stretch justify-end bg-surface-1" onClick={onClose}>
       <div
-        className="flex w-full max-w-md flex-col border-l border-white/8 bg-zinc-900 shadow-2xl"
+        className="flex w-full max-w-md flex-col border-l border-white/4 bg-surface-1 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-start justify-between border-b border-white/5 px-5 py-4">
+        <div className="flex items-start justify-between border-b border-white/4 px-5 py-4">
           <div className="min-w-0 flex-1">
             <h2 className="text-base font-semibold text-white">{title}</h2>
             {subtitle && <p className="mt-0.5 truncate text-xs text-zinc-500">{subtitle}</p>}
@@ -110,7 +110,7 @@ export function EntityContextPanel({
 
         {/* Actions */}
         {actions && (
-          <div className="flex flex-wrap gap-2 border-b border-white/5 px-5 py-3">
+          <div className="flex flex-wrap gap-2 border-b border-white/4 px-5 py-3">
             {actions}
           </div>
         )}
@@ -125,7 +125,7 @@ export function EntityContextPanel({
             <div className="space-y-5">
               {Array.from(grouped.entries()).map(([kind, items]) => (
                 <div key={kind}>
-                  <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+                  <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
                     {KIND_LABELS[kind]} ({items.length})
                   </h3>
                   <div className="space-y-1.5">

@@ -51,7 +51,7 @@ function FilterChip({
     <button
       type="button"
       onClick={onClick}
-      className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium transition ${
+      className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-medium transition ${
         active
           ? "bg-blue-500/20 text-blue-300 ring-1 ring-blue-500/30"
           : "bg-white/[0.04] text-zinc-400 hover:bg-white/[0.08] hover:text-zinc-300"
@@ -70,7 +70,7 @@ function KindPill({ kind }: { kind: string }) {
   if (!label) return null;
   const colorClass = KIND_PILL_COLORS[kind] || "bg-white/[0.06] text-zinc-400";
   return (
-    <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] uppercase tracking-wider font-medium ${colorClass}`}>
+    <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] uppercase tracking-wider font-medium ${colorClass}`}>
       {label}
     </span>
   );
@@ -249,31 +249,14 @@ export function ConversationSidebar({
   ];
 
   return (
-    <aside className="flex h-full min-w-0 flex-col overflow-hidden rounded-[1.75rem] bg-white/[0.03] p-3 backdrop-blur-xl xl:rounded-[2rem] xl:border xl:border-white/8 xl:p-4">
-      <div className="mb-4 hidden items-center justify-between gap-3 xl:flex">
-        <div>
-          <p className="text-xs uppercase tracking-[0.28em] text-zinc-500">Mission Control</p>
-          <h1 className="text-lg font-semibold text-white">Workspace</h1>
-        </div>
-        <div className="flex items-center gap-2">
-          <select
-            aria-label="Adapter type"
-            value={adapterType}
-            onChange={(event) => {
-              void setAdapterType(event.target.value as "openclaw" | "claude-code" | "local");
-            }}
-            className="h-9 rounded-xl border border-white/10 bg-black/30 px-2 text-xs text-zinc-300 outline-none hover:border-white/20"
-          >
-            <option value="openclaw">OpenClaw</option>
-            <option value="claude-code">Claude Code</option>
-          </select>
-          <IconButton label="Browse files" onClick={onToggleFilesMode}>
-            <FolderIcon />
-          </IconButton>
-          <IconButton label="New chat" onClick={onNewChat}>
-            <PlusIcon />
-          </IconButton>
-        </div>
+    <aside className="flex h-full min-w-0 flex-col overflow-hidden rounded-lg bg-white/[0.03] p-3 xl:rounded-lg xl:border xl:border-white/4 xl:p-4">
+      <div className="mb-3 hidden items-center justify-end gap-2 xl:flex">
+        <IconButton label="Browse files" onClick={onToggleFilesMode}>
+          <FolderIcon />
+        </IconButton>
+        <IconButton label="New chat" onClick={onNewChat}>
+          <PlusIcon />
+        </IconButton>
       </div>
       <>
         {/* Search */}
@@ -283,7 +266,7 @@ export function ConversationSidebar({
             value={search}
             onChange={(event) => onSearch(event.target.value)}
             placeholder="Search conversations"
-            className="h-10 w-full rounded-2xl bg-black/20 px-3 text-sm text-white outline-none placeholder:text-zinc-600 focus:ring-1 focus:ring-blue-500/40"
+            className="h-10 w-full rounded-lg bg-surface-1 px-3 text-sm text-white outline-none placeholder:text-zinc-600 focus:ring-1 focus:ring-blue-500/40"
           />
         </div>
 
@@ -326,7 +309,7 @@ export function ConversationSidebar({
             ? Object.entries(grouped).map(([label, items]) =>
                 items.length > 0 ? (
                   <section key={label} className="space-y-2">
-                    <p className="px-2 text-[11px] uppercase tracking-[0.26em] text-zinc-500">{label}</p>
+                    <p className="px-2 text-[10px] uppercase tracking-wide text-zinc-500">{label}</p>
                     <div className="space-y-1">
                       {items.map((conversation) => {
                         const isMenuOpen = menuKey === conversation.key;
@@ -337,7 +320,7 @@ export function ConversationSidebar({
                         return (
                           <div
                             key={conversation.key}
-                            className={`group/conv relative w-full min-w-0 overflow-visible rounded-2xl transition ${
+                            className={`group/conv relative w-full min-w-0 overflow-visible rounded-lg transition ${
                               isSelected
                                 ? "bg-blue-500/12 text-white"
                                 : "text-zinc-300 hover:bg-white/[0.04]"
@@ -381,7 +364,7 @@ export function ConversationSidebar({
                                             setEditingKey(null);
                                           }
                                         }}
-                                        className="h-8 w-full rounded-xl bg-black/20 px-2 text-sm font-medium text-white outline-none"
+                                        className="h-8 w-full rounded-lg bg-surface-1 px-2 text-sm font-medium text-white outline-none"
                                       />
                                     ) : (
                                       <span className="truncate text-sm font-semibold text-white sm:text-base">
@@ -394,7 +377,7 @@ export function ConversationSidebar({
                                   </p>
                                 </div>
                                 {/* Timestamp — hidden when menu trigger visible on hover (desktop) */}
-                                <span className="shrink-0 pt-0.5 text-[11px] font-medium text-zinc-500 xl:group-hover/conv:hidden">
+                                <span className="shrink-0 pt-0.5 text-[10px] font-medium text-zinc-500 xl:group-hover/conv:hidden">
                                   {formatRelative(conversation.updatedAt)}
                                 </span>
                                 {/* ⋯ menu trigger — only on desktop hover */}
@@ -418,18 +401,18 @@ export function ConversationSidebar({
                               </div>
                               <div className="mt-2 flex items-center justify-between gap-2">
                                 <div className="flex items-center gap-1.5 truncate">
-                                  <span className="truncate text-[11px] text-zinc-600">{formatAbsolute(conversation.updatedAt)}</span>
+                                  <span className="truncate text-[10px] text-zinc-600">{formatAbsolute(conversation.updatedAt)}</span>
                                   {/* Kind pill */}
                                   <KindPill kind={kind} />
                                   {/* Channel pill */}
                                   {conversation.channel ? (
-                                    <span className="shrink-0 rounded-full bg-white/[0.04] px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-zinc-500">
+                                    <span className="shrink-0 rounded-full bg-white/[0.04] px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-zinc-500">
                                       {CHANNEL_LABELS[conversation.channel] || conversation.channel}
                                     </span>
                                   ) : null}
                                 </div>
                                 {/* Mobile hint */}
-                                <span className="text-[11px] text-zinc-600 xl:hidden">
+                                <span className="text-[10px] text-zinc-600 xl:hidden">
                                   Hold for options
                                 </span>
                               </div>
@@ -449,7 +432,7 @@ export function ConversationSidebar({
                                       }}
                                     />
                                     <div
-                                      className="fixed z-[9999] min-w-[140px] rounded-xl border border-white/10 bg-zinc-900 py-1 shadow-xl shadow-black/40"
+                                      className="fixed z-[9999] min-w-[140px] rounded-lg border border-white/4 bg-surface-1 py-1 shadow-xl shadow-black/40"
                                       style={{ top: menuPos.top, left: menuPos.left }}
                                     >
                                       <button
@@ -491,7 +474,7 @@ export function ConversationSidebar({
               )
             : null}
           {ready && filtered.length === 0 ? (
-            <div className="rounded-2xl bg-black/10 px-3 py-4 text-sm text-zinc-500">
+            <div className="rounded-lg bg-black/10 px-3 py-4 text-sm text-zinc-500">
               {conversations.length === 0
                 ? "No conversations yet. Start a new chat to create your first session."
                 : "No conversations match the current filter."}
@@ -499,19 +482,19 @@ export function ConversationSidebar({
           ) : null}
           <section className="space-y-2 pt-2">
             <div className="flex items-center justify-between px-2">
-              <p className="text-[11px] uppercase tracking-[0.26em] text-zinc-500">Agents</p>
-              <span className="rounded-full bg-white/[0.04] px-2 py-1 text-[11px] text-zinc-400">
+              <p className="text-[10px] uppercase tracking-wide text-zinc-500">Agents</p>
+              <span className="rounded-full bg-white/[0.04] px-2 py-1 text-[10px] text-zinc-400">
                 {agents.filter((agent) => agent.status === "running" || agent.status === "waiting").length} active
               </span>
             </div>
             <div className="space-y-2">
               {!capabilities.agents ? (
-                <div className="rounded-2xl border border-dashed border-white/8 px-3 py-4 text-sm text-zinc-500">
+                <div className="rounded-lg border border-dashed border-white/4 px-3 py-4 text-sm text-zinc-500">
                   Agent monitoring requires OpenClaw gateway.
                 </div>
               ) : null}
               {capabilities.agents && agents.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-white/8 px-3 py-4 text-sm text-zinc-500">
+                <div className="rounded-lg border border-dashed border-white/4 px-3 py-4 text-sm text-zinc-500">
                   Active runs will appear here.
                 </div>
               ) : null}
@@ -520,16 +503,16 @@ export function ConversationSidebar({
                   key={agent.id}
                   type="button"
                   onClick={() => agent.sessionKey && onSelect(agent.sessionKey)}
-                  className="w-full min-w-0 rounded-2xl border border-white/8 bg-black/20 px-3 py-3 text-left text-base text-zinc-200 hover:border-white/12 sm:text-sm"
+                  className="w-full min-w-0 rounded-lg border border-white/4 bg-surface-1 px-3 py-3 text-left text-base text-zinc-200 hover:border-white/4 sm:text-sm"
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span className="truncate font-medium">{agent.label}</span>
-                    <span className="rounded-full bg-white/[0.04] px-2 py-1 text-[10px] uppercase tracking-[0.2em] text-zinc-400">
+                    <span className="rounded-full bg-white/[0.04] px-2 py-1 text-[10px] uppercase tracking-wide text-zinc-400">
                       {agent.status}
                     </span>
                   </div>
                   <p className="mt-1 line-clamp-2 text-sm text-zinc-500">{agent.summary || agent.transcript.at(-1)}</p>
-                  <p className="mt-2 text-[11px] text-zinc-600">Updated {formatRelative(agent.updatedAt)} ago</p>
+                  <p className="mt-2 text-[10px] text-zinc-600">Updated {formatRelative(agent.updatedAt)} ago</p>
                 </button>
               ))}
             </div>

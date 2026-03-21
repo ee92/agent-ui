@@ -82,7 +82,7 @@ function AttentionCard({
 
   return (
     <article
-      className={`rounded-xl border ${styles.ring} ${styles.glow} bg-black/20 p-3 transition-all`}
+      className={`rounded-lg border ${styles.ring} ${styles.glow} bg-surface-1 p-3 transition-all`}
       style={{ animation: styles.animation ?? undefined }}
     >
       <div className="flex items-start gap-3">
@@ -130,7 +130,7 @@ function AttentionCard({
               onChange={(e) => setReplyText(e.target.value)}
               placeholder="Quick reply..."
               disabled={sending}
-              className="min-h-8 flex-1 rounded-lg border border-white/8 bg-black/30 px-2.5 text-xs text-white placeholder-zinc-600 outline-none transition-colors focus:border-blue-500/40 disabled:opacity-50"
+              className="min-h-8 flex-1 rounded-lg border border-white/4 bg-surface-1 px-2.5 text-xs text-white placeholder-zinc-600 outline-none transition-colors focus:border-blue-500/40 disabled:opacity-50"
             />
             <button
               type="submit"
@@ -157,7 +157,7 @@ export function AttentionQueue({
 }) {
   if (conversations.length === 0) {
     return (
-      <section className="rounded-xl border border-emerald-500/15 bg-emerald-500/[0.03] p-4">
+      <section className="rounded-lg border border-emerald-500/15 bg-emerald-500/[0.03] p-4">
         <div className="flex items-center gap-3">
           <span className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500/10 text-lg">
             ✓
@@ -184,7 +184,7 @@ export function AttentionQueue({
       <div className="mb-2 flex items-center justify-between px-1">
         <div className="flex items-center gap-2">
           <h2 className="text-sm font-semibold text-white">Needs your attention</h2>
-          <span className="rounded-full bg-red-500/20 px-2 py-0.5 text-[11px] font-medium text-red-300">
+          <span className="rounded-full bg-red-500/20 px-2 py-0.5 text-[10px] font-medium text-red-300">
             {conversations.length}
           </span>
         </div>

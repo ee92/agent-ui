@@ -22,7 +22,7 @@ function ColumnTab({ status, count, active, onClick }: { status: TaskStatus; cou
       <span className={`h-2 w-2 rounded-full ${meta.dot}`} />
       {meta.label}
       {count > 0 && (
-        <span className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[11px] font-semibold ${
+        <span className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[10px] font-semibold ${
           active ? "bg-white/10 text-zinc-200" : "bg-white/[0.04] text-zinc-500"
         }`}>{count}</span>
       )}
@@ -98,7 +98,7 @@ function TaskCard({
   return (
     <article
       draggable="true"
-      className={`group/card rounded-xl bg-black/20 p-3 transition-all duration-150 hover:bg-white/[0.04] ${isDragging ? "opacity-50" : ""}`}
+      className={`group/card rounded-lg bg-surface-1 p-3 transition-colors duration-150 hover:bg-white/[0.04] ${isDragging ? "opacity-50" : ""}`}
       onClick={() => setExpanded((current) => !current)}
       onDragStart={(event) => onDragStart(event, task)}
       onDragEnd={onDragEnd}
@@ -117,47 +117,35 @@ function TaskCard({
         }
       }}
     >
-      <div className="flex items-start gap-3">
-        <button
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation();
-            onAdvance(task);
-          }}
-          className={`mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-black/30 text-white transition-all duration-150 hover:bg-white/[0.08] ${TASK_STATUS_META[task.status].dot}`}
-          aria-label={`Advance ${task.title}`}
-        >
-          <span className="h-2.5 w-2.5 rounded-full bg-current" />
-        </button>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-start gap-1">
-            <p className={`flex-1 text-sm font-medium leading-5 ${task.status === "done" ? "text-zinc-500 line-through" : "text-white"}`}>
-              {task.title}
-            </p>
-            <button
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                onEdit(task);
-              }}
-              className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-zinc-500 opacity-0 transition-all duration-150 hover:bg-white/[0.08] hover:text-zinc-200 group-hover/card:opacity-100"
-              aria-label={`Edit ${task.title}`}
-              title="Edit task"
-            >
-              <svg viewBox="0 0 16 16" className="h-3 w-3" fill="currentColor">
-                <path d="M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 0 1-.927-.928l.929-3.25c.081-.286.235-.547.445-.758l8.61-8.61Zm1.414 1.06a.25.25 0 0 0-.354 0L10.811 3.75l1.439 1.44 1.263-1.263a.25.25 0 0 0 0-.354l-1.086-1.086ZM11.189 6.25 9.75 4.811l-6.286 6.287a.25.25 0 0 0-.064.108l-.558 1.953 1.953-.558a.249.249 0 0 0 .108-.064l6.286-6.286Z" />
-              </svg>
-            </button>
-          </div>
+      <div className="min-w-0">
+        <div className="flex items-start gap-1">
+          <p className={`flex-1 text-sm font-medium leading-5 ${task.status === "done" ? "text-zinc-500 line-through" : "text-white"}`}>
+            {task.title}
+          </p>
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onEdit(task);
+            }}
+            className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-zinc-500 opacity-0 transition-colors duration-150 hover:bg-white/[0.08] hover:text-zinc-200 group-hover/card:opacity-100"
+            aria-label={`Edit ${task.title}`}
+            title="Edit task"
+          >
+            <svg viewBox="0 0 16 16" className="h-3 w-3" fill="currentColor">
+              <path d="M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 0 1-.927-.928l.929-3.25c.081-.286.235-.547.445-.758l8.61-8.61Zm1.414 1.06a.25.25 0 0 0-.354 0L10.811 3.75l1.439 1.44 1.263-1.263a.25.25 0 0 0 0-.354l-1.086-1.086ZM11.189 6.25 9.75 4.811l-6.286 6.287a.25.25 0 0 0-.064.108l-.558 1.953 1.953-.558a.249.249 0 0 0 .108-.064l6.286-6.286Z" />
+            </svg>
+          </button>
+        </div>
           {blockedReason && <p className="mt-1 text-xs text-zinc-400">⚠️ {blockedReason}</p>}
           <div className="mt-2 flex flex-wrap gap-1.5">
             {task.sessionKey && task.status === "active" && (
-              <span className="rounded-full bg-emerald-500/15 px-2 py-1 text-[11px] text-emerald-300">
+              <span className="rounded-full bg-emerald-500/15 px-2 py-1 text-[10px] text-emerald-300">
                 🤖 Agent working
               </span>
             )}
             {childCount > 0 && (
-              <span className="rounded-full bg-white/[0.04] px-2 py-1 text-[11px] text-zinc-400">
+              <span className="rounded-full bg-white/[0.04] px-2 py-1 text-[10px] text-zinc-400">
                 {childCount} child{childCount === 1 ? "" : "ren"}
               </span>
             )}
@@ -168,18 +156,18 @@ function TaskCard({
                   event.stopPropagation();
                   onOpenSession(task.sessionKey!);
                 }}
-                className="min-h-7 rounded-full bg-blue-500/12 px-2 py-1 text-[11px] text-blue-300 transition-all duration-150 hover:bg-blue-500/20"
+                className="min-h-7 rounded-full bg-blue-500/12 px-2 py-1 text-[10px] text-blue-300 transition-all duration-150 hover:bg-blue-500/20"
               >
                 {task.sessionKey}
               </button>
             )}
             {task.repo && (
-              <span className="inline-flex min-h-7 items-center gap-1 rounded-full bg-white/[0.04] px-2 py-1 text-[11px] text-zinc-400">
+              <span className="inline-flex min-h-7 items-center gap-1 rounded-full bg-white/[0.04] px-2 py-1 text-[10px] text-zinc-400">
                 <GitBranchIcon />
                 {task.branch ? `${task.repo}:${task.branch}` : task.repo}
               </span>
             )}
-            <span className="rounded-full bg-white/[0.02] px-2 py-1 text-[11px] text-zinc-500">{relativeTime(task.updatedAt)}</span>
+            <span className="rounded-full bg-white/[0.02] px-2 py-1 text-[10px] text-zinc-500">{relativeTime(task.updatedAt)}</span>
             <div className="flex items-center gap-1 xl:hidden">
               <button
                 type="button"
@@ -188,7 +176,7 @@ function TaskCard({
                   onMoveUp(task);
                 }}
                 disabled={!canMoveUp}
-                className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-white/[0.05] text-zinc-300 transition-all duration-150 hover:bg-white/[0.1] hover:text-white disabled:cursor-not-allowed disabled:opacity-35"
+                className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-white/[0.05] text-zinc-300 transition-all duration-150 hover:bg-white/[0.1] hover:text-white disabled:cursor-not-allowed disabled:opacity-35"
                 aria-label={`Move ${task.title} up`}
                 title="Move up"
               >
@@ -203,7 +191,7 @@ function TaskCard({
                   onMoveDown(task);
                 }}
                 disabled={!canMoveDown}
-                className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-white/[0.05] text-zinc-300 transition-all duration-150 hover:bg-white/[0.1] hover:text-white disabled:cursor-not-allowed disabled:opacity-35"
+                className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-white/[0.05] text-zinc-300 transition-all duration-150 hover:bg-white/[0.1] hover:text-white disabled:cursor-not-allowed disabled:opacity-35"
                 aria-label={`Move ${task.title} down`}
                 title="Move down"
               >
@@ -213,12 +201,11 @@ function TaskCard({
               </button>
             </div>
           </div>
-          <div
-            className={`grid transition-all duration-150 ${expanded && task.notes.trim() ? "mt-2 grid-rows-[1fr]" : "grid-rows-[0fr]"}`}
-          >
-            <div className="overflow-hidden">
-              {task.notes.trim() && <p className="text-xs leading-5 text-zinc-400">{task.notes}</p>}
-            </div>
+        <div
+          className={`grid transition-all duration-150 ${expanded && task.notes.trim() ? "mt-2 grid-rows-[1fr]" : "grid-rows-[0fr]"}`}
+        >
+          <div className="overflow-hidden">
+            {task.notes.trim() && <p className="line-clamp-3 text-xs leading-5 text-zinc-400">{task.notes}</p>}
           </div>
         </div>
       </div>
@@ -277,25 +264,25 @@ function Column({
 
   return (
     <section
-      className={`flex min-h-[12rem] flex-col rounded-xl border bg-zinc-900/80 p-3 backdrop-blur-xl xl:min-h-[24rem] ${dragOverColumn === status ? "border-blue-500/30" : "border-border"}`}
+      className={`flex min-h-[12rem] flex-col rounded-lg border bg-surface-1 p-3 xl:min-h-[24rem] ${dragOverColumn === status ? "border-blue-500/30" : "border-border"}`}
       onDragOver={(event) => onColumnDragOver(event, status)}
       onDragEnter={() => onColumnDragEnter(status)}
       onDragLeave={(event) => onColumnDragLeave(event, status)}
       onDrop={(event) => onColumnDrop(event, status)}
     >
-      <div className="mb-3 flex min-h-11 items-center justify-between gap-3">
+      <div className="mb-3 flex min-h-9 items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
           <span
-            className={`h-2.5 w-2.5 rounded-full ${meta.dot} ${isAttention ? "animate-pulse shadow-[0_0_10px_rgba(248,113,113,0.35)]" : tasks.length > 0 ? "shadow-[0_0_12px_rgba(255,255,255,0.12)]" : ""}`}
+            className={`h-2.5 w-2.5 rounded-full ${meta.dot} ${isAttention ? "animate-pulse" : tasks.length > 0 ? "shadow-[0_0_12px_rgba(255,255,255,0.12)]" : ""}`}
           />
           <p className="text-sm font-semibold text-white">{meta.label}</p>
-          <span className="rounded-full bg-black/30 px-2 py-0.5 text-[11px] text-zinc-400">{tasks.length}</span>
+          <span className="rounded-full bg-surface-1 px-2 py-0.5 text-[10px] text-zinc-400">{tasks.length}</span>
         </div>
         {status === "done" && tasks.length > 0 && (
           <button
             type="button"
             onClick={onToggleDone}
-            className="min-h-11 rounded-full px-3 text-xs text-zinc-400 transition-all duration-150 hover:text-white"
+            className="min-h-9 rounded-full px-3 text-xs text-zinc-400 transition-all duration-150 hover:text-white"
           >
             {doneExpanded ? "Collapse" : "Show recent"}
           </button>
@@ -336,13 +323,13 @@ function Column({
           <button
             type="button"
             onClick={onToggleDone}
-            className="rounded-xl border border-dashed border-white/10 px-3 py-4 text-left text-sm text-zinc-500 transition-all duration-150 hover:border-white/20 hover:text-zinc-300"
+            className="rounded-lg border border-dashed border-white/4 px-3 py-4 text-left text-sm text-zinc-500 transition-all duration-150 hover:border-white/20 hover:text-zinc-300"
           >
             {tasks.length} recent completed task{tasks.length === 1 ? "" : "s"}
           </button>
         )}
         {tasks.length === 0 && (
-          <div className="flex min-h-28 items-center justify-center rounded-xl border border-dashed border-white/8 px-3 text-sm text-zinc-600">
+          <div className="flex min-h-28 items-center justify-center rounded-lg border border-dashed border-white/4 px-3 text-sm text-zinc-600">
             No tasks
           </div>
         )}
@@ -586,10 +573,7 @@ export function TaskPipeline({
   return (
     <section className="flex min-h-0 flex-1 flex-col">
       <div className="mb-3 flex items-center justify-between gap-3 px-1">
-        <div>
-          <h2 className="text-base font-semibold text-white">Task Pipeline</h2>
-          <p className="text-xs text-zinc-500">Swipe right on mobile to advance. Tap cards to expand notes.</p>
-        </div>
+        <h2 className="text-sm font-semibold text-white">Task Pipeline</h2>
         <button
           type="button"
           onClick={() => setAdding(true)}
@@ -621,10 +605,10 @@ export function TaskPipeline({
             onChange={(e) => setNewTitle(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Escape") setAdding(false); }}
             placeholder="Task title..."
-            className="min-h-11 flex-1 rounded-xl border border-white/10 bg-black/30 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-blue-500/50"
+            className="min-h-9 flex-1 rounded-lg border border-white/4 bg-surface-1 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-blue-500/50"
           />
-          <button type="submit" className="min-h-11 rounded-xl bg-blue-500/20 px-4 text-sm text-blue-300 hover:bg-blue-500/30">Add</button>
-          <button type="button" onClick={() => setAdding(false)} className="min-h-11 rounded-xl px-3 text-sm text-zinc-500 hover:text-white">Cancel</button>
+          <button type="submit" className="min-h-9 rounded-lg bg-blue-500/20 px-4 text-sm text-blue-300 hover:bg-blue-500/30">Add</button>
+          <button type="button" onClick={() => setAdding(false)} className="min-h-9 rounded-lg px-3 text-sm text-zinc-500 hover:text-white">Cancel</button>
         </form>
       )}
 
@@ -632,7 +616,7 @@ export function TaskPipeline({
       <div className="xl:hidden">
         <div className="relative mb-3">
           <div className="pointer-events-none absolute right-0 top-0 z-10 h-full w-8 bg-gradient-to-l from-canvas to-transparent" />
-        <div className="flex items-center gap-1 overflow-x-auto rounded-xl border border-white/5 bg-black/20 p-1 scrollbar-none">
+        <div className="flex items-center gap-1 overflow-x-auto rounded-lg border border-white/4 bg-surface-1 p-1 scrollbar-none">
           {COLUMN_ORDER.map((status) => (
             <ColumnTab
               key={status}
@@ -670,7 +654,7 @@ export function TaskPipeline({
       </div>
 
       {/* Desktop: scrollable 5-col grid with more breathing room */}
-      <div className="hidden xl:grid xl:min-h-0 xl:flex-1 xl:grid-cols-6 xl:gap-3 xl:overflow-x-auto xl:pb-4">
+      <div className="hidden xl:grid xl:min-h-0 xl:flex-1 xl:grid-cols-[repeat(6,minmax(200px,1fr))] xl:gap-3 xl:overflow-x-auto xl:pb-4">
         {COLUMN_ORDER.map((status) => (
           <Column
             key={status}
