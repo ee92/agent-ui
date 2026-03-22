@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { OpenClawAdapter } from "./openclaw-adapter";
 import { ClaudeCodeAdapter } from "./claude-code-adapter";
+import { CodexAdapter } from "./codex-adapter";
 import { LocalAdapter } from "./local-adapter";
 import type { BackendAdapter } from "./types";
 import { DEFAULT_GATEWAY_TOKEN, DEFAULT_GATEWAY_URL, safeJsonParse } from "../stores/shared";
@@ -19,8 +20,8 @@ const ADAPTER_CONFIG_KEY = "mission-control-adapter";
 function loadAdapterConfig(): AdapterConfig {
   const raw = safeJsonParse<Partial<AdapterConfig>>(localStorage.getItem(ADAPTER_CONFIG_KEY), {});
   return {
-    // Default to claude-code (serve.mjs). User can switch to openclaw if they have a gateway.
-    type: raw.type === "claude-code" || raw.type === "local" || raw.type === "openclaw" ? raw.type : "claude-code",
+    // Default to claude-code (serve.mjs). User can switch to openclaw/codex if they have one.
+    type: raw.type === "claude-code" || raw.type === "local" || raw.type === "openclaw" || raw.type === "codex" ? raw.type : "claude-code",
     gatewayUrl: raw.gatewayUrl?.trim() || DEFAULT_GATEWAY_URL,
     gatewayToken: raw.gatewayToken?.trim() || DEFAULT_GATEWAY_TOKEN,
     workspace: raw.workspace?.trim() || ".",
@@ -37,6 +38,8 @@ export function createAdapter(config: AdapterConfig): BackendAdapter {
       return new OpenClawAdapter(config.gatewayUrl, config.gatewayToken);
     case "claude-code":
       return new ClaudeCodeAdapter(config.workspace);
+    case "codex":
+      return new CodexAdapter(config.workspace);
     case "local":
       return new LocalAdapter(config.workspace);
     default:

@@ -41,6 +41,7 @@ function clearPid() {
 
 function detectAgent() {
   if (existsSync(resolve(homedir(), ".openclaw", "openclaw.json"))) return "openclaw";
+  if (existsSync(resolve(homedir(), ".codex"))) return "codex";
   if (existsSync(resolve(homedir(), ".claude"))) return "claude-code";
   return "none";
 }
