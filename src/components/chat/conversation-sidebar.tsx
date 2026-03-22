@@ -250,13 +250,29 @@ export function ConversationSidebar({
 
   return (
     <aside className="flex h-full min-w-0 flex-col overflow-hidden rounded-lg bg-white/[0.03] p-3 xl:rounded-lg xl:border xl:border-white/4 xl:p-4">
-      <div className="mb-3 hidden items-center justify-end gap-2 xl:flex">
-        <IconButton label="Browse files" onClick={onToggleFilesMode}>
-          <FolderIcon />
-        </IconButton>
-        <IconButton label="New chat" onClick={onNewChat}>
-          <PlusIcon />
-        </IconButton>
+      <div className="mb-3 hidden items-center justify-between gap-2 xl:flex">
+        <div className="flex items-center gap-2">
+          <select
+            aria-label="Adapter type"
+            value={adapterType}
+            onChange={(event) => {
+              void setAdapterType(event.target.value as "openclaw" | "claude-code" | "codex" | "local");
+            }}
+            className="h-9 rounded-xl border border-white/10 bg-black/30 px-2 text-xs text-zinc-300 outline-none hover:border-white/20"
+          >
+            <option value="openclaw">OpenClaw</option>
+            <option value="claude-code">Claude Code</option>
+            <option value="codex">Codex</option>
+          </select>
+        </div>
+        <div className="flex items-center gap-2">
+          <IconButton label="Browse files" onClick={onToggleFilesMode}>
+            <FolderIcon />
+          </IconButton>
+          <IconButton label="New chat" onClick={onNewChat}>
+            <PlusIcon />
+          </IconButton>
+        </div>
       </div>
       <>
         {/* Search */}
