@@ -25,6 +25,7 @@ import { startRun, cancelRun, getRunStatus } from "./server/claude/standalone-ru
 import { createBroker } from "./server/claude/ws-broker.mjs";
 import { scanDocker } from "./server/docker-scanner.mjs";
 import { mergeProjects } from "./server/project-merger.mjs";
+import { listServices, startService, stopService, getServiceLogs } from "./server/process-manager.mjs";
 import { validateTransition } from "./lib/task-guards.mjs";
 import {
   createJob as createCronJob,
@@ -493,6 +494,14 @@ const repoCache = (() => {
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
 
+  // Origin check: block cross-origin POST requests (CSRF protection for localhost)
+  if (req.method === "POST") {
+    const origin = req.headers.origin;
+    if (origin && !/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
+      return jsonResponse(res, { error: "forbidden: cross-origin POST" }, 403);
+    }
+  }
+
   if (url.pathname === "/api/config") {
     return jsonResponse(res, {
       token: TOKEN,
@@ -790,6 +799,31 @@ const server = createServer(async (req, res) => {
     } catch (error) {
       return jsonResponse(res, { error: "project merge failed", detail: error.message }, 500);
     }
+  }
+
+  if (url.pathname === "/api/services" && req.method === "GET") {
+    if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);
+    return jsonResponse(res, listServices());
+  }
+
+  if (url.pathname.match(/^\/api\/services\/[\w-]+\/start$/) && req.method === "POST") {
+    if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);
+    const name = url.pathname.split("/")[3];
+    const result = await startService(name);
+    return jsonResponse(res, result, result.ok ? 200 : 400);
+  }
+
+  if (url.pathname.match(/^\/api\/services\/[\w-]+\/stop$/) && req.method === "POST") {
+    if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);
+    const name = url.pathname.split("/")[3];
+    const result = await stopService(name);
+    return jsonResponse(res, result, result.ok ? 200 : 400);
+  }
+
+  if (url.pathname.match(/^\/api\/services\/[\w-]+\/logs$/) && req.method === "GET") {
+    if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);
+    const name = url.pathname.split("/")[3];
+    return jsonResponse(res, getServiceLogs(name));
   }
 
   if (url.pathname.startsWith("/api/tasks/") && req.method === "PATCH") {
