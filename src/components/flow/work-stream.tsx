@@ -67,7 +67,7 @@ function StreamCard({
 
   return (
     <article
-      className={`rounded-lg border border-border border-l-2 ${styles.border} bg-black/20 px-3 py-2 cursor-pointer transition-all hover:bg-white/[0.03]`}
+      className={`rounded-lg border border-border border-l-2 ${styles.border} bg-surface-1 px-3 py-2 cursor-pointer transition-all hover:bg-white/[0.03]`}
       onClick={() => onOpen(item.sessionKey)}
     >
       <div className="flex items-center gap-2.5">
@@ -94,13 +94,13 @@ function StreamCard({
             {item.toolCalls.slice(0, 2).map((tool) => (
               <span
                 key={tool}
-                className="rounded bg-blue-500/15 px-1.5 py-0.5 text-[9px] text-blue-300"
+                className="rounded bg-blue-500/15 px-1.5 py-0.5 text-[10px] text-blue-300"
               >
                 {tool}
               </span>
             ))}
             {item.toolCalls.length > 2 && (
-              <span className="text-[9px] text-zinc-600">
+              <span className="text-[10px] text-zinc-600">
                 +{item.toolCalls.length - 2}
               </span>
             )}
@@ -209,7 +209,7 @@ export function WorkStream({
 
   if (items.length === 0) {
     return (
-      <section className="rounded-xl border border-border bg-zinc-900/60 p-4">
+      <section className="rounded-lg border border-border bg-surface-1/60 p-4">
         <div className="flex items-center gap-3">
           <span className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-800 text-sm">
             💤

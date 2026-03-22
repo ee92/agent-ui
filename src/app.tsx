@@ -113,7 +113,7 @@ function ChatView({
     <div className="flex h-full flex-col">
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 pb-4 xl:px-6">
         <div className="flex-1" />
-        {loading && <LoadingSkeleton rows={4} className="h-24 rounded-3xl" />}
+        {loading && <LoadingSkeleton rows={4} className="h-24 rounded-lg" />}
         {!loading && messages.length === 0 && linkedTask && (
           <TaskContextCard task={linkedTask} />
         )}
@@ -139,7 +139,7 @@ function ChatView({
         <div ref={endRef} />
       </div>
 
-      <div className="shrink-0 border-t border-white/5 bg-canvas px-3 pb-2 pt-2 xl:px-6 xl:pb-3">
+      <div className="shrink-0 border-t border-white/4 bg-canvas px-3 pb-2 pt-2 xl:px-6 xl:pb-3">
         <ChatComposer
           draft={draft}
           attachments={attachments}
@@ -329,18 +329,18 @@ export function App() {
 
   return (
     <div className="h-[100dvh] overflow-hidden bg-canvas text-white">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.18),transparent_34%),radial-gradient(circle_at_80%_20%,rgba(14,165,233,0.12),transparent_24%)]" />
+
 
       <div className="relative flex h-full">
         {/* Desktop sidebar */}
-        <div className="hidden w-[360px] shrink-0 border-r border-white/5 xl:block">
+        <div className="hidden w-[360px] shrink-0 border-r border-white/4 xl:block">
           <div className="h-full overflow-y-auto p-3">{sidebar}</div>
         </div>
 
         {/* Main content */}
         <div className="flex min-w-0 flex-1 flex-col">
           {/* Mobile header */}
-          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/5 px-4 py-2 xl:hidden">
+          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/4 px-4 py-2 xl:hidden">
             <div className="flex min-w-0 items-center gap-2">
               <IconButton label="Open sidebar" onClick={toggleMobileSidebar}><MenuIcon /></IconButton>
               <p className="truncate text-base font-semibold text-white">{pageTitle}</p>
@@ -354,7 +354,7 @@ export function App() {
           />
 
           {/* Mobile bottom tab bar */}
-          <div className="fixed bottom-0 left-0 right-0 z-20 flex border-t border-white/5 bg-canvas xl:hidden">
+          <div className="fixed bottom-0 left-0 right-0 z-20 flex border-t border-white/4 bg-canvas xl:hidden">
             <MobileTabLink href="#/" label="Home" active={currentPage === "dashboard"} />
             <MobileTabLink href="#/files" label="Files" active={currentPage === "files"} />
             <MobileTabLink href="#/timeline" label="Timeline" active={currentPage === "timeline"} />
@@ -362,7 +362,7 @@ export function App() {
           </div>
 
           {/* Desktop top navigation */}
-          <div className="hidden shrink-0 items-center justify-between gap-3 border-b border-white/5 px-4 py-2 xl:flex">
+          <div className="hidden shrink-0 items-center justify-between gap-3 border-b border-white/4 px-4 py-2 xl:flex">
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-1">
                 <StatusPulse connectionState={adapterType === "openclaw" ? connectionState : (adapterConnected ? "connected" : "disconnected")} blockedCount={blockedCount} reviewCount={reviewCount} agents={agents} />
@@ -463,7 +463,7 @@ export function App() {
         className={`fixed inset-0 z-30 bg-black/60 transition xl:hidden ${mobileSidebarOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"}`}
         onClick={closeMobileSidebar}
       >
-        <div className="h-full w-full max-w-[340px] overflow-hidden border-r border-white/5 bg-canvas" onClick={(e) => e.stopPropagation()}>
+        <div className="h-full w-full max-w-[340px] overflow-hidden border-r border-white/4 bg-canvas" onClick={(e) => e.stopPropagation()}>
           <div className="h-full overflow-y-auto p-3">{sidebar}</div>
         </div>
       </div>

@@ -56,8 +56,8 @@ const PRIORITY_ORDER: Record<SessionPriority, number> = {
 const PRIORITY_STYLES: Record<SessionPriority, { dot: string; border: string; bg: string }> = {
   attention: { dot: "bg-amber-400", border: "border-amber-500/25", bg: "bg-amber-500/[0.04]" },
   active: { dot: "animate-pulse bg-emerald-400", border: "border-emerald-500/20", bg: "bg-emerald-500/[0.03]" },
-  recent: { dot: "bg-blue-400", border: "border-white/5", bg: "bg-white/[0.02]" },
-  idle: { dot: "bg-zinc-600", border: "border-white/5", bg: "bg-transparent" },
+  recent: { dot: "bg-blue-400", border: "border-white/4", bg: "bg-white/[0.02]" },
+  idle: { dot: "bg-zinc-600", border: "border-white/4", bg: "bg-transparent" },
 };
 
 /* ─── inline preview ─── */
@@ -112,7 +112,7 @@ function InlinePreview({
   };
 
   return (
-    <div className="mt-2 space-y-2 border-t border-white/5 pt-2">
+    <div className="mt-2 space-y-2 border-t border-white/4 pt-2">
       {loading ? (
         <div className="flex items-center gap-2 py-2">
           <div className="h-3 w-3 animate-spin rounded-full border-2 border-zinc-600 border-t-zinc-300" />
@@ -142,7 +142,7 @@ function InlinePreview({
           onChange={(e) => setReply(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleSend(); } }}
           placeholder="Quick reply..."
-          className="h-9 min-w-0 flex-1 rounded-lg bg-black/30 px-3 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:ring-1 focus:ring-blue-500/30"
+          className="h-9 min-w-0 flex-1 rounded-lg bg-surface-1 px-3 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:ring-1 focus:ring-blue-500/30"
         />
         <button
           type="button"
@@ -181,7 +181,7 @@ function SessionRow({
   const sessionAgents = agents.filter((a) => a.sessionKey === conv.key);
 
   return (
-    <div className={`rounded-xl border ${styles.border} ${styles.bg} transition-all duration-200`}>
+    <div className={`rounded-lg border ${styles.border} ${styles.bg} transition-all duration-200`}>
       {/* Main row — tap to expand, title click to open full chat */}
       <div
         className="flex min-h-[52px] cursor-pointer items-center gap-3 px-3 py-2.5"
@@ -219,7 +219,7 @@ function SessionRow({
               {sessionAgents.length} agent{sessionAgents.length > 1 ? "s" : ""}
             </span>
           )}
-          <span className="text-[11px] text-zinc-600">{timeAgo(conv.updatedAt)}</span>
+          <span className="text-[10px] text-zinc-600">{timeAgo(conv.updatedAt)}</span>
         </div>
       </div>
 
@@ -227,7 +227,7 @@ function SessionRow({
       {sessionAgents.length > 0 && !expanded && (
         <div className="flex gap-3 border-t border-white/[0.03] px-3 py-1.5">
           {sessionAgents.slice(0, 3).map((agent) => (
-            <span key={agent.id} className="flex items-center gap-1 text-[11px] text-zinc-500">
+            <span key={agent.id} className="flex items-center gap-1 text-[10px] text-zinc-500">
               <span className={`h-1.5 w-1.5 rounded-full ${
                 agent.status === "running" ? "animate-pulse bg-emerald-400"
                 : agent.status === "waiting" ? "bg-amber-400"
@@ -238,7 +238,7 @@ function SessionRow({
             </span>
           ))}
           {sessionAgents.length > 3 && (
-            <span className="text-[11px] text-zinc-600">+{sessionAgents.length - 3}</span>
+            <span className="text-[10px] text-zinc-600">+{sessionAgents.length - 3}</span>
           )}
         </div>
       )}

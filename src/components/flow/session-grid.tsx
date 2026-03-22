@@ -99,7 +99,7 @@ function SessionCard({
 
   return (
     <article
-      className={`rounded-xl border border-border bg-black/20 p-3 cursor-pointer transition-all hover:bg-white/[0.04] ${styles.ring}`}
+      className={`rounded-lg border border-border bg-surface-1 p-3 cursor-pointer transition-all hover:bg-white/[0.04] ${styles.ring}`}
       onClick={onOpen}
     >
       <div className="flex items-start gap-2.5">
@@ -130,7 +130,7 @@ function SessionCard({
           </div>
 
           {/* Stats */}
-          <div className="mt-2 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-zinc-500">
+          <div className="mt-2 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-zinc-500">
             <span title="Input tokens">↓ {formatTokens(conversation.inputTokens)}</span>
             <span title="Output tokens">↑ {formatTokens(conversation.outputTokens)}</span>
             {totalRuns > 0 && (
@@ -163,7 +163,7 @@ function SessionCard({
 
           {/* Sub-agents in this session */}
           {sessionAgents.length > 0 && (
-            <div className="mt-2 space-y-0.5 border-l border-white/5 pl-2">
+            <div className="mt-2 space-y-0.5 border-l border-white/4 pl-2">
               {sessionAgents.slice(0, 4).map((agent) => (
                 <div key={agent.id} className="flex items-center gap-1.5">
                   <span
@@ -256,8 +256,8 @@ export function SessionGrid({
   const recentCount = sessionData.filter((s) => s.status === "recent").length;
 
   return (
-    <section className="rounded-xl border border-border bg-zinc-900/80 backdrop-blur-xl overflow-hidden">
-      <div className="border-b border-white/5 px-4 py-3">
+    <section className="rounded-lg border border-border bg-surface-1 overflow-hidden">
+      <div className="border-b border-white/4 px-4 py-3">
         <h2 className="text-base font-semibold text-white">Sessions</h2>
         <p className="mt-0.5 text-xs text-zinc-500">
           {sessionData.length} in last 24h

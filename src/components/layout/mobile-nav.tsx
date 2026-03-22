@@ -25,7 +25,7 @@ export function MobileNav({
 
   return (
     <nav className="fixed inset-x-3 bottom-0 z-20 px-1 pb-[calc(0.5rem+env(safe-area-inset-bottom))] pt-2 xl:hidden">
-      <div className="rounded-[1.75rem] bg-black/70 p-2 shadow-[0_-12px_40px_rgba(0,0,0,0.35)] backdrop-blur-xl">
+      <div className="rounded-lg bg-black/70 p-2 shadow-[0_-12px_40px_rgba(0,0,0,0.35)]">
         <div className="grid grid-cols-4 gap-1">
           {items.map(({ tab, label, icon: Icon, badge }) => (
             <button
@@ -33,7 +33,7 @@ export function MobileNav({
               type="button"
               onClick={() => onSelect(tab)}
               aria-label={label}
-              className={`relative flex min-h-11 flex-col items-center justify-center gap-0.5 rounded-2xl transition ${
+              className={`relative flex min-h-9 flex-col items-center justify-center gap-0.5 rounded-lg transition ${
                 mobileTab === tab ? "bg-blue-500/18 text-blue-300" : "text-zinc-500"
               }`}
             >

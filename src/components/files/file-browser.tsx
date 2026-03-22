@@ -339,20 +339,20 @@ export function FileBrowser({
   return (
     <div className="flex h-full min-w-0 flex-col gap-4 overflow-hidden xl:grid xl:grid-cols-[320px_minmax(0,1fr)]">
       <div className={`min-h-0 min-w-0 ${mobilePreviewPath ? "hidden xl:flex" : "flex"}`}>
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col rounded-[2rem] border border-white/8 bg-white/[0.03] p-3 sm:p-4">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col rounded-lg border border-white/4 bg-white/[0.03] p-3 sm:p-4">
           <div className="mb-3 space-y-3">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="text-xs uppercase tracking-[0.26em] text-zinc-500">Workspace</p>
+                <p className="text-xs uppercase tracking-wide text-zinc-500">Workspace</p>
                 <h3 className="mt-1 text-base font-semibold text-white sm:text-sm">Files</h3>
               </div>
               {loadingDirectory || searching || openingPath ? (
-                <span className="inline-flex h-7 items-center rounded-full border border-white/8 px-3 text-[11px] text-zinc-400">
+                <span className="inline-flex h-7 items-center rounded-full border border-white/4 px-3 text-[10px] text-zinc-400">
                   Loading
                 </span>
               ) : null}
             </div>
-            <div className="flex items-center gap-2 rounded-2xl border border-white/8 bg-black/20 px-3">
+            <div className="flex items-center gap-2 rounded-lg border border-white/4 bg-surface-1 px-3">
               <span className="text-sm text-zinc-500">🔎</span>
               <input
                 value={search}
@@ -381,12 +381,12 @@ export function FileBrowser({
           <div className="scroll-soft min-h-[320px] flex-1 overflow-y-auto pr-1 xl:min-h-0">
             {!ready && !cache[""]?.length ? <LoadingSkeleton rows={5} /> : null}
             {ready && fallback && !cache[""]?.length ? (
-              <div className="rounded-3xl border border-dashed border-white/8 px-4 py-6 text-sm text-zinc-500">
+              <div className="rounded-lg border border-dashed border-white/4 px-4 py-6 text-sm text-zinc-500">
                 Unable to load files right now.
               </div>
             ) : null}
             {ready && !fallback && visibleEntries.length === 0 ? (
-              <div className="rounded-3xl border border-dashed border-white/8 px-4 py-6 text-sm text-zinc-500">
+              <div className="rounded-lg border border-dashed border-white/4 px-4 py-6 text-sm text-zinc-500">
                 {showingSearch ? "No matching files." : "No files yet. Connect to a workspace to browse files."}
               </div>
             ) : null}
@@ -410,7 +410,7 @@ export function FileBrowser({
                         }
                         void openPreview(entry.path);
                       }}
-                      className="flex min-h-14 w-full items-center gap-3 rounded-3xl px-3 py-3 text-left hover:bg-white/[0.04]"
+                      className="flex min-h-14 w-full items-center gap-3 rounded-lg px-3 py-3 text-left hover:bg-white/[0.04]"
                     >
                       <span className="text-xl">{isDirectory ? "📁" : "📄"}</span>
                       <span className="min-w-0 flex-1">
@@ -430,7 +430,7 @@ export function FileBrowser({
         </div>
       </div>
       <div className={`min-h-0 min-w-0 ${mobilePreviewPath ? "flex" : "hidden xl:flex"}`}>
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col rounded-[2rem] border border-white/8 bg-white/[0.03] p-3 sm:p-4">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col rounded-lg border border-white/4 bg-white/[0.03] p-3 sm:p-4">
           <div className="mb-3 flex items-center gap-3">
             <button
               type="button"
@@ -438,19 +438,19 @@ export function FileBrowser({
                 setMobilePreviewPath(null);
                 setOpeningPath(null);
               }}
-              className="inline-flex h-10 items-center rounded-full border border-white/8 px-3 text-sm text-zinc-300 xl:hidden"
+              className="inline-flex h-10 items-center rounded-full border border-white/4 px-3 text-sm text-zinc-300 xl:hidden"
             >
               Back
             </button>
             <div className="min-w-0">
-              <p className="text-xs uppercase tracking-[0.26em] text-zinc-500">Preview</p>
+              <p className="text-xs uppercase tracking-wide text-zinc-500">Preview</p>
               <h3 className="mt-1 truncate text-base font-semibold text-white sm:text-sm">
                 {mobilePreviewPath ? fileLabelFromPath(mobilePreviewPath) : preview?.path || "Select a file"}
               </h3>
             </div>
           </div>
           {previewingFile ? (
-            <div className="mb-3 flex flex-wrap items-center gap-3 rounded-2xl border border-white/8 bg-black/20 px-3 py-2">
+            <div className="mb-3 flex flex-wrap items-center gap-3 rounded-lg border border-white/4 bg-surface-1 px-3 py-2">
               <input
                 ref={previewSearchInputRef}
                 value={previewSearch}
@@ -476,7 +476,7 @@ export function FileBrowser({
               </span>
             </div>
           ) : null}
-          <div className="scroll-soft min-h-[360px] flex-1 overflow-auto rounded-3xl border border-white/8 bg-black/30 xl:min-h-0">
+          <div className="scroll-soft min-h-[360px] flex-1 overflow-auto rounded-lg border border-white/4 bg-surface-1 xl:min-h-0">
             {previewingFile ? (
               <div ref={previewContentRef} className="min-h-full">
                 {renderPreviewContent()}

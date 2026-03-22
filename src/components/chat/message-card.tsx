@@ -21,13 +21,13 @@ export function MessageCard({
   }
   const isUser = message.role === "user";
   const bubbleClass = isUser
-    ? "bg-blue-500 text-white shadow-[0_20px_80px_rgba(59,130,246,0.22)]"
-    : "bg-zinc-900/90 text-zinc-100 shadow-[0_16px_48px_rgba(0,0,0,0.2)]";
+    ? "bg-blue-500 text-white"
+    : "bg-surface-1 text-zinc-100";
 
   return (
     <div className={`group flex px-1 ${isUser ? "justify-end" : "justify-start"}`}>
-      <div className={`relative w-fit max-w-[85%] rounded-[1.75rem] px-4 py-3.5 sm:max-w-[78%] md:px-5 ${bubbleClass}`}>
-        <div className={`mb-2 flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-[0.24em] ${isUser ? "text-white/60" : "text-zinc-400"}`}>
+      <div className={`relative w-fit max-w-[85%] rounded-lg px-4 py-3.5 sm:max-w-[78%] md:px-5 ${bubbleClass}`}>
+        <div className={`mb-2 flex flex-wrap items-center gap-2 text-[10px] uppercase tracking-wide ${isUser ? "text-white/60" : "text-zinc-400"}`}>
           <span>{isUser ? "You" : "Assistant"}</span>
           <span className={isUser ? "text-white/30" : "text-zinc-500"}>{formatRelative(message.createdAt)}</span>
           {message.pending ? <span className="text-blue-200/80">Streaming</span> : null}
@@ -44,14 +44,14 @@ export function MessageCard({
                   key={`${part.type}-${index}`}
                   src={part.url}
                   alt={part.alt}
-                  className="max-h-72 rounded-2xl border border-white/10 object-cover"
+                  className="max-h-72 rounded-lg border border-white/4 object-cover"
                 />
               );
             }
             return (
               <div
                 key={`${part.type}-${index}`}
-                className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-zinc-100"
+                className="rounded-lg border border-white/4 bg-surface-1 px-3 py-2 text-sm text-zinc-100"
               >
                 {part.name}
               </div>
@@ -62,7 +62,7 @@ export function MessageCard({
           <button
             type="button"
             onClick={onCopy}
-            className="inline-flex min-h-11 items-center gap-1 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-[11px] text-zinc-200 hover:bg-black/30"
+            className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-white/4 bg-surface-1 px-3 py-2 text-[10px] text-zinc-200 hover:bg-surface-1"
           >
             <CopyIcon />
             Copy
@@ -70,7 +70,7 @@ export function MessageCard({
           <button
             type="button"
             onClick={onRetry}
-            className="inline-flex min-h-11 items-center gap-1 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-[11px] text-zinc-200 hover:bg-black/30"
+            className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-white/4 bg-surface-1 px-3 py-2 text-[10px] text-zinc-200 hover:bg-surface-1"
           >
             <RetryIcon />
             Retry
@@ -82,7 +82,7 @@ export function MessageCard({
                 const text = message.parts.filter((p) => p.type === "text").map((p) => (p as { text: string }).text).join("\n").trim();
                 onTask(text);
               }}
-              className="min-h-11 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-[11px] text-zinc-200 hover:bg-black/30"
+              className="min-h-9 rounded-lg border border-white/4 bg-surface-1 px-3 py-2 text-[10px] text-zinc-200 hover:bg-surface-1"
             >
               📌 Create Task
             </button>
@@ -90,7 +90,7 @@ export function MessageCard({
           <button
             type="button"
             onClick={onHide}
-            className="inline-flex min-h-11 items-center gap-1 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-[11px] text-zinc-200 hover:bg-black/30"
+            className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-white/4 bg-surface-1 px-3 py-2 text-[10px] text-zinc-200 hover:bg-surface-1"
           >
             <TrashIcon />
             Hide

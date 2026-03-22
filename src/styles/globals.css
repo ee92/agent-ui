@@ -1,12 +1,28 @@
 @import "tailwindcss";
 
 @theme {
-  --color-canvas: #0a0a0a;
-  --color-panel: #141414;
+  /* Surface hierarchy */
+  --color-canvas: #09090b;
+  --color-surface-0: #0a0a0a;
+  --color-surface-1: #111111;
+  --color-surface-2: #1a1a1a;
+  --color-surface-3: #262626;
+
+  /* Borders */
+  --color-border: rgba(255, 255, 255, 0.04);
+  --color-border-focus: rgba(59, 130, 246, 0.4);
+
+  /* Legacy aliases (for gradual migration) */
+  --color-panel: #111111;
   --color-panel-raised: #1a1a1a;
-  --color-border: #262626;
-  --color-copy: #e5e5e5;
-  --color-copy-dim: #737373;
+  --color-copy: #fafafa;
+  --color-copy-dim: #a1a1aa;
+
+  /* Semantic text */
+  --color-text-primary: #fafafa;
+  --color-text-secondary: #a1a1aa;
+  --color-text-tertiary: #52525b;
+  --color-text-ghost: #3f3f46;
 }
 
 @layer base {
@@ -20,8 +36,8 @@
       BlinkMacSystemFont,
       "Segoe UI",
       sans-serif;
-    background: #0a0a0a;
-    color: #e5e5e5;
+    background: var(--color-canvas);
+    color: var(--color-copy);
   }
 
   * {
@@ -31,9 +47,7 @@
   body {
     margin: 0;
     min-width: 320px;
-    background:
-      radial-gradient(circle at top left, rgba(24, 24, 27, 0.9), transparent 34%),
-      linear-gradient(180deg, #09090b 0%, #0a0a0a 55%, #111111 100%);
+    background: var(--color-canvas);
   }
 
   button,
@@ -54,22 +68,43 @@
 
 @layer utilities {
   .bg-canvas {
-    background-color: #0a0a0a;
+    background-color: var(--color-canvas);
+  }
+
+  .bg-surface-0 {
+    background-color: var(--color-surface-0);
+  }
+
+  .bg-surface-1 {
+    background-color: var(--color-surface-1);
+  }
+
+  .bg-surface-2 {
+    background-color: var(--color-surface-2);
+  }
+
+  .bg-surface-3 {
+    background-color: var(--color-surface-3);
+  }
+
+  .text-2xs {
+    font-size: 10px;
+    line-height: 14px;
   }
 
   .scroll-soft {
     scrollbar-width: thin;
-    scrollbar-color: rgba(255, 255, 255, 0.08) transparent;
+    scrollbar-color: rgba(255, 255, 255, 0.06) transparent;
   }
 
   .scroll-soft::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
+    width: 6px;
+    height: 6px;
   }
 
   .scroll-soft::-webkit-scrollbar-thumb {
     border-radius: 9999px;
-    background: rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.06);
   }
 
   .scrollbar-none {
@@ -87,25 +122,19 @@
     -webkit-box-orient: vertical;
     overflow: hidden;
   }
-}
 
-@keyframes breathe {
-  0%,
-  100% {
-    transform: scale(1);
-    opacity: 0.7;
-  }
-
-  50% {
-    transform: scale(1.06);
-    opacity: 1;
+  .line-clamp-3 {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
   }
 }
 
 @keyframes feed-in {
   from {
     opacity: 0;
-    transform: translateY(6px);
+    transform: translateY(4px);
   }
 
   to {

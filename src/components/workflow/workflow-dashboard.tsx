@@ -31,7 +31,7 @@ function TabButton({ label, active, count, onClick }: { label: string; active: b
     >
       {label}
       {typeof count === "number" && count > 0 && (
-        <span className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[11px] font-semibold ${
+        <span className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[10px] font-semibold ${
           active ? "bg-blue-500/20 text-blue-300" : "bg-white/[0.06] text-zinc-500"
         }`}>
           {count}
@@ -106,16 +106,10 @@ export function WorkflowDashboard({
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-3 pt-3 xl:px-5">
       {/* Tab bar with inline status dot */}
-      <div className="mb-3 flex shrink-0 items-center gap-1 overflow-x-auto rounded-xl border border-white/5 bg-black/20 p-1">
+      <div className="mb-3 flex shrink-0 items-center gap-1 overflow-x-auto rounded-lg border border-white/4 bg-surface-1 p-1">
         <TabButton label="Tasks" active={activeTab === "tasks"} count={activeTaskCount} onClick={() => setActiveTab("tasks")} />
         <TabButton label="Stats" active={activeTab === "stats"} onClick={() => setActiveTab("stats")} />
         <TabButton label="Activity" active={activeTab === "activity"} count={activityItems.length} onClick={() => setActiveTab("activity")} />
-      </div>
-
-      <div className="mb-3 flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-zinc-400">
-        <span>Dispatcher: {dispatchEnabled ? "enabled" : "disabled"}</span>
-        <span>Last run: {dispatchLastRunAt ? new Date(dispatchLastRunAt).toLocaleString() : "never"}</span>
-        <span>Picked up: {dispatchPicked}</span>
       </div>
 
       {/* Tab content — fills remaining space */}

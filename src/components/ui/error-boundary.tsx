@@ -24,12 +24,12 @@ export class ErrorBoundary extends Component<Props, State> {
   override render() {
     if (this.state.hasError) {
       return (
-        <div className="rounded-[2rem] border border-rose-500/20 bg-rose-500/8 p-4 text-sm text-rose-100">
+        <div className="rounded-lg border border-rose-500/20 bg-rose-500/8 p-4 text-sm text-rose-100">
           <p className="font-medium">{this.props.label} failed to render.</p>
           <button
             type="button"
             onClick={() => this.setState({ hasError: false })}
-            className="mt-3 rounded-2xl border border-white/8 px-3 py-2 text-xs text-zinc-200"
+            className="mt-3 rounded-lg border border-white/4 px-3 py-2 text-xs text-zinc-200"
           >
             Retry
           </button>

@@ -164,9 +164,9 @@ export function SessionTimeline({
   const LABEL_W = "160px";
 
   return (
-    <section className="rounded-xl border border-border bg-zinc-900/80 backdrop-blur-xl overflow-hidden">
+    <section className="rounded-lg border border-border bg-surface-1 overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between gap-3 border-b border-white/5 px-4 py-3">
+      <div className="flex items-center justify-between gap-3 border-b border-white/4 px-4 py-3">
         <div>
           <h2 className="text-base font-semibold text-white">Session Timeline</h2>
           <p className="mt-0.5 text-xs text-zinc-500">
@@ -180,7 +180,7 @@ export function SessionTimeline({
               key={m}
               type="button"
               onClick={() => setTimeWindow(m)}
-              className={`rounded-md px-2.5 py-1.5 text-xs transition-all ${
+              className={`rounded-lg px-2.5 py-1.5 text-xs transition-all ${
                 timeWindowMinutes === m
                   ? "bg-white/10 text-white font-medium shadow-sm"
                   : "text-zinc-500 hover:text-zinc-300"
@@ -372,7 +372,7 @@ export function SessionTimeline({
               ] as const
             ).map(([, label, bg]) => (
               <div key={label} className="flex items-center gap-1.5">
-                <div className={`h-2 w-4 rounded-sm ${bg}`} />
+                <div className={`h-2 w-4 rounded-lg ${bg}`} />
                 <span className="text-[10px] text-zinc-600">{label}</span>
               </div>
             ))}

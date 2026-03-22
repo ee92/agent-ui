@@ -66,7 +66,7 @@ export function ActivityFeed({
   }, [events]);
 
   return (
-    <section className="rounded-xl border border-border bg-zinc-900/80 p-3 backdrop-blur-xl xl:min-h-0 xl:flex-1 xl:overflow-y-auto xl:p-4">
+    <section className="rounded-lg border border-border bg-surface-1 p-3 xl:min-h-0 xl:flex-1 xl:overflow-y-auto xl:p-4">
       <style>{`
         @keyframes workflow-fade-in {
           from { opacity: 0; transform: translateY(6px); }
@@ -81,21 +81,21 @@ export function ActivityFeed({
       </div>
 
       {grouped.length === 0 ? (
-        <div className="flex min-h-32 items-center justify-center rounded-xl border border-dashed border-white/8 text-sm text-zinc-600">
+        <div className="flex min-h-32 items-center justify-center rounded-lg border border-dashed border-white/4 text-sm text-zinc-600">
           No activity yet
         </div>
       ) : (
         <div className="space-y-4">
           {grouped.map((group) => (
             <div key={group.label}>
-              <p className="mb-2 text-xs font-medium uppercase tracking-[0.14em] text-zinc-500">{group.label}</p>
+              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">{group.label}</p>
               <div className="space-y-2">
                 {group.items.map((event, index) => {
                   const style = KIND_STYLES[event.kind];
                   return (
                     <article
                       key={event.id}
-                      className={`rounded-xl border-l-2 ${style.border} bg-black/20 px-3 py-3`}
+                      className={`rounded-lg border-l-2 ${style.border} bg-surface-1 px-3 py-3`}
                       style={{
                         animation: index < 5 ? "workflow-fade-in 320ms ease-out both" : undefined,
                         animationDelay: index < 5 ? `${index * 60}ms` : undefined,
@@ -103,7 +103,7 @@ export function ActivityFeed({
                     >
                       <div className="flex gap-3">
                         <div className="flex shrink-0 items-start gap-2 pt-0.5">
-                          <span className={`inline-flex h-4 w-4 items-center justify-center rounded-full ${style.dot} text-[9px] font-semibold text-black`}>
+                          <span className={`inline-flex h-4 w-4 items-center justify-center rounded-full ${style.dot} text-[10px] font-semibold text-black`}>
                             {style.icon}
                           </span>
                           <span className="text-xs text-zinc-500">{formatRelative(event.timestamp)}</span>
@@ -114,7 +114,7 @@ export function ActivityFeed({
                             <button
                               type="button"
                               onClick={() => onOpenSession(event.sessionKey!)}
-                              className="mt-2 min-h-7 rounded-full bg-blue-500/12 px-2 py-1 text-[11px] text-blue-300 transition-all duration-150 hover:bg-blue-500/20"
+                              className="mt-2 min-h-7 rounded-full bg-blue-500/12 px-2 py-1 text-[10px] text-blue-300 transition-all duration-150 hover:bg-blue-500/20"
                             >
                               {event.sessionKey}
                             </button>

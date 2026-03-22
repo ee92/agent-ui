@@ -23,13 +23,13 @@ export function TaskContextCard({ task }: { task: TaskNode }) {
   const action = ACTION_LABELS[task.status];
 
   return (
-    <div className="mx-auto mb-6 w-full max-w-lg rounded-2xl border border-white/8 bg-white/[0.03] p-5">
+    <div className="mx-auto mb-6 w-full max-w-lg rounded-lg border border-white/4 bg-white/[0.03] p-5">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 min-w-0">
           <span className={`h-3 w-3 shrink-0 rounded-full ${STATUS_COLORS[task.status] ?? "bg-zinc-500"}`} />
           <p className="text-base font-semibold text-white truncate">{task.title}</p>
         </div>
-        <span className="shrink-0 rounded-full bg-white/5 px-2.5 py-1 text-[11px] uppercase tracking-wider text-zinc-400">
+        <span className="shrink-0 rounded-full bg-white/5 px-2.5 py-1 text-[10px] uppercase tracking-wider text-zinc-400">
           {TASK_STATUS_META[task.status].label}
         </span>
       </div>
@@ -45,7 +45,7 @@ export function TaskContextCard({ task }: { task: TaskNode }) {
         <button
           type="button"
           onClick={() => void updateTask(task.id, { status: action.next })}
-          className="mt-4 inline-flex min-h-11 items-center rounded-full bg-white/8 px-4 text-sm font-medium text-zinc-200 transition-all duration-150 hover:bg-white/12 active:scale-95 xl:hidden"
+          className="mt-4 inline-flex min-h-9 items-center rounded-full bg-white/8 px-4 text-sm font-medium text-zinc-200 transition-all duration-150 hover:bg-white/12 active:scale-95 xl:hidden"
         >
           {action.label} →
         </button>

@@ -55,7 +55,7 @@ function renderInline(text: string): React.ReactNode[] {
     if (match[1] !== undefined && match[2]) {
       // ![alt](url) inline image
       parts.push(
-        <img key={key++} src={match[2]} alt={match[1]} className="my-1 inline-block max-h-72 rounded-2xl border border-white/10" />
+        <img key={key++} src={match[2]} alt={match[1]} className="my-1 inline-block max-h-72 rounded-lg border border-white/4" />
       );
     } else if (match[3] !== undefined && match[4]) {
       // [text](url) link
@@ -67,16 +67,16 @@ function renderInline(text: string): React.ReactNode[] {
     } else if (match[6]) {
       parts.push(<em key={key++}>{match[6]}</em>);
     } else if (match[7]) {
-      parts.push(<code key={key++} className="rounded-md bg-white/8 px-1.5 py-0.5 text-[13px] text-sky-200">{match[7]}</code>);
+      parts.push(<code key={key++} className="rounded-lg bg-white/8 px-1.5 py-0.5 text-sm text-sky-200">{match[7]}</code>);
     } else if (match[9]) {
       // /command — style like code
-      parts.push(<code key={key++} className="rounded-md bg-white/8 px-1.5 py-0.5 text-[13px] text-emerald-300">{match[9]}</code>);
+      parts.push(<code key={key++} className="rounded-lg bg-white/8 px-1.5 py-0.5 text-sm text-emerald-300">{match[9]}</code>);
     } else if (match[10]) {
       // Bare URL — render as image if it looks like one, otherwise link
       const url = match[10];
       if (isImageUrl(url)) {
         parts.push(
-          <img key={key++} src={url} alt="" loading="lazy" className="my-2 block max-h-80 rounded-2xl border border-white/10" />
+          <img key={key++} src={url} alt="" loading="lazy" className="my-2 block max-h-80 rounded-lg border border-white/4" />
         );
       } else {
         parts.push(
@@ -228,13 +228,13 @@ export function Markdown({ text }: { text: string }) {
   const blocks = useMemo(() => parseBlocks(text), [text]);
 
   return (
-    <div className="space-y-3 text-[14px] leading-relaxed text-zinc-100">
+    <div className="space-y-3 text-sm leading-relaxed text-zinc-100">
       {blocks.map((block, index) => {
         if (block.type === "code") {
           return (
             <div key={`${block.type}-${index}`} className="relative">
-              <div className="flex items-center justify-between rounded-t-2xl border border-b-0 border-white/8 bg-black/50 px-4 py-1.5">
-                <span className="text-[11px] uppercase tracking-wider text-zinc-500">{block.lang || "code"}</span>
+              <div className="flex items-center justify-between rounded-t-lg border border-b-0 border-white/4 bg-black/50 px-4 py-1.5">
+                <span className="text-[10px] uppercase tracking-wider text-zinc-500">{block.lang || "code"}</span>
                 <button
                   type="button"
                   onClick={() => {
@@ -242,13 +242,13 @@ export function Markdown({ text }: { text: string }) {
                     setCopiedIndex(index);
                     window.setTimeout(() => setCopiedIndex((c) => (c === index ? null : c)), 1200);
                   }}
-                  className="inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-[11px] text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
+                  className="inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-[10px] text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
                 >
                   <CopyIcon />
                   {copiedIndex === index ? "Copied" : "Copy"}
                 </button>
               </div>
-              <pre className="overflow-x-auto rounded-b-2xl border border-white/8 bg-black/40 px-4 py-3 text-[13px] leading-relaxed text-sky-200">
+              <pre className="overflow-x-auto rounded-b-lg border border-white/4 bg-surface-1 px-4 py-3 text-sm leading-relaxed text-sky-200">
                 <code>{block.code}</code>
               </pre>
             </div>
@@ -262,13 +262,13 @@ export function Markdown({ text }: { text: string }) {
               src={block.url}
               alt={block.alt}
               loading="lazy"
-              className="max-h-80 rounded-2xl border border-white/10 object-contain"
+              className="max-h-80 rounded-lg border border-white/4 object-contain"
             />
           );
         }
 
         if (block.type === "hr") {
-          return <hr key={`${block.type}-${index}`} className="border-white/10" />;
+          return <hr key={`${block.type}-${index}`} className="border-white/4" />;
         }
 
         if (block.type === "blockquote") {
@@ -283,10 +283,10 @@ export function Markdown({ text }: { text: string }) {
 
         if (block.type === "table") {
           return (
-            <div key={`${block.type}-${index}`} className="overflow-x-auto rounded-2xl border border-white/8">
-              <table className="w-full text-left text-[13px]">
+            <div key={`${block.type}-${index}`} className="overflow-x-auto rounded-lg border border-white/4">
+              <table className="w-full text-left text-sm">
                 <thead>
-                  <tr className="border-b border-white/10 bg-black/30">
+                  <tr className="border-b border-white/4 bg-surface-1">
                     {block.headers.map((h, hi) => (
                       <th key={hi} className="px-3 py-2 font-semibold text-zinc-200">{renderInline(h)}</th>
                     ))}
@@ -294,7 +294,7 @@ export function Markdown({ text }: { text: string }) {
                 </thead>
                 <tbody>
                   {block.rows.map((row, ri) => (
-                    <tr key={ri} className="border-b border-white/5 last:border-0">
+                    <tr key={ri} className="border-b border-white/4 last:border-0">
                       {row.map((cell, ci) => (
                         <td key={ci} className="px-3 py-2 text-zinc-300">{renderInline(cell)}</td>
                       ))}

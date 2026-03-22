@@ -49,7 +49,7 @@ function RepoCard({ repo, expanded, onToggle, relatedTasks, relatedCrons, onCrea
   onCreateTask: () => void;
 }) {
   return (
-    <div className={`rounded-xl border transition-colors ${repo.problems.length > 0 ? "border-amber-500/15 bg-amber-500/[0.02]" : "border-white/6 bg-zinc-950/70"}`}>
+    <div className={`rounded-lg border transition-colors ${repo.problems.length > 0 ? "border-amber-500/15 bg-amber-500/[0.02]" : "border-white/6 bg-zinc-950/70"}`}>
       <button
         type="button"
         onClick={onToggle}
@@ -102,17 +102,17 @@ function RepoCard({ repo, expanded, onToggle, relatedTasks, relatedCrons, onCrea
 
       {/* Expanded details */}
       {expanded && (
-        <div className="border-t border-white/5 px-4 pb-4 pt-3">
+        <div className="border-t border-white/4 px-4 pb-4 pt-3">
           {/* Path */}
           <div className="mb-3">
-            <p className="text-[11px] uppercase tracking-wide text-zinc-500">Path</p>
+            <p className="text-[10px] uppercase tracking-wide text-zinc-500">Path</p>
             <p className="mt-0.5 font-mono text-xs text-zinc-300">{repo.dir}</p>
           </div>
 
           {/* Problems */}
           {repo.problems.length > 0 && (
             <div className="mb-3">
-              <p className="text-[11px] uppercase tracking-wide text-zinc-500">Issues</p>
+              <p className="text-[10px] uppercase tracking-wide text-zinc-500">Issues</p>
               <div className="mt-1 flex flex-wrap gap-1.5">
                 {repo.problems.map((p) => (
                   <span key={p} className="rounded-full bg-amber-500/10 px-2 py-0.5 text-xs text-amber-300">{p}</span>
@@ -123,7 +123,7 @@ function RepoCard({ repo, expanded, onToggle, relatedTasks, relatedCrons, onCrea
 
           {/* Branches */}
           <div className="mb-3">
-            <p className="text-[11px] uppercase tracking-wide text-zinc-500">Branches ({repo.branches})</p>
+            <p className="text-[10px] uppercase tracking-wide text-zinc-500">Branches ({repo.branches})</p>
             <div className="mt-1.5 flex flex-wrap gap-1.5">
               {repo.branchNames.map((b) => (
                 <span
@@ -148,10 +148,10 @@ function RepoCard({ repo, expanded, onToggle, relatedTasks, relatedCrons, onCrea
           {/* Related tasks */}
           {relatedTasks.length > 0 && (
             <div className="mb-3">
-              <p className="text-[11px] uppercase tracking-wide text-zinc-500">Linked Tasks ({relatedTasks.length})</p>
+              <p className="text-[10px] uppercase tracking-wide text-zinc-500">Linked Tasks ({relatedTasks.length})</p>
               <div className="mt-1.5 space-y-1">
                 {relatedTasks.map((t) => (
-                  <div key={t.id} className="flex items-center gap-2 rounded-lg border border-white/5 bg-black/20 px-3 py-1.5">
+                  <div key={t.id} className="flex items-center gap-2 rounded-lg border border-white/4 bg-surface-1 px-3 py-1.5">
                     <span className={`h-2 w-2 rounded-full ${TASK_STATUS_META[t.status as keyof typeof TASK_STATUS_META]?.dot || "bg-zinc-500"}`} />
                     <span className="min-w-0 truncate text-xs text-zinc-200">{t.title}</span>
                     <span className="ml-auto text-[10px] text-zinc-500">{TASK_STATUS_META[t.status as keyof typeof TASK_STATUS_META]?.label || t.status}</span>
@@ -164,7 +164,7 @@ function RepoCard({ repo, expanded, onToggle, relatedTasks, relatedCrons, onCrea
           {/* Related cron jobs */}
           {relatedCrons.length > 0 && (
             <div className="mb-3">
-              <p className="text-[11px] uppercase tracking-wide text-zinc-500">Cron Jobs ({relatedCrons.length})</p>
+              <p className="text-[10px] uppercase tracking-wide text-zinc-500">Cron Jobs ({relatedCrons.length})</p>
               <div className="mt-1.5 flex flex-wrap gap-1.5">
                 {relatedCrons.map((c) => (
                   <button key={c.id} type="button" onClick={() => navigate("#/timeline")} className="rounded-full bg-sky-500/10 px-2.5 py-0.5 text-xs text-sky-300 hover:bg-sky-500/20">⏰ {c.name}</button>
@@ -248,7 +248,7 @@ export function ProjectsPage() {
       </div>
 
       {/* Filter bar */}
-      <div className="mb-3 flex shrink-0 items-center gap-1 rounded-xl border border-white/5 bg-black/20 p-1">
+      <div className="mb-3 flex shrink-0 items-center gap-1 rounded-lg border border-white/4 bg-surface-1 p-1">
         <FilterBtn label="All" count={repos.length} active={filter === "all"} onClick={() => setFilter("all")} />
         <FilterBtn label="Needs attention" count={dirtyCount} active={filter === "dirty"} onClick={() => setFilter("dirty")} />
         <FilterBtn label="Clean" count={cleanCount} active={filter === "clean"} onClick={() => setFilter("clean")} />
@@ -262,12 +262,12 @@ export function ProjectsPage() {
           </div>
         )}
         {error && (
-          <div className="flex min-h-40 items-center justify-center rounded-xl border border-dashed border-red-500/20 text-sm text-red-300">
+          <div className="flex min-h-40 items-center justify-center rounded-lg border border-dashed border-red-500/20 text-sm text-red-300">
             {error}
           </div>
         )}
         {!loading && !error && filtered.length === 0 && (
-          <div className="flex min-h-40 items-center justify-center rounded-xl border border-dashed border-white/10 text-sm text-zinc-500">
+          <div className="flex min-h-40 items-center justify-center rounded-lg border border-dashed border-white/4 text-sm text-zinc-500">
             No repositories found.
           </div>
         )}
@@ -305,7 +305,7 @@ function FilterBtn({ label, count, active, onClick }: { label: string; count: nu
     >
       {label}
       {count > 0 && (
-        <span className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[11px] font-semibold ${
+        <span className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[10px] font-semibold ${
           active ? "bg-blue-500/20 text-blue-300" : "bg-white/[0.06] text-zinc-500"
         }`}>{count}</span>
       )}
