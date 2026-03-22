@@ -93,7 +93,7 @@ export interface FileAdapter {
  * Combined backend adapter
  */
 export interface BackendAdapter {
-  readonly type: 'openclaw' | 'claude-code' | 'local';
+  readonly type: 'openclaw' | 'claude-code' | 'codex' | 'local';
   readonly sessions: SessionAdapter;
   readonly files: FileAdapter;
   readonly crons?: CronAdapter;

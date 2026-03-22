@@ -19,6 +19,8 @@ const execP = promisify(execAsyncCb);
 import { randomUUID } from "node:crypto";
 import { listSessions, getSession, refreshIndex } from "./server/claude/session-index.mjs";
 import { parseTranscript } from "./server/claude/transcript-parser.mjs";
+import { listCodexSessions, getCodexSession } from "./server/codex/session-index.mjs";
+import { parseCodexTranscript } from "./server/codex/transcript-parser.mjs";
 import { startRun, cancelRun, getRunStatus } from "./server/claude/standalone-runner.mjs";
 import { createBroker } from "./server/claude/ws-broker.mjs";
 import { validateTransition } from "./lib/task-guards.mjs";
@@ -722,6 +724,33 @@ const server = createServer(async (req, res) => {
       return jsonResponse(res, { error: "not found" }, 404);
     }
     return jsonResponse(res, { ok: true });
+  }
+
+  /* ─── Codex session routes (read-only) ─── */
+
+  if (url.pathname === "/api/codex/sessions" && req.method === "GET") {
+    if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);
+    try {
+      const { sessions, nextCursor } = await listCodexSessions({ limit: 200 });
+      return jsonResponse(res, { sessions, nextCursor });
+    } catch (error) {
+      return jsonResponse(res, { error: "failed to list codex sessions", detail: error.message }, 500);
+    }
+  }
+
+  if (url.pathname.startsWith("/api/codex/sessions/") && url.pathname.endsWith("/history") && req.method === "GET") {
+    if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);
+    const marker = "/api/codex/sessions/";
+    const sessionKey = decodeSessionKeyFromPath(url.pathname.slice(0, -"/history".length), marker);
+    if (!sessionKey) return jsonResponse(res, { error: "missing session key" }, 400);
+    try {
+      const session = await getCodexSession(sessionKey);
+      if (!session) return jsonResponse(res, { error: "session not found" }, 404);
+      const { messages } = await parseCodexTranscript(session.transcriptPath);
+      return jsonResponse(res, { messages });
+    } catch (error) {
+      return jsonResponse(res, { error: "failed to read transcript", detail: error.message }, 500);
+    }
   }
 
   if (url.pathname === "/api/repos") {
