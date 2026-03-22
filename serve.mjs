@@ -24,6 +24,7 @@ import { parseCodexTranscript } from "./server/codex/transcript-parser.mjs";
 import { startRun, cancelRun, getRunStatus } from "./server/claude/standalone-runner.mjs";
 import { createBroker } from "./server/claude/ws-broker.mjs";
 import { scanDocker } from "./server/docker-scanner.mjs";
+import { mergeProjects } from "./server/project-merger.mjs";
 import { validateTransition } from "./lib/task-guards.mjs";
 import {
   createJob as createCronJob,
@@ -771,6 +772,23 @@ const server = createServer(async (req, res) => {
       return jsonResponse(res, { repos });
     } catch (error) {
       return jsonResponse(res, { error: "scan failed", detail: error.message }, 500);
+    }
+  }
+
+  if (url.pathname === "/api/projects") {
+    if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);
+    const forceRefresh = url.searchParams.has("refresh");
+    try {
+      const repos = await repoCache.get(forceRefresh);
+      const taskFile = readTasksFile();
+      const merged = mergeProjects({
+        repos,
+        tasks: Array.isArray(taskFile.tasks) ? taskFile.tasks : [],
+        force: forceRefresh,
+      });
+      return jsonResponse(res, merged);
+    } catch (error) {
+      return jsonResponse(res, { error: "project merge failed", detail: error.message }, 500);
     }
   }
 
