@@ -23,6 +23,7 @@ import { listCodexSessions, getCodexSession } from "./server/codex/session-index
 import { parseCodexTranscript } from "./server/codex/transcript-parser.mjs";
 import { startRun, cancelRun, getRunStatus } from "./server/claude/standalone-runner.mjs";
 import { createBroker } from "./server/claude/ws-broker.mjs";
+import { scanDocker } from "./server/docker-scanner.mjs";
 import { validateTransition } from "./lib/task-guards.mjs";
 import {
   createJob as createCronJob,
@@ -750,6 +751,15 @@ const server = createServer(async (req, res) => {
       return jsonResponse(res, { messages });
     } catch (error) {
       return jsonResponse(res, { error: "failed to read transcript", detail: error.message }, 500);
+    }
+  }
+
+  if (url.pathname === "/api/docker") {
+    if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);
+    try {
+      return jsonResponse(res, scanDocker());
+    } catch (error) {
+      return jsonResponse(res, { error: "docker scan failed", detail: error.message }, 500);
     }
   }
 
