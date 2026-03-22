@@ -1,119 +1,148 @@
 # agent-ui
 
-`agent-ui` is a task board and dashboard for AI agent workflows.
+A dashboard for humans working with AI coding agents.
 
-It gives humans a UI and gives agents a deterministic task protocol via the `task` CLI and skill docs.
+You give agents tasks. They work in the background. **agent-ui** is how you see what's happening — a single page that shows your task board, agent conversations, project files, and repo status.
 
-## Architecture
+## Why
 
-- App: data (`tasks.json`) + HTTP API + web UI + `agent-ui` CLI
-- Skill: [`skills/task-board/SKILL.md`](skills/task-board/SKILL.md) defines agent operating protocol
-- Adapters: agent-specific glue for OpenClaw, Claude Code, or standalone CLI agents
+Coding agents (Claude Code, OpenClaw, Codex) run in terminals and log files. When you have multiple agents working across repos, you lose track fast:
 
-This system is not a separate dispatcher service. The agent reads the skill and uses CLI guardrails.
+- What's each agent doing right now?
+- Which tasks are blocked?
+- Did that last commit break anything?
+- What did the agent say 20 minutes ago?
 
-## Quick Start
+agent-ui gives you one place to see all of it. No switching between terminals, no grepping through logs.
+
+## What You Get
+
+- **Task Board** — kanban view of all agent tasks. Create, assign, track status (todo → active → review → done). Agents update tasks via CLI; you see changes in real time.
+- **Conversations** — read agent chat history as it happens. Click into any session to see the full thread.
+- **Files** — browse your workspace files directly in the UI. Quick access without switching to your editor.
+- **Timeline** — chronological feed of everything: task transitions, commits, agent activity.
+- **Projects** — auto-discovers all git repos under your home directory. Shows branch, dirty files, ahead/behind, stash count — a quick health check across all your code.
+- **System Flow** — (OpenClaw) live view of gateway connections and agent routing.
+
+## Install
 
 ```bash
-git clone https://github.com/ee92/agent-ui.git
-cd agent-ui
-npm install
-npm run build
+npm install -g agent-ui
+```
+
+## Setup
+
+```bash
 agent-ui init
+```
+
+This auto-detects your environment:
+- Finds your agent type (OpenClaw, Claude Code, or standalone)
+- Sets your workspace path
+- Creates config at `~/.agent-ui/config.json`
+- Creates `tasks.json` in your workspace if it doesn't exist
+
+## Run
+
+```bash
 agent-ui start
 ```
 
-Then open:
+Opens at [http://localhost:18789](http://localhost:18789).
 
-```text
-http://localhost:18789
+The server installs itself as a system service (systemd on Linux, launchd on macOS) so it survives reboots. File changes auto-restart the server.
+
+## CLI Reference
+
+```
+agent-ui init        Set up config and workspace
+agent-ui start       Start the dashboard (installs as service)
+agent-ui stop        Stop the dashboard
+agent-ui status      Check if it's running
+agent-ui logs        View server logs
+agent-ui config      Print current configuration
+agent-ui uninstall   Remove the service (keeps your data)
 ```
 
-## Setup Wizard (`agent-ui init`)
+## Task CLI
 
-`agent-ui init` runs non-interactively and sets up local defaults:
-
-- Detects agent mode (`openclaw`, `claude-code`, or standalone)
-- Detects workspace path
-- Creates `~/.agent-ui/config.json` if missing
-- Creates `<workspace>/tasks.json` if missing
-- Checks whether `claude` CLI is on `PATH`
-- Prints setup summary and next steps
-
-If config already exists, it prints current config and reports that it is already configured.
-
-## Task CLI Reference
-
-Use `task` to operate board state safely.
+Agents interact with the board through the `task` CLI. Humans can too.
 
 ```bash
-task list [--status STATUS] [--json]
-task eligible [--json]
-task claim ID [--session KEY] [--branch NAME]
-task start ID [--session KEY] [--branch NAME]
-task plan ID "summary"
-task block ID "reason"
-task review ID "summary + evidence"
-task done ID "summary + evidence"
-task note ID "progress note"
-task edit ID [--title ...] [--desc ...] [--status ...] [--branch ...]
-task stats
-task rm ID
+task list                        # show the board
+task add "Build auth module"     # create a task
+task start 3                     # mark as active
+task note 3 "halfway done"       # log progress
+task review 3 "PR ready"         # submit for review
+task done 3 "merged in abc123"   # mark complete
 ```
 
-## How Agents Interact
+Full commands: `list`, `eligible`, `claim`, `start`, `plan`, `block`, `review`, `done`, `note`, `edit`, `stats`, `rm`.
 
-Agents follow the skill + CLI protocol:
+The CLI enforces state transitions (you can't skip from todo to done), dependency ordering, and concurrency limits.
 
-1. Inspect board state (`task list` / `task eligible --json`)
-2. Claim work atomically (`task claim ID`)
-3. Implement and log progress (`task note`)
-4. Submit for review (`task review`)
-5. Human marks final completion (`task done`)
+## How Agents Use It
 
-The CLI enforces transition, dependency, and concurrency guardrails.
+Agents don't use the UI — they use the `task` CLI and follow the protocol defined in [`skills/task-board/SKILL.md`](skills/task-board/SKILL.md):
 
-## Autonomous Pickup Pattern
+1. Check for available work → `task eligible --json`
+2. Claim a task → `task claim ID`
+3. Do the work, log progress → `task note ID "update"`
+4. Submit for human review → `task review ID "summary + evidence"`
+5. Human approves → `task done ID`
 
-Typical autonomous loop:
+This keeps agents on-protocol without needing API integrations. The skill doc is the interface.
 
-1. A scheduler (cron/OpenClaw trigger) starts the agent
-2. Agent runs `task eligible --json`
-3. Agent claims highest-priority eligible task via `task claim ID`
-4. Agent executes work and posts `task review` with evidence
-5. Human reviews and later sets `done`
+## Project Discovery
+
+By default, agent-ui scans your home directory for git repos, skipping noise directories (`node_modules`, `.cache`, etc.) and stopping at the first `.git` it finds in each tree (no duplicates from submodules or nested repos).
+
+To override, set `repos.roots` in your config:
+
+```json
+{
+  "repos": {
+    "roots": ["~/projects", "~/work"],
+    "depth": 4
+  }
+}
+```
 
 ## Configuration
 
-Primary config:
+Config lives at `~/.agent-ui/config.json`:
 
-- `~/.agent-ui/config.json`
-- Keys:
-  - `workspace`: absolute workspace path
-  - `agent`: detected adapter mode
-  - `maxConcurrent`: concurrent active task cap
+```json
+{
+  "workspace": "/home/you/.openclaw/workspace",
+  "agent": "openclaw",
+  "maxConcurrent": 3
+}
+```
 
-Task board file:
-
-- `<workspace>/tasks.json`
-- Includes board metadata and task records
-- Default includes `config.maxConcurrent`
-
-## Supported Agents
-
-- OpenClaw
-- Claude Code
-- Standalone CLI agent workflows
+| Key | Description |
+|-----|-------------|
+| `workspace` | Path to your agent workspace (auto-detected) |
+| `agent` | Agent adapter: `openclaw`, `claude-code`, or `none` |
+| `maxConcurrent` | Max tasks an agent can work on simultaneously |
+| `repos.roots` | Directories to scan for git repos (optional) |
+| `repos.depth` | Max directory depth for repo scan (default: 4) |
 
 ## File Locations
 
-```text
-~/.agent-ui/config.json          # agent-ui local config
-~/.agent-ui/agent-ui.log         # service/background logs
-~/.agent-ui/agent-ui.pid         # fallback process pid
-<workspace>/tasks.json           # task board data
-skills/task-board/SKILL.md       # agent protocol
 ```
+~/.agent-ui/config.json       Config
+~/.agent-ui/agent-ui.log      Server logs
+~/.agent-ui/agent-ui.pid      PID file (fallback)
+<workspace>/tasks.json         Task board data
+skills/task-board/SKILL.md     Agent protocol definition
+```
+
+## Supported Agents
+
+- **OpenClaw** — full integration (gateway connection, live sessions, system flow)
+- **Claude Code** — task board + file browser
+- **Standalone** — any agent that can shell out to `task` CLI
 
 ## License
 
