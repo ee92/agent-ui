@@ -358,19 +358,40 @@ const repoCache = (() => {
   let pending = null;  // deduplication: in-flight scan promise
 
   function findRepoDirs() {
-    const roots = (MC_CONFIG?.repos?.roots || [])
+    const configRoots = (MC_CONFIG?.repos?.roots || [])
       .map((r) => expandHome(r))
       .filter((r) => r && fileExists(r));
-    if (roots.length === 0) roots.push(WORKSPACE);
-    const maxDepth = MC_CONFIG?.repos?.depth || 4;
-    const raw = roots
-      .map((root) => {
-        try { return execSync(`find ${root} -maxdepth ${maxDepth} -name ".git" -type d 2>/dev/null`, { encoding: "utf8", timeout: 5000 }).trim(); }
-        catch (e) { return typeof e.stdout === "string" ? e.stdout.trim() : ""; }
-      })
-      .filter(Boolean)
-      .join("\n");
-    return raw ? raw.split("\n").filter(Boolean).map((g) => g.replace(/\/\.git$/, "")) : [];
+
+    if (configRoots.length > 0) {
+      // Explicit roots configured — scan them with depth limit
+      const maxDepth = MC_CONFIG?.repos?.depth || 4;
+      const raw = configRoots
+        .map((root) => {
+          try { return execSync(`find ${root} -maxdepth ${maxDepth} -name ".git" -type d 2>/dev/null`, { encoding: "utf8", timeout: 5000 }).trim(); }
+          catch (e) { return typeof e.stdout === "string" ? e.stdout.trim() : ""; }
+        })
+        .filter(Boolean)
+        .join("\n");
+      return raw ? raw.split("\n").filter(Boolean).map((g) => g.replace(/\/\.git$/, "")) : [];
+    }
+
+    // No roots configured — smart scan from $HOME:
+    // Find all .git dirs, skip noise directories, and prune on first .git hit
+    // so nested repos (submodules, node_modules forks) are excluded.
+    const home = homedir();
+    const skipDirs = [
+      "node_modules", ".cache", ".local", ".nvm", ".npm", ".pnpm",
+      ".cargo", ".rustup", ".gradle", ".m2", ".docker", ".Trash",
+      "Library", ".Spotlight-V100", ".fseventsd",
+    ].map((d) => `-name ${d}`).join(" -o ");
+    const cmd = `find ${home} \\( ${skipDirs} \\) -prune -o -name .git -type d -print -prune 2>/dev/null`;
+    try {
+      const raw = execSync(cmd, { encoding: "utf8", timeout: 10000 }).trim();
+      return raw ? raw.split("\n").filter(Boolean).map((g) => g.replace(/\/\.git$/, "")) : [];
+    } catch (e) {
+      const stdout = typeof e.stdout === "string" ? e.stdout.trim() : "";
+      return stdout ? stdout.split("\n").filter(Boolean).map((g) => g.replace(/\/\.git$/, "")) : [];
+    }
   }
 
   // Parse git status --porcelain=v2 --branch for structured data
