@@ -98,7 +98,7 @@ function TaskCard({
   return (
     <article
       draggable="true"
-      className={`group/card rounded-lg bg-surface-1 p-3 transition-colors duration-150 hover:bg-white/[0.04] ${isDragging ? "opacity-50" : ""}`}
+      className={`group/card rounded-lg bg-surface-1 px-3 py-2 transition-colors duration-150 hover:bg-white/[0.04] ${isDragging ? "opacity-50" : ""}`}
       onClick={() => setExpanded((current) => !current)}
       onDragStart={(event) => onDragStart(event, task)}
       onDragEnd={onDragEnd}
@@ -119,7 +119,7 @@ function TaskCard({
     >
       <div className="min-w-0">
         <div className="flex items-start gap-1">
-          <p className={`flex-1 text-sm font-medium leading-5 ${task.status === "done" ? "text-zinc-500 line-through" : "text-white"}`}>
+          <p className={`flex-1 text-sm font-medium leading-5 line-clamp-2 ${task.status === "done" ? "text-zinc-500 line-through" : "text-white"}`}>
             {task.title}
           </p>
           <button
@@ -137,8 +137,8 @@ function TaskCard({
             </svg>
           </button>
         </div>
-          {blockedReason && <p className="mt-1 text-xs text-zinc-400">⚠️ {blockedReason}</p>}
-          <div className="mt-2 flex flex-wrap gap-1.5">
+          {blockedReason && <p className="mt-1 truncate text-xs text-zinc-400">⚠️ {blockedReason}</p>}
+          <div className="mt-1.5 flex flex-wrap gap-1">
             {task.sessionKey && task.status === "active" && (
               <span className="rounded-full bg-emerald-500/15 px-2 py-1 text-[10px] text-emerald-300">
                 🤖 Agent working
@@ -156,9 +156,10 @@ function TaskCard({
                   event.stopPropagation();
                   onOpenSession(task.sessionKey!);
                 }}
-                className="min-h-7 rounded-full bg-blue-500/12 px-2 py-1 text-[10px] text-blue-300 transition-all duration-150 hover:bg-blue-500/20"
+                className="max-w-32 min-h-6 truncate rounded-full bg-blue-500/12 px-2 py-0.5 text-[10px] text-blue-300 transition-all duration-150 hover:bg-blue-500/20"
+                title={task.sessionKey}
               >
-                {task.sessionKey}
+                {task.sessionKey!.length > 20 ? "📎 session" : task.sessionKey}
               </button>
             )}
             {task.repo && (
@@ -205,7 +206,7 @@ function TaskCard({
           className={`grid transition-all duration-150 ${expanded && task.notes.trim() ? "mt-2 grid-rows-[1fr]" : "grid-rows-[0fr]"}`}
         >
           <div className="overflow-hidden">
-            {task.notes.trim() && <p className="line-clamp-3 text-xs leading-5 text-zinc-400">{task.notes}</p>}
+            {task.notes.trim() && <p className="line-clamp-2 text-xs leading-5 text-zinc-400">{task.notes}</p>}
           </div>
         </div>
       </div>
@@ -264,7 +265,7 @@ function Column({
 
   return (
     <section
-      className={`flex min-h-[12rem] flex-col rounded-lg border bg-surface-1 p-3 xl:min-h-[24rem] ${dragOverColumn === status ? "border-blue-500/30" : "border-border"}`}
+      className={`flex min-h-[8rem] flex-col rounded-lg border bg-surface-1 p-3 xl:min-h-0 ${dragOverColumn === status ? "border-blue-500/30" : "border-border"}`}
       onDragOver={(event) => onColumnDragOver(event, status)}
       onDragEnter={() => onColumnDragEnter(status)}
       onDragLeave={(event) => onColumnDragLeave(event, status)}
