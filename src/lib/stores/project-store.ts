@@ -105,6 +105,19 @@ function mergeProjectsWithServices(projects: ProjectInfo[], services: ServiceInf
   return projects.map((project) => ({ ...project, service: byName.get(project.name) }));
 }
 
+/** Shallow-compare two project arrays to avoid unnecessary re-renders */
+function projectsEqual(a: ProjectWithService[], b: ProjectWithService[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i].name !== b[i].name) return false;
+    if (a[i].git?.branch !== b[i].git?.branch) return false;
+    if (a[i].git?.dirty !== b[i].git?.dirty) return false;
+    if (a[i].containers?.length !== b[i].containers?.length) return false;
+    if (a[i].service?.status !== b[i].service?.status) return false;
+  }
+  return true;
+}
+
 export const useProjectStore = create<ProjectStoreState>((set, get) => ({
   projects: [],
   services: [],
@@ -128,8 +141,12 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
         ports: Array.isArray(projectsRes.untracked?.ports) ? projectsRes.untracked?.ports : [],
       };
 
+      const merged = mergeProjectsWithServices(projects, services);
+      const prev = get();
+      const projectsChanged = !projectsEqual(prev.projects, merged);
+
       set({
-        projects: mergeProjectsWithServices(projects, services),
+        ...(projectsChanged ? { projects: merged } : {}),
         services,
         untracked,
         loading: false,

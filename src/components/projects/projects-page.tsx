@@ -171,6 +171,21 @@ function RepoCard({ repo, expanded, onToggle, relatedTasks, relatedCrons, onCrea
             {repo.git.ahead > 0 && <span className="text-blue-300">↑{repo.git.ahead}</span>}
             {repo.git.behind > 0 && <span className="text-amber-300">↓{repo.git.behind}</span>}
             {repo.git.dirty > 0 && <span className="text-amber-300">●{repo.git.dirty} dirty</span>}
+
+            {/* Container and service badges */}
+            {repo.containers?.length > 0 && (
+              <span className="inline-flex items-center gap-1 text-emerald-400">
+                <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                {repo.containers.length} container{repo.containers.length !== 1 ? "s" : ""}
+              </span>
+            )}
+            {repo.service && (
+              <span className={`inline-flex items-center gap-1 ${repo.service.status === "running" ? "text-emerald-400" : "text-zinc-500"}`}>
+                <span className={`inline-block h-1.5 w-1.5 rounded-full ${repo.service.status === "running" ? "bg-emerald-400" : "bg-zinc-600"}`} />
+                {repo.service.status === "running" ? "serving" : "stopped"}
+                {repo.service.port ? ` :${repo.service.port}` : ""}
+              </span>
+            )}
           </div>
 
           {/* Last commit message */}
