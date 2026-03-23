@@ -466,7 +466,22 @@ const repoCache = (() => {
 
   async function scan() {
     const dirs = findRepoDirs();
-    return Promise.all(dirs.map(scanRepo));
+    // Filter out nested repos (submodules, vendored deps, cloned analysis repos).
+    // Keep nested repos only if they're inside a "projects" directory
+    // (e.g. ~/clawd/projects/draw is a real project inside the clawd repo).
+    const sorted = [...dirs].sort((a, b) => a.length - b.length);
+    const topLevel = [];
+    for (const dir of sorted) {
+      const parent = topLevel.find((p) => dir.startsWith(p + "/"));
+      if (parent) {
+        const relative = dir.slice(parent.length + 1);
+        const segments = relative.split("/");
+        // Only keep if the first intermediate dir is "projects" (standard layout)
+        if (segments[0] !== "projects") continue;
+      }
+      topLevel.push(dir);
+    }
+    return Promise.all(topLevel.map(scanRepo));
   }
 
   return {

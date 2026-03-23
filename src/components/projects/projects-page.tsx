@@ -293,6 +293,7 @@ export function ProjectsPage() {
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [services, setServices] = useState<ServiceInfo[]>([]);
+  const [claimedCompose, setClaimedCompose] = useState<Set<string>>(new Set());
   const [untracked, setUntracked] = useState<UntrackedInfo>({ containers: [], ports: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -309,6 +310,9 @@ export function ProjectsPage() {
       ]);
       setProjects(Array.isArray(projRes.projects) ? projRes.projects : []);
       setServices(Array.isArray(svcRes.services) ? svcRes.services : []);
+      // Compose project names that are already claimed by a git repo
+      // (e.g. "server" compose project is inside swap.win git repo)
+      setClaimedCompose(new Set(Array.isArray(projRes.claimedComposeProjects) ? projRes.claimedComposeProjects : []));
       setUntracked({
         containers: Array.isArray(projRes.untracked?.containers) ? projRes.untracked.containers : [],
         ports: Array.isArray(projRes.untracked?.ports) ? projRes.untracked.ports : [],
@@ -325,12 +329,16 @@ export function ProjectsPage() {
 
   const serviceByName = useMemo(() => new Map(services.map((s) => [s.name, s])), [services]);
 
-  // Services not matched to any project
+  // Services not matched to any project.
+  // Exclude services whose name matches a project OR a claimed compose project
+  // (e.g. "server" compose project is already shown under swap.win's containers).
   const unmatchedServices = useMemo(() =>
     [...services.values()].filter(
-      (s) => s.status === "running" && !projects.some((p) => p.name === s.name),
+      (s) => s.status === "running"
+        && !projects.some((p) => p.name === s.name)
+        && !claimedCompose.has(s.name),
     ),
-  [services, projects]);
+  [services, projects, claimedCompose]);
 
   const handleAction = useCallback(async (name: string, action: "start" | "stop") => {
     setActionLoading((prev) => ({ ...prev, [name]: true }));

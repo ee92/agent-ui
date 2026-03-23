@@ -4,10 +4,14 @@
  */
 
 import { execSync } from "node:child_process";
-import { existsSync, readlinkSync } from "node:fs";
+import { existsSync, lstatSync, readlinkSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { scanDocker } from "./docker-scanner.mjs";
+
+function readdirSafe(dir) {
+  try { return readdirSync(dir); } catch { return []; }
+}
 
 const CACHE_TTL = 15_000;
 let cache = { data: null, ts: 0 };
@@ -75,18 +79,25 @@ function buildMergedProjects(repos, tasks) {
   const home = homedir();
   const findNearestGitRoot = createNearestRootFinder(home);
   const projectsByDir = new Map();
+  const projectsByName = new Map();
 
   for (const repo of repos) {
     if (!repo || typeof repo.dir !== "string" || !repo.dir) continue;
     const dir = resolve(repo.dir);
     const name = typeof repo.name === "string" && repo.name ? repo.name : basename(dir);
-    projectsByDir.set(dir, {
+    const project = {
       name,
       dir,
       git: mapGit(repo),
       containers: [],
       tasks: tasksForProject(tasks, name),
-    });
+    };
+    projectsByDir.set(dir, project);
+    // Index by name for fuzzy container matching later.
+    // If two repos have the same name, first one wins (shouldn't happen).
+    if (!projectsByName.has(name)) {
+      projectsByName.set(name, project);
+    }
   }
 
   let dockerData = { projects: {}, orphans: [] };
@@ -96,28 +107,113 @@ function buildMergedProjects(repos, tasks) {
     // Docker unavailable — keep partial data.
   }
 
-  const untrackedContainers = Array.isArray(dockerData.orphans) ? [...dockerData.orphans] : [];
+  const untrackedContainers = [];
 
-  for (const dockerProject of Object.values(dockerData.projects || {})) {
+  // Track which compose project names got claimed by a git repo.
+  const claimedComposeProjects = new Set();
+
+  /**
+   * Find the best project for a compose working dir.
+   * Prefers the DEEPEST matching git repo (not nearest root walking up).
+   * E.g. for dir="/workspace/sentinel", prefers project "sentinel" at
+   * "/workspace/sentinel" over "workspace" at "/workspace".
+   */
+  function findBestProject(composeDir) {
+    if (!composeDir) return null;
+    const resolved = resolve(composeDir);
+    // Find the project whose dir is the longest prefix of composeDir.
+    // This gives us the deepest (most specific) match.
+    let bestMatch = null;
+    let bestLen = 0;
+    for (const [dir, project] of projectsByDir) {
+      if ((resolved === dir || resolved.startsWith(dir + "/")) && dir.length > bestLen) {
+        bestMatch = project;
+        bestLen = dir.length;
+      }
+    }
+    return bestMatch;
+  }
+
+  /**
+   * Fuzzy match: find a project by compose project name.
+   * Only does direct name matching — no guessing from subdirectories
+   * to avoid false positives (e.g. "server" matching any project with a server/ dir).
+   */
+  function findProjectByComposeName(composeName) {
+    return projectsByName.get(composeName) || null;
+  }
+
+  for (const [composeName, dockerProject] of Object.entries(dockerData.projects || {})) {
     const containers = Array.isArray(dockerProject?.containers) ? dockerProject.containers : [];
-    const root = findNearestGitRoot(dockerProject?.dir || "");
-    if (!root) {
+    const composeDir = dockerProject?.dir || "";
+
+    // Always claim the compose project name to prevent ghost entries.
+    claimedComposeProjects.add(composeName);
+
+    // Strategy 1: match by compose working directory (deepest match wins)
+    let targetProject = findBestProject(composeDir);
+
+    // Strategy 2: if dir doesn't resolve (deleted worktree), match by name
+    if (!targetProject) {
+      targetProject = findProjectByComposeName(composeName);
+    }
+
+    if (!targetProject) {
       untrackedContainers.push(...containers);
       continue;
     }
 
-    if (!projectsByDir.has(root)) {
-      projectsByDir.set(root, {
-        name: basename(root),
-        dir: root,
-        git: emptyGit(),
-        containers: [],
-        tasks: tasksForProject(tasks, basename(root)),
-      });
+    targetProject.containers.push(...containers);
+  }
+
+  // Handle orphan containers (no compose labels at all).
+  // Try to match by container name patterns (e.g. "lp-api" → "swap.win").
+  for (const container of (dockerData.orphans || [])) {
+    const containerName = (container.name || "").toLowerCase();
+    const imageName = (container.image || "").toLowerCase();
+
+    let matched = false;
+    for (const [, project] of projectsByDir) {
+      const pName = project.name.toLowerCase();
+      // Match if container name or image starts with or contains the project name
+      // Also match common patterns like "lp-" prefix for projects with "lp" in name
+      if (
+        containerName.startsWith(pName + "-") ||
+        containerName.startsWith(pName + "_") ||
+        imageName.startsWith(pName + "-") ||
+        imageName.startsWith(pName + "_")
+      ) {
+        project.containers.push(container);
+        matched = true;
+        break;
+      }
     }
 
-    const project = projectsByDir.get(root);
-    project.containers.push(...containers);
+    // Special case: match containers whose image name references a project subdir
+    // e.g. image "lp-app-server" or "server-token-resolver" → swap.win (has packages/server)
+    if (!matched) {
+      for (const [dir, project] of projectsByDir) {
+        if (existsSync(join(dir, "packages"))) {
+          // Check if container image references any package name
+          const imageBase = imageName.replace(/:.*$/, "");
+          try {
+            const packages = readdirSafe(join(dir, "packages"));
+            for (const pkg of packages) {
+              if (imageBase.includes(pkg) || containerName.includes(pkg)) {
+                project.containers.push(container);
+                matched = true;
+                break;
+              }
+            }
+          } catch { /* skip */ }
+        }
+        if (matched) break;
+      }
+    }
+
+    if (!matched) {
+      untrackedContainers.push(container);
+    }
   }
 
   let ports = [];
@@ -139,9 +235,40 @@ function buildMergedProjects(repos, tasks) {
     }
   }
 
-  const projects = [...projectsByDir.values()].sort((a, b) => a.name.localeCompare(b.name));
+  // Filter out git submodules — their .git is a file, not a directory.
+  // Also filter out repos that are subdirectories of another project.
+  const allDirs = [...projectsByDir.keys()].sort((a, b) => a.length - b.length);
+  const filteredProjects = [];
+  for (const project of projectsByDir.values()) {
+    const dotGit = join(project.dir, ".git");
+    try {
+      // Submodule check: .git is a file containing "gitdir: ..."
+      const stat = existsSync(dotGit) ? lstatSync(dotGit) : null;
+      if (stat && stat.isFile()) continue; // Skip submodules
+    } catch { /* keep it */ }
+
+    // Skip if this project dir is inside another project dir
+    // (e.g. sentinel inside workspace — but only if sentinel is a plain subdir,
+    // not its own standalone repo with a .git directory)
+    const isNestedInParent = allDirs.some(
+      (d) => d !== project.dir && project.dir.startsWith(d + "/") && projectsByDir.has(d)
+    );
+    // Only skip if the nested project has no git info (branch == HEAD, 0 commits)
+    // Real repos nested inside another (like sentinel inside workspace) should stay.
+    if (isNestedInParent && project.git.branch === "HEAD" && project.git.dirty === 0) {
+      // This is a phantom nested project created by docker matching — skip it
+      continue;
+    }
+
+    filteredProjects.push(project);
+  }
+
+  const projects = filteredProjects.sort((a, b) => a.name.localeCompare(b.name));
   return {
     projects,
+    // Compose project names that were mapped to a git repo (e.g. "server" → swap.win).
+    // The UI uses this to avoid showing them as duplicate/unmatched services.
+    claimedComposeProjects: [...claimedComposeProjects],
     untracked: {
       containers: untrackedContainers,
       ports: untrackedPorts,
