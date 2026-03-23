@@ -44,14 +44,14 @@ export function MessageCard({
                   key={`${part.type}-${index}`}
                   src={part.url}
                   alt={part.alt}
-                  className="max-h-72 rounded-lg border border-white/4 object-cover"
+                  className="max-h-72 rounded-lg border border-white/[0.06] object-cover"
                 />
               );
             }
             return (
               <div
                 key={`${part.type}-${index}`}
-                className="rounded-lg border border-white/4 bg-surface-1 px-3 py-2 text-sm text-zinc-100"
+                className="rounded-lg border border-white/[0.06] bg-surface-1 px-3 py-2 text-sm text-zinc-100"
               >
                 {part.name}
               </div>
@@ -62,7 +62,7 @@ export function MessageCard({
           <button
             type="button"
             onClick={onCopy}
-            className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-white/4 bg-surface-1 px-3 py-2 text-[10px] text-zinc-200 hover:bg-surface-1"
+            className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-white/[0.06] bg-surface-1 px-3 py-2 text-[10px] text-zinc-200 hover:bg-surface-1"
           >
             <CopyIcon />
             Copy
@@ -70,7 +70,7 @@ export function MessageCard({
           <button
             type="button"
             onClick={onRetry}
-            className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-white/4 bg-surface-1 px-3 py-2 text-[10px] text-zinc-200 hover:bg-surface-1"
+            className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-white/[0.06] bg-surface-1 px-3 py-2 text-[10px] text-zinc-200 hover:bg-surface-1"
           >
             <RetryIcon />
             Retry
@@ -82,7 +82,7 @@ export function MessageCard({
                 const text = message.parts.filter((p) => p.type === "text").map((p) => (p as { text: string }).text).join("\n").trim();
                 onTask(text);
               }}
-              className="min-h-9 rounded-lg border border-white/4 bg-surface-1 px-3 py-2 text-[10px] text-zinc-200 hover:bg-surface-1"
+              className="min-h-9 rounded-lg border border-white/[0.06] bg-surface-1 px-3 py-2 text-[10px] text-zinc-200 hover:bg-surface-1"
             >
               📌 Create Task
             </button>
@@ -90,7 +90,7 @@ export function MessageCard({
           <button
             type="button"
             onClick={onHide}
-            className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-white/4 bg-surface-1 px-3 py-2 text-[10px] text-zinc-200 hover:bg-surface-1"
+            className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-white/[0.06] bg-surface-1 px-3 py-2 text-[10px] text-zinc-200 hover:bg-surface-1"
           >
             <TrashIcon />
             Hide

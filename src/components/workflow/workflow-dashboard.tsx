@@ -23,16 +23,16 @@ function TabButton({ label, active, count, onClick }: { label: string; active: b
     <button
       type="button"
       onClick={onClick}
-      className={`relative flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+      className={`relative flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium transition-all duration-200 ${
         active
           ? "bg-white/[0.08] text-white"
-          : "text-zinc-400 hover:bg-white/[0.04] hover:text-zinc-200"
+          : "text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-300"
       }`}
     >
       {label}
       {typeof count === "number" && count > 0 && (
-        <span className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[10px] font-semibold ${
-          active ? "bg-blue-500/20 text-blue-300" : "bg-white/[0.06] text-zinc-500"
+        <span className={`inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-semibold tabular-nums ${
+          active ? "bg-indigo-500/20 text-indigo-300" : "bg-white/[0.05] text-zinc-600"
         }`}>
           {count}
         </span>
@@ -105,15 +105,15 @@ export function WorkflowDashboard({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-3 pt-3 xl:px-5">
-      {/* Tab bar with inline status dot */}
-      <div className="mb-3 flex shrink-0 items-center gap-1 overflow-x-auto rounded-lg border border-white/4 bg-surface-1 p-1">
+      {/* Tab bar */}
+      <div className="mb-3 flex shrink-0 items-center gap-0.5 overflow-x-auto rounded-xl border border-white/[0.05] bg-surface-0 p-1">
         <TabButton label="Tasks" active={activeTab === "tasks"} count={activeTaskCount} onClick={() => setActiveTab("tasks")} />
         <TabButton label="Stats" active={activeTab === "stats"} onClick={() => setActiveTab("stats")} />
         <TabButton label="Activity" active={activeTab === "activity"} count={activityItems.length} onClick={() => setActiveTab("activity")} />
       </div>
 
       {/* Tab content — fills remaining space */}
-      <div className="min-h-0 flex-1 overflow-y-auto pb-[calc(env(safe-area-inset-bottom)+1rem)]">
+      <div className="min-h-0 flex-1 scroll-soft overflow-y-auto pb-[calc(env(safe-area-inset-bottom)+1rem)]">
         {activeTab === "tasks" && (
           <TaskPipeline tasks={taskItems} visibleTasks={visibleTasks} onOpenSession={onOpenSession} />
         )}

@@ -23,6 +23,16 @@ import { listCodexSessions, getCodexSession } from "./server/codex/session-index
 import { parseCodexTranscript } from "./server/codex/transcript-parser.mjs";
 import { startRun, cancelRun, getRunStatus } from "./server/claude/standalone-runner.mjs";
 import { createBroker } from "./server/claude/ws-broker.mjs";
+import { scanDocker } from "./server/docker-scanner.mjs";
+import { mergeProjects } from "./server/project-merger.mjs";
+import { listServices, startService, stopService, getServiceLogs } from "./server/process-manager.mjs";
+import {
+  getSystemOverview,
+  getContainerLogs as getContainerLogsSystem,
+  getServiceLogs as getServiceLogsSystem,
+  stopContainer, restartContainer,
+  stopSystemdService, restartSystemdService,
+} from "./server/system-scanner.mjs";
 import { validateTransition } from "./lib/task-guards.mjs";
 import {
   createJob as createCronJob,
@@ -463,7 +473,22 @@ const repoCache = (() => {
 
   async function scan() {
     const dirs = findRepoDirs();
-    return Promise.all(dirs.map(scanRepo));
+    // Filter out nested repos (submodules, vendored deps, cloned analysis repos).
+    // Keep nested repos only if they're inside a "projects" directory
+    // (e.g. ~/clawd/projects/draw is a real project inside the clawd repo).
+    const sorted = [...dirs].sort((a, b) => a.length - b.length);
+    const topLevel = [];
+    for (const dir of sorted) {
+      const parent = topLevel.find((p) => dir.startsWith(p + "/"));
+      if (parent) {
+        const relative = dir.slice(parent.length + 1);
+        const segments = relative.split("/");
+        // Only keep if the first intermediate dir is "projects" (standard layout)
+        if (segments[0] !== "projects") continue;
+      }
+      topLevel.push(dir);
+    }
+    return Promise.all(topLevel.map(scanRepo));
   }
 
   return {
@@ -490,6 +515,14 @@ const repoCache = (() => {
 
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
+
+  // Origin check: block cross-origin POST requests (CSRF protection for localhost)
+  if (req.method === "POST") {
+    const origin = req.headers.origin;
+    if (origin && !/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
+      return jsonResponse(res, { error: "forbidden: cross-origin POST" }, 403);
+    }
+  }
 
   if (url.pathname === "/api/config") {
     return jsonResponse(res, {
@@ -753,6 +786,15 @@ const server = createServer(async (req, res) => {
     }
   }
 
+  if (url.pathname === "/api/docker") {
+    if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);
+    try {
+      return jsonResponse(res, scanDocker());
+    } catch (error) {
+      return jsonResponse(res, { error: "docker scan failed", detail: error.message }, 500);
+    }
+  }
+
   if (url.pathname === "/api/repos") {
     if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);
     const forceRefresh = url.searchParams.has("refresh");
@@ -763,6 +805,99 @@ const server = createServer(async (req, res) => {
       return jsonResponse(res, { error: "scan failed", detail: error.message }, 500);
     }
   }
+
+  if (url.pathname === "/api/projects") {
+    if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);
+    const forceRefresh = url.searchParams.has("refresh");
+    try {
+      const repos = await repoCache.get(forceRefresh);
+      const taskFile = readTasksFile();
+      const merged = mergeProjects({
+        repos,
+        tasks: Array.isArray(taskFile.tasks) ? taskFile.tasks : [],
+        force: forceRefresh,
+      });
+      return jsonResponse(res, merged);
+    } catch (error) {
+      return jsonResponse(res, { error: "project merge failed", detail: error.message }, 500);
+    }
+  }
+
+  if (url.pathname === "/api/services" && req.method === "GET") {
+    if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);
+    return jsonResponse(res, listServices());
+  }
+
+  if (url.pathname.match(/^\/api\/services\/[\w-]+\/start$/) && req.method === "POST") {
+    if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);
+    const name = url.pathname.split("/")[3];
+    const result = await startService(name);
+    return jsonResponse(res, result, result.ok ? 200 : 400);
+  }
+
+  if (url.pathname.match(/^\/api\/services\/[\w-]+\/stop$/) && req.method === "POST") {
+    if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);
+    const name = url.pathname.split("/")[3];
+    const result = await stopService(name);
+    return jsonResponse(res, result, result.ok ? 200 : 400);
+  }
+
+  if (url.pathname.match(/^\/api\/services\/[\w-]+\/logs$/) && req.method === "GET") {
+    if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);
+    const name = url.pathname.split("/")[3];
+    return jsonResponse(res, getServiceLogs(name));
+  }
+
+  // ── System API ──────────────────────────────────────────────────
+
+  if (url.pathname === "/api/system/overview") {
+    if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);
+    try {
+      return jsonResponse(res, getSystemOverview());
+    } catch (e) {
+      return jsonResponse(res, { error: "system scan failed", detail: e.message }, 500);
+    }
+  }
+
+  if (url.pathname.match(/^\/api\/system\/containers\/([^/]+)\/logs$/) && req.method === "GET") {
+    if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);
+    const name = decodeURIComponent(url.pathname.split("/")[4]);
+    const tail = parseInt(url.searchParams.get("tail") || "200", 10);
+    return jsonResponse(res, getContainerLogsSystem(name, tail));
+  }
+
+  if (url.pathname.match(/^\/api\/system\/containers\/([^/]+)\/stop$/) && req.method === "POST") {
+    if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);
+    const name = decodeURIComponent(url.pathname.split("/")[4]);
+    return jsonResponse(res, stopContainer(name));
+  }
+
+  if (url.pathname.match(/^\/api\/system\/containers\/([^/]+)\/restart$/) && req.method === "POST") {
+    if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);
+    const name = decodeURIComponent(url.pathname.split("/")[4]);
+    return jsonResponse(res, restartContainer(name));
+  }
+
+  if (url.pathname.match(/^\/api\/system\/services\/([^/]+)\/logs$/) && req.method === "GET") {
+    if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);
+    const name = decodeURIComponent(url.pathname.split("/")[4]);
+    const tail = parseInt(url.searchParams.get("tail") || "200", 10);
+    return jsonResponse(res, getServiceLogsSystem(name, tail));
+  }
+
+  if (url.pathname.match(/^\/api\/system\/services\/([^/]+)\/stop$/) && req.method === "POST") {
+    if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);
+    const name = decodeURIComponent(url.pathname.split("/")[4]);
+    return jsonResponse(res, stopSystemdService(name));
+  }
+
+  if (url.pathname.match(/^\/api\/system\/services\/([^/]+)\/restart$/) && req.method === "POST") {
+    if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);
+    const name = decodeURIComponent(url.pathname.split("/")[4]);
+    return jsonResponse(res, restartSystemdService(name));
+  }
+
+  // ── Tasks API ─────────────────────────────────────────────────
 
   if (url.pathname.startsWith("/api/tasks/") && req.method === "PATCH") {
     if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);

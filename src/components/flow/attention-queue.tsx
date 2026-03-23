@@ -130,7 +130,7 @@ function AttentionCard({
               onChange={(e) => setReplyText(e.target.value)}
               placeholder="Quick reply..."
               disabled={sending}
-              className="min-h-8 flex-1 rounded-lg border border-white/4 bg-surface-1 px-2.5 text-xs text-white placeholder-zinc-600 outline-none transition-colors focus:border-blue-500/40 disabled:opacity-50"
+              className="min-h-8 flex-1 rounded-lg border border-white/[0.06] bg-surface-1 px-2.5 text-xs text-white placeholder-zinc-600 outline-none transition-colors focus:border-blue-500/40 disabled:opacity-50"
             />
             <button
               type="submit"

@@ -138,7 +138,7 @@ export function ChatComposer({
   };
 
   return (
-    <div className="bg-white/[0.03] p-2.5 xl:rounded-lg xl:border xl:border-white/4 xl:p-3">
+    <div className="bg-white/[0.03] p-2.5 xl:rounded-lg xl:border xl:border-white/[0.06] xl:p-3">
       {attachments.length > 0 ? (
         <div className="mb-3 flex flex-wrap gap-2">
           {attachments.map((attachment) => (
@@ -146,7 +146,7 @@ export function ChatComposer({
               key={attachment.id}
               type="button"
               onClick={() => onRemoveAttachment(attachment.id)}
-              className="min-h-9 rounded-lg border border-white/4 bg-surface-1 px-3 py-2 text-sm text-zinc-200"
+              className="min-h-9 rounded-lg border border-white/[0.06] bg-surface-1 px-3 py-2 text-sm text-zinc-200"
             >
               {attachment.name} ×
             </button>
@@ -154,7 +154,7 @@ export function ChatComposer({
         </div>
       ) : null}
       {suggestions.length > 0 ? (
-        <div className="mb-3 rounded-lg border border-white/4 bg-surface-1 p-2">
+        <div className="mb-3 rounded-lg border border-white/[0.06] bg-surface-1 p-2">
           <div className="mb-2 px-2 text-[10px] uppercase tracking-wide text-zinc-500">
             {trigger === "/" ? "Commands" : trigger === "#" ? "Task references" : "Agent mentions"}
           </div>
@@ -182,7 +182,7 @@ export function ChatComposer({
             onAttach(event.dataTransfer.files);
           }
         }}
-        className="rounded-lg bg-black/25 p-2.5 xl:border xl:border-white/4 xl:p-3"
+        className="rounded-lg bg-black/25 p-2.5 xl:border xl:border-white/[0.06] xl:p-3"
       >
         <div className="flex items-end gap-2">
           <textarea
@@ -212,7 +212,7 @@ export function ChatComposer({
             <button
               type="button"
               onClick={() => fileRef.current?.click()}
-              className="min-h-9 rounded-full border border-white/4 px-3 py-2 text-sm text-zinc-300 hover:bg-white/[0.04]"
+              className="min-h-9 rounded-full border border-white/[0.06] px-3 py-2 text-sm text-zinc-300 hover:bg-white/[0.04]"
             >
               Attach
             </button>

@@ -15,15 +15,15 @@ function ColumnTab({ status, count, active, onClick }: { status: TaskStatus; cou
     <button
       type="button"
       onClick={onClick}
-      className={`flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-        active ? "bg-white/[0.08] text-white" : "text-zinc-400 hover:bg-white/[0.04] hover:text-zinc-200"
+      className={`flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] font-medium transition-all duration-200 ${
+        active ? "bg-white/[0.08] text-white" : "text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-300"
       }`}
     >
-      <span className={`h-2 w-2 rounded-full ${meta.dot}`} />
+      <span className={`h-1.5 w-1.5 rounded-full ${meta.dot}`} />
       {meta.label}
       {count > 0 && (
-        <span className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[10px] font-semibold ${
-          active ? "bg-white/10 text-zinc-200" : "bg-white/[0.04] text-zinc-500"
+        <span className={`inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-semibold tabular-nums ${
+          active ? "bg-white/10 text-zinc-200" : "bg-white/[0.04] text-zinc-600"
         }`}>{count}</span>
       )}
     </button>
@@ -98,7 +98,7 @@ function TaskCard({
   return (
     <article
       draggable="true"
-      className={`group/card rounded-lg bg-surface-1 p-3 transition-colors duration-150 hover:bg-white/[0.04] ${isDragging ? "opacity-50" : ""}`}
+      className={`group/card rounded-lg border border-white/[0.04] bg-surface-1 px-3 py-2.5 transition-all duration-150 hover:border-white/[0.08] hover:bg-white/[0.03] ${isDragging ? "opacity-40 scale-[0.98]" : ""}`}
       onClick={() => setExpanded((current) => !current)}
       onDragStart={(event) => onDragStart(event, task)}
       onDragEnd={onDragEnd}
@@ -119,7 +119,7 @@ function TaskCard({
     >
       <div className="min-w-0">
         <div className="flex items-start gap-1">
-          <p className={`flex-1 text-sm font-medium leading-5 ${task.status === "done" ? "text-zinc-500 line-through" : "text-white"}`}>
+          <p className={`flex-1 text-[13px] font-medium leading-[1.4] line-clamp-2 ${task.status === "done" ? "text-zinc-600 line-through" : "text-zinc-100"}`}>
             {task.title}
           </p>
           <button
@@ -128,7 +128,7 @@ function TaskCard({
               event.stopPropagation();
               onEdit(task);
             }}
-            className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-zinc-500 opacity-0 transition-colors duration-150 hover:bg-white/[0.08] hover:text-zinc-200 group-hover/card:opacity-100"
+            className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded text-zinc-600 opacity-0 transition-all duration-150 hover:bg-white/[0.08] hover:text-zinc-300 group-hover/card:opacity-100"
             aria-label={`Edit ${task.title}`}
             title="Edit task"
           >
@@ -137,16 +137,16 @@ function TaskCard({
             </svg>
           </button>
         </div>
-          {blockedReason && <p className="mt-1 text-xs text-zinc-400">⚠️ {blockedReason}</p>}
-          <div className="mt-2 flex flex-wrap gap-1.5">
+          {blockedReason && <p className="mt-1 truncate text-xs text-zinc-400">⚠️ {blockedReason}</p>}
+          <div className="mt-1.5 flex flex-wrap gap-1">
             {task.sessionKey && task.status === "active" && (
-              <span className="rounded-full bg-emerald-500/15 px-2 py-1 text-[10px] text-emerald-300">
-                🤖 Agent working
+              <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-400">
+                Working
               </span>
             )}
             {childCount > 0 && (
-              <span className="rounded-full bg-white/[0.04] px-2 py-1 text-[10px] text-zinc-400">
-                {childCount} child{childCount === 1 ? "" : "ren"}
+              <span className="rounded bg-white/[0.05] px-1.5 py-0.5 text-[10px] text-zinc-500">
+                {childCount} sub
               </span>
             )}
             {task.sessionKey && (
@@ -156,18 +156,19 @@ function TaskCard({
                   event.stopPropagation();
                   onOpenSession(task.sessionKey!);
                 }}
-                className="min-h-7 rounded-full bg-blue-500/12 px-2 py-1 text-[10px] text-blue-300 transition-all duration-150 hover:bg-blue-500/20"
+                className="max-w-28 truncate rounded bg-indigo-500/10 px-1.5 py-0.5 text-[10px] text-indigo-300 transition-all duration-150 hover:bg-indigo-500/18"
+                title={task.sessionKey}
               >
-                {task.sessionKey}
+                {task.sessionKey!.length > 16 ? "→ session" : task.sessionKey}
               </button>
             )}
             {task.repo && (
-              <span className="inline-flex min-h-7 items-center gap-1 rounded-full bg-white/[0.04] px-2 py-1 text-[10px] text-zinc-400">
+              <span className="inline-flex items-center gap-1 rounded bg-white/[0.04] px-1.5 py-0.5 text-[10px] text-zinc-500">
                 <GitBranchIcon />
                 {task.branch ? `${task.repo}:${task.branch}` : task.repo}
               </span>
             )}
-            <span className="rounded-full bg-white/[0.02] px-2 py-1 text-[10px] text-zinc-500">{relativeTime(task.updatedAt)}</span>
+            <span className="text-[10px] text-zinc-600">{relativeTime(task.updatedAt)}</span>
             <div className="flex items-center gap-1 xl:hidden">
               <button
                 type="button"
@@ -205,7 +206,7 @@ function TaskCard({
           className={`grid transition-all duration-150 ${expanded && task.notes.trim() ? "mt-2 grid-rows-[1fr]" : "grid-rows-[0fr]"}`}
         >
           <div className="overflow-hidden">
-            {task.notes.trim() && <p className="line-clamp-3 text-xs leading-5 text-zinc-400">{task.notes}</p>}
+            {task.notes.trim() && <p className="line-clamp-2 text-xs leading-5 text-zinc-400">{task.notes}</p>}
           </div>
         </div>
       </div>
@@ -264,19 +265,19 @@ function Column({
 
   return (
     <section
-      className={`flex min-h-[12rem] flex-col rounded-lg border bg-surface-1 p-3 xl:min-h-[24rem] ${dragOverColumn === status ? "border-blue-500/30" : "border-border"}`}
+      className={`flex min-h-[8rem] flex-col rounded-xl border p-3 xl:min-h-0 ${dragOverColumn === status ? "border-indigo-500/30 bg-indigo-500/[0.02]" : "border-white/[0.05] bg-surface-0"}`}
       onDragOver={(event) => onColumnDragOver(event, status)}
       onDragEnter={() => onColumnDragEnter(status)}
       onDragLeave={(event) => onColumnDragLeave(event, status)}
       onDrop={(event) => onColumnDrop(event, status)}
     >
-      <div className="mb-3 flex min-h-9 items-center justify-between gap-3">
+      <div className="mb-2.5 flex min-h-8 items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
           <span
-            className={`h-2.5 w-2.5 rounded-full ${meta.dot} ${isAttention ? "animate-pulse" : tasks.length > 0 ? "shadow-[0_0_12px_rgba(255,255,255,0.12)]" : ""}`}
+            className={`h-2 w-2 rounded-full ${meta.dot} ${isAttention ? "animate-pulse" : ""}`}
           />
-          <p className="text-sm font-semibold text-white">{meta.label}</p>
-          <span className="rounded-full bg-surface-1 px-2 py-0.5 text-[10px] text-zinc-400">{tasks.length}</span>
+          <p className="text-[13px] font-semibold text-zinc-200">{meta.label}</p>
+          <span className="text-[11px] tabular-nums text-zinc-600">{tasks.length}</span>
         </div>
         {status === "done" && tasks.length > 0 && (
           <button
@@ -323,14 +324,14 @@ function Column({
           <button
             type="button"
             onClick={onToggleDone}
-            className="rounded-lg border border-dashed border-white/4 px-3 py-4 text-left text-sm text-zinc-500 transition-all duration-150 hover:border-white/20 hover:text-zinc-300"
+            className="rounded-lg border border-dashed border-white/[0.06] px-3 py-4 text-left text-sm text-zinc-500 transition-all duration-150 hover:border-white/20 hover:text-zinc-300"
           >
             {tasks.length} recent completed task{tasks.length === 1 ? "" : "s"}
           </button>
         )}
         {tasks.length === 0 && (
-          <div className="flex min-h-28 items-center justify-center rounded-lg border border-dashed border-white/4 px-3 text-sm text-zinc-600">
-            No tasks
+          <div className="flex min-h-20 items-center justify-center rounded-lg border border-dashed border-white/[0.06] px-3 text-[13px] text-zinc-700">
+            Empty
           </div>
         )}
       </div>
@@ -572,14 +573,14 @@ export function TaskPipeline({
 
   return (
     <section className="flex min-h-0 flex-1 flex-col">
-      <div className="mb-3 flex items-center justify-between gap-3 px-1">
-        <h2 className="text-sm font-semibold text-white">Task Pipeline</h2>
+      <div className="mb-3 flex items-center justify-between gap-3 px-0.5">
+        <h2 className="text-[15px] font-semibold tracking-tight text-zinc-100">Tasks</h2>
         <button
           type="button"
           onClick={() => setAdding(true)}
-          className="flex h-9 items-center gap-1.5 rounded-full bg-white/[0.06] px-3 text-sm text-zinc-300 transition-all duration-150 hover:bg-white/[0.1] hover:text-white"
+          className="flex h-7 items-center gap-1 rounded-lg border border-white/[0.06] bg-white/[0.03] px-2.5 text-[12px] text-zinc-400 transition-all duration-150 hover:border-white/[0.1] hover:bg-white/[0.06] hover:text-zinc-200"
         >
-          <span className="text-base leading-none">+</span> Add
+          <span className="text-[14px] leading-none">+</span> Add
         </button>
       </div>
 
@@ -604,11 +605,11 @@ export function TaskPipeline({
             value={newTitle}
             onChange={(e) => setNewTitle(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Escape") setAdding(false); }}
-            placeholder="Task title..."
-            className="min-h-9 flex-1 rounded-lg border border-white/4 bg-surface-1 px-3 text-sm text-white placeholder-zinc-500 outline-none focus:border-blue-500/50"
+            placeholder="What needs to be done?"
+            className="min-h-8 flex-1 rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 text-[13px] text-white placeholder-zinc-600 outline-none transition focus:border-indigo-500/40 focus:bg-white/[0.06]"
           />
-          <button type="submit" className="min-h-9 rounded-lg bg-blue-500/20 px-4 text-sm text-blue-300 hover:bg-blue-500/30">Add</button>
-          <button type="button" onClick={() => setAdding(false)} className="min-h-9 rounded-lg px-3 text-sm text-zinc-500 hover:text-white">Cancel</button>
+          <button type="submit" className="min-h-8 rounded-lg bg-indigo-500/15 px-3.5 text-[13px] font-medium text-indigo-300 transition hover:bg-indigo-500/25">Add</button>
+          <button type="button" onClick={() => setAdding(false)} className="min-h-8 rounded-lg px-2.5 text-[13px] text-zinc-600 hover:text-zinc-300">×</button>
         </form>
       )}
 
@@ -616,7 +617,7 @@ export function TaskPipeline({
       <div className="xl:hidden">
         <div className="relative mb-3">
           <div className="pointer-events-none absolute right-0 top-0 z-10 h-full w-8 bg-gradient-to-l from-canvas to-transparent" />
-        <div className="flex items-center gap-1 overflow-x-auto rounded-lg border border-white/4 bg-surface-1 p-1 scrollbar-none">
+        <div className="flex items-center gap-0.5 overflow-x-auto rounded-xl border border-white/[0.05] bg-surface-0 p-1 scrollbar-none">
           {COLUMN_ORDER.map((status) => (
             <ColumnTab
               key={status}

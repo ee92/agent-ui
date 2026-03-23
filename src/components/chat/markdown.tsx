@@ -55,7 +55,7 @@ function renderInline(text: string): React.ReactNode[] {
     if (match[1] !== undefined && match[2]) {
       // ![alt](url) inline image
       parts.push(
-        <img key={key++} src={match[2]} alt={match[1]} className="my-1 inline-block max-h-72 rounded-lg border border-white/4" />
+        <img key={key++} src={match[2]} alt={match[1]} className="my-1 inline-block max-h-72 rounded-lg border border-white/[0.06]" />
       );
     } else if (match[3] !== undefined && match[4]) {
       // [text](url) link
@@ -76,7 +76,7 @@ function renderInline(text: string): React.ReactNode[] {
       const url = match[10];
       if (isImageUrl(url)) {
         parts.push(
-          <img key={key++} src={url} alt="" loading="lazy" className="my-2 block max-h-80 rounded-lg border border-white/4" />
+          <img key={key++} src={url} alt="" loading="lazy" className="my-2 block max-h-80 rounded-lg border border-white/[0.06]" />
         );
       } else {
         parts.push(
@@ -233,7 +233,7 @@ export function Markdown({ text }: { text: string }) {
         if (block.type === "code") {
           return (
             <div key={`${block.type}-${index}`} className="relative">
-              <div className="flex items-center justify-between rounded-t-lg border border-b-0 border-white/4 bg-black/50 px-4 py-1.5">
+              <div className="flex items-center justify-between rounded-t-lg border border-b-0 border-white/[0.06] bg-black/50 px-4 py-1.5">
                 <span className="text-[10px] uppercase tracking-wider text-zinc-500">{block.lang || "code"}</span>
                 <button
                   type="button"
@@ -248,7 +248,7 @@ export function Markdown({ text }: { text: string }) {
                   {copiedIndex === index ? "Copied" : "Copy"}
                 </button>
               </div>
-              <pre className="overflow-x-auto rounded-b-lg border border-white/4 bg-surface-1 px-4 py-3 text-sm leading-relaxed text-sky-200">
+              <pre className="overflow-x-auto rounded-b-lg border border-white/[0.06] bg-surface-1 px-4 py-3 text-sm leading-relaxed text-sky-200">
                 <code>{block.code}</code>
               </pre>
             </div>
@@ -262,13 +262,13 @@ export function Markdown({ text }: { text: string }) {
               src={block.url}
               alt={block.alt}
               loading="lazy"
-              className="max-h-80 rounded-lg border border-white/4 object-contain"
+              className="max-h-80 rounded-lg border border-white/[0.06] object-contain"
             />
           );
         }
 
         if (block.type === "hr") {
-          return <hr key={`${block.type}-${index}`} className="border-white/4" />;
+          return <hr key={`${block.type}-${index}`} className="border-white/[0.06]" />;
         }
 
         if (block.type === "blockquote") {
@@ -283,10 +283,10 @@ export function Markdown({ text }: { text: string }) {
 
         if (block.type === "table") {
           return (
-            <div key={`${block.type}-${index}`} className="overflow-x-auto rounded-lg border border-white/4">
+            <div key={`${block.type}-${index}`} className="overflow-x-auto rounded-lg border border-white/[0.06]">
               <table className="w-full text-left text-sm">
                 <thead>
-                  <tr className="border-b border-white/4 bg-surface-1">
+                  <tr className="border-b border-white/[0.06] bg-surface-1">
                     {block.headers.map((h, hi) => (
                       <th key={hi} className="px-3 py-2 font-semibold text-zinc-200">{renderInline(h)}</th>
                     ))}
@@ -294,7 +294,7 @@ export function Markdown({ text }: { text: string }) {
                 </thead>
                 <tbody>
                   {block.rows.map((row, ri) => (
-                    <tr key={ri} className="border-b border-white/4 last:border-0">
+                    <tr key={ri} className="border-b border-white/[0.06] last:border-0">
                       {row.map((cell, ci) => (
                         <td key={ci} className="px-3 py-2 text-zinc-300">{renderInline(cell)}</td>
                       ))}

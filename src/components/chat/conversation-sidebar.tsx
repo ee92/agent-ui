@@ -249,7 +249,7 @@ export function ConversationSidebar({
   ];
 
   return (
-    <aside className="flex h-full min-w-0 flex-col overflow-hidden rounded-lg bg-white/[0.03] p-3 xl:rounded-lg xl:border xl:border-white/4 xl:p-4">
+    <aside className="flex h-full min-w-0 flex-col overflow-hidden rounded-xl bg-white/[0.02] p-3 xl:rounded-xl xl:border xl:border-white/[0.05] xl:p-3">
       <div className="mb-3 hidden items-center justify-between gap-2 xl:flex">
         <div className="flex items-center gap-2">
           <select
@@ -258,7 +258,7 @@ export function ConversationSidebar({
             onChange={(event) => {
               void setAdapterType(event.target.value as "openclaw" | "claude-code" | "codex" | "local");
             }}
-            className="h-9 rounded-xl border border-white/10 bg-black/30 px-2 text-xs text-zinc-300 outline-none hover:border-white/20"
+            className="h-8 rounded-lg border border-white/[0.08] bg-white/[0.03] px-2 text-[13px] text-zinc-300 outline-none transition hover:border-white/[0.14] hover:bg-white/[0.05]"
           >
             <option value="openclaw">OpenClaw</option>
             <option value="claude-code">Claude Code</option>
@@ -282,7 +282,7 @@ export function ConversationSidebar({
             value={search}
             onChange={(event) => onSearch(event.target.value)}
             placeholder="Search conversations"
-            className="h-10 w-full rounded-lg bg-surface-1 px-3 text-sm text-white outline-none placeholder:text-zinc-600 focus:ring-1 focus:ring-blue-500/40"
+            className="h-9 w-full rounded-lg border border-transparent bg-white/[0.04] px-3 text-[13px] text-white outline-none placeholder:text-zinc-600 transition-colors focus:border-white/[0.1] focus:bg-white/[0.06]"
           />
         </div>
 
@@ -355,7 +355,7 @@ export function ConversationSidebar({
                               onTouchStart={(e) => startRevealTimer(conversation.key, e.currentTarget)}
                               onTouchEnd={clearRevealTimer}
                               onTouchMove={clearRevealTimer}
-                              className="w-full min-w-0 px-3 py-3 text-left"
+                              className="w-full min-w-0 px-2.5 py-2 text-left"
                             >
                               <div className="flex items-start justify-between gap-2">
                                 <div className="min-w-0 flex-1">
@@ -383,12 +383,12 @@ export function ConversationSidebar({
                                         className="h-8 w-full rounded-lg bg-surface-1 px-2 text-sm font-medium text-white outline-none"
                                       />
                                     ) : (
-                                      <span className="truncate text-sm font-semibold text-white sm:text-base">
+                                      <span className="truncate text-[13px] font-semibold text-white">
                                         {conversation.title}
                                       </span>
                                     )}
                                   </div>
-                                  <p className="mt-1 line-clamp-1 text-xs text-zinc-500 sm:text-sm">
+                                  <p className="mt-0.5 line-clamp-1 text-[12px] text-zinc-500">
                                     {(conversation.preview.split("\n").find((line) => line.trim()) || "No messages yet").trim()}
                                   </p>
                                 </div>
@@ -448,7 +448,7 @@ export function ConversationSidebar({
                                       }}
                                     />
                                     <div
-                                      className="fixed z-[9999] min-w-[140px] rounded-lg border border-white/4 bg-surface-1 py-1 shadow-xl shadow-black/40"
+                                      className="fixed z-[9999] min-w-[140px] rounded-lg border border-white/[0.06] bg-surface-1 py-1 shadow-xl shadow-black/40"
                                       style={{ top: menuPos.top, left: menuPos.left }}
                                     >
                                       <button
@@ -505,12 +505,12 @@ export function ConversationSidebar({
             </div>
             <div className="space-y-2">
               {!capabilities.agents ? (
-                <div className="rounded-lg border border-dashed border-white/4 px-3 py-4 text-sm text-zinc-500">
+                <div className="rounded-lg border border-dashed border-white/[0.06] px-3 py-4 text-sm text-zinc-500">
                   Agent monitoring requires OpenClaw gateway.
                 </div>
               ) : null}
               {capabilities.agents && agents.length === 0 ? (
-                <div className="rounded-lg border border-dashed border-white/4 px-3 py-4 text-sm text-zinc-500">
+                <div className="rounded-lg border border-dashed border-white/[0.06] px-3 py-4 text-sm text-zinc-500">
                   Active runs will appear here.
                 </div>
               ) : null}
@@ -519,7 +519,7 @@ export function ConversationSidebar({
                   key={agent.id}
                   type="button"
                   onClick={() => agent.sessionKey && onSelect(agent.sessionKey)}
-                  className="w-full min-w-0 rounded-lg border border-white/4 bg-surface-1 px-3 py-3 text-left text-base text-zinc-200 hover:border-white/4 sm:text-sm"
+                  className="w-full min-w-0 rounded-lg border border-white/[0.06] bg-surface-1 px-3 py-3 text-left text-base text-zinc-200 hover:border-white/[0.06] sm:text-sm"
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span className="truncate font-medium">{agent.label}</span>

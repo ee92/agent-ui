@@ -64,13 +64,13 @@ function MetricCard({
 
   return (
     <div
-      className={`min-w-[180px] rounded-lg border border-border border-l-2 bg-surface-1 px-4 py-3 transition-all duration-150 ${TONE_STYLES[tone]} ${
-        flash ? "shadow-[0_0_0_1px_rgba(255,255,255,0.12)]" : ""
+      className={`min-w-[180px] rounded-xl border border-white/[0.05] border-l-2 bg-surface-0 px-4 py-3.5 transition-all duration-200 ${TONE_STYLES[tone]} ${
+        flash ? "ring-1 ring-white/[0.08]" : ""
       }`}
     >
-      <div className="text-2xl font-semibold text-white">{value}</div>
-      <p className="mt-1 text-xs uppercase tracking-wide text-zinc-500">{label}</p>
-      <p className="mt-2 text-xs text-zinc-400">{detail}</p>
+      <div className="text-2xl font-semibold tabular-nums text-zinc-100">{value}</div>
+      <p className="mt-1 text-[11px] font-medium uppercase tracking-wider text-zinc-600">{label}</p>
+      <p className="mt-1.5 text-[12px] text-zinc-500">{detail}</p>
     </div>
   );
 }

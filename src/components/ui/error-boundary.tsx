@@ -29,7 +29,7 @@ export class ErrorBoundary extends Component<Props, State> {
           <button
             type="button"
             onClick={() => this.setState({ hasError: false })}
-            className="mt-3 rounded-lg border border-white/4 px-3 py-2 text-xs text-zinc-200"
+            className="mt-3 rounded-lg border border-white/[0.06] px-3 py-2 text-xs text-zinc-200"
           >
             Retry
           </button>

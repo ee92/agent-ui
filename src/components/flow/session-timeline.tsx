@@ -166,7 +166,7 @@ export function SessionTimeline({
   return (
     <section className="rounded-lg border border-border bg-surface-1 overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between gap-3 border-b border-white/4 px-4 py-3">
+      <div className="flex items-center justify-between gap-3 border-b border-white/[0.06] px-4 py-3">
         <div>
           <h2 className="text-base font-semibold text-white">Session Timeline</h2>
           <p className="mt-0.5 text-xs text-zinc-500">

@@ -119,9 +119,9 @@ export function TaskEditModal({
       onClick={handleBackdropClick}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60-sm"
     >
-      <div className="mx-4 w-full max-w-lg rounded-lg border border-white/4 bg-surface-1 shadow-2xl">
+      <div className="mx-4 w-full max-w-lg rounded-lg border border-white/[0.06] bg-surface-1 shadow-2xl">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-white/4 px-5 py-4">
+        <div className="flex items-center justify-between border-b border-white/[0.06] px-5 py-4">
           <h3 className="text-base font-semibold text-white">Edit Task</h3>
           <button
             type="button"
@@ -143,7 +143,7 @@ export function TaskEditModal({
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void handleSave(); }}
-              className="w-full rounded-lg border border-white/4 bg-surface-1 px-3 py-2.5 text-sm text-white placeholder-zinc-500 outline-none focus:border-blue-500/50"
+              className="w-full rounded-lg border border-white/[0.06] bg-surface-1 px-3 py-2.5 text-sm text-white placeholder-zinc-500 outline-none focus:border-blue-500/50"
               placeholder="Task title..."
             />
           </div>
@@ -181,7 +181,7 @@ export function TaskEditModal({
               onChange={(e) => setNotes(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void handleSave(); }}
               rows={5}
-              className="w-full rounded-lg border border-white/4 bg-surface-1 px-3 py-2.5 text-sm text-white placeholder-zinc-500 outline-none focus:border-blue-500/50"
+              className="w-full rounded-lg border border-white/[0.06] bg-surface-1 px-3 py-2.5 text-sm text-white placeholder-zinc-500 outline-none focus:border-blue-500/50"
               placeholder="Notes, context, blockers..."
             />
           </div>
@@ -194,7 +194,7 @@ export function TaskEditModal({
                 type="text"
                 value={repo}
                 onChange={(e) => setRepo(e.target.value)}
-                className="w-full rounded-lg border border-white/4 bg-surface-1 px-3 py-2.5 text-sm text-white placeholder-zinc-500 outline-none focus:border-blue-500/50"
+                className="w-full rounded-lg border border-white/[0.06] bg-surface-1 px-3 py-2.5 text-sm text-white placeholder-zinc-500 outline-none focus:border-blue-500/50"
                 placeholder="my-project"
               />
             </div>
@@ -204,7 +204,7 @@ export function TaskEditModal({
                 type="text"
                 value={branch}
                 onChange={(e) => setBranch(e.target.value)}
-                className="w-full rounded-lg border border-white/4 bg-surface-1 px-3 py-2.5 text-sm text-white placeholder-zinc-500 outline-none focus:border-blue-500/50"
+                className="w-full rounded-lg border border-white/[0.06] bg-surface-1 px-3 py-2.5 text-sm text-white placeholder-zinc-500 outline-none focus:border-blue-500/50"
                 placeholder="feat/my-feature"
               />
             </div>
@@ -212,7 +212,7 @@ export function TaskEditModal({
 
           <div>
             <label className="mb-1.5 block text-xs font-medium text-zinc-400">Blocked By</label>
-            <div className="rounded-lg border border-white/4 bg-surface-1 p-2.5">
+            <div className="rounded-lg border border-white/[0.06] bg-surface-1 p-2.5">
               <div className="mb-2 flex flex-wrap gap-1.5">
                 {blockedBy.length === 0 ? (
                   <span className="text-xs text-zinc-500">No dependencies</span>
@@ -245,7 +245,7 @@ export function TaskEditModal({
                 type="text"
                 value={dependencyQuery}
                 onChange={(e) => setDependencyQuery(e.target.value)}
-                className="w-full rounded-lg border border-white/4 bg-surface-1 px-3 py-2 text-sm text-white placeholder-zinc-500 outline-none focus:border-blue-500/50"
+                className="w-full rounded-lg border border-white/[0.06] bg-surface-1 px-3 py-2 text-sm text-white placeholder-zinc-500 outline-none focus:border-blue-500/50"
                 placeholder="Search tasks to add dependency..."
               />
               {filteredDependencyOptions.length > 0 && (
@@ -281,7 +281,7 @@ export function TaskEditModal({
 
           <div>
             <label className="mb-1.5 block text-xs font-medium text-zinc-400">Status History</label>
-            <div className="max-h-44 space-y-2 overflow-y-auto rounded-lg border border-white/4 bg-surface-1 p-2.5">
+            <div className="max-h-44 space-y-2 overflow-y-auto rounded-lg border border-white/[0.06] bg-surface-1 p-2.5">
               {(task.history ?? []).length === 0 ? (
                 <p className="text-xs text-zinc-500">No transition history yet.</p>
               ) : (
@@ -309,7 +309,7 @@ export function TaskEditModal({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between border-t border-white/4 px-5 py-4">
+        <div className="flex items-center justify-between border-t border-white/[0.06] px-5 py-4">
           <button
             type="button"
             onClick={handleDelete}

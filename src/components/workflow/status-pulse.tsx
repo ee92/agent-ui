@@ -87,8 +87,8 @@ export function StatusPulse({
           <span className={`h-2.5 w-2.5 rounded-full ${DOT_COLORS[pulse.tone]} ${PULSE_ANIM[pulse.tone]}`} />
         </button>
         {open && (
-          <div className="absolute left-1/2 top-full z-50 mt-2 w-56 -translate-x-1/2 rounded-lg border border-white/4 bg-surface-1 p-3 shadow-xl shadow-black/40">
-            <div className="absolute -top-1.5 left-1/2 h-3 w-3 -translate-x-1/2 rotate-45 border-l border-t border-white/4 bg-surface-1" />
+          <div className="absolute left-1/2 top-full z-50 mt-2 w-56 -translate-x-1/2 rounded-lg border border-white/[0.06] bg-surface-1 p-3 shadow-xl shadow-black/40">
+            <div className="absolute -top-1.5 left-1/2 h-3 w-3 -translate-x-1/2 rotate-45 border-l border-t border-white/[0.06] bg-surface-1" />
             {pulse.lines.map((line, i) => (
               <p key={i} className={`text-sm ${i === 0 ? "font-medium text-white" : "mt-1 text-zinc-400"}`}>
                 {line}

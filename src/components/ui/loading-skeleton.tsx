@@ -10,7 +10,7 @@ export function LoadingSkeleton({
       {Array.from({ length: rows }).map((_, index) => (
         <div
           key={index}
-          className={`animate-pulse border border-white/4 bg-white/[0.03] ${className}`}
+          className={`animate-pulse border border-white/[0.06] bg-white/[0.03] ${className}`}
         />
       ))}
     </div>
