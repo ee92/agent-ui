@@ -3,16 +3,58 @@
  * Merges Docker containers, systemd services, bare processes, and listening ports.
  */
 
+/**
+ * System Scanner — unified view of everything running on the machine.
+ * Merges Docker containers, systemd services, bare processes, and listening ports.
+ *
+ * Platform support:
+ *   - Linux: full support (ss, /proc, systemctl, docker)
+ *   - macOS: partial (lsof for ports, docker, no systemd, no /proc)
+ *   - Windows: not supported
+ *
+ * All scanning functions degrade gracefully — if a data source is unavailable
+ * (Docker not installed, systemd not present, etc.), that section returns empty.
+ */
+
 import { execSync } from "node:child_process";
 import { existsSync, readFileSync, readlinkSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
-
-const HOME = homedir();
+import { cpus, freemem, loadavg, totalmem } from "node:os";
 
 // ── Port scanning ──────────────────────────────────────────────
 
 function scanListeningPorts() {
+  if (process.platform === "darwin") return scanListeningPortsMac();
+  return scanListeningPortsLinux();
+}
+
+function scanListeningPortsMac() {
+  let raw = "";
+  try {
+    raw = execSync("lsof -iTCP -sTCP:LISTEN -nP -F pcn 2>/dev/null", { encoding: "utf8", timeout: 5000 }).trim();
+  } catch (e) {
+    raw = typeof e?.stdout === "string" ? e.stdout.trim() : "";
+  }
+  if (!raw) return [];
+
+  const results = [];
+  const seen = new Set();
+  let pid = null, process_name = "";
+  for (const line of raw.split("\n")) {
+    if (line.startsWith("p")) pid = parseInt(line.slice(1), 10) || null;
+    else if (line.startsWith("c")) process_name = line.slice(1);
+    else if (line.startsWith("n")) {
+      const endpoint = parseEndpoint(line.slice(1));
+      if (!endpoint) continue;
+      const key = `${endpoint.bind}:${endpoint.port}:${pid || "none"}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      results.push({ port: endpoint.port, bind: endpoint.bind, pid, process: process_name, cwd: "" });
+    }
+  }
+  return results;
+}
+
+function scanListeningPortsLinux() {
   let raw = "";
   try {
     raw = execSync("ss -tlnpH 2>/dev/null", { encoding: "utf8", timeout: 5000 }).trim();
@@ -217,54 +259,82 @@ function formatBytes(bytes) {
 // ── System resources ───────────────────────────────────────────
 
 function scanResources() {
-  const result = { cpu: {}, memory: {}, disk: [], docker: {} };
+  const result = { cpu: { load1m: 0, load5m: 0, load15m: 0, cores: 1 }, memory: {}, disk: [], docker: {} };
 
-  // CPU load
+  // CPU load — works on both Linux (/proc) and macOS (os.loadavg)
   try {
-    const loadavg = readFileSync("/proc/loadavg", "utf8").trim().split(/\s+/);
-    result.cpu.load1m = parseFloat(loadavg[0]);
-    result.cpu.load5m = parseFloat(loadavg[1]);
-    result.cpu.load15m = parseFloat(loadavg[2]);
+    if (existsSync("/proc/loadavg")) {
+      const loadavg = readFileSync("/proc/loadavg", "utf8").trim().split(/\s+/);
+      result.cpu.load1m = parseFloat(loadavg[0]);
+      result.cpu.load5m = parseFloat(loadavg[1]);
+      result.cpu.load15m = parseFloat(loadavg[2]);
+    } else {
+      const [l1, l5, l15] = loadavg();
+      result.cpu.load1m = l1; result.cpu.load5m = l5; result.cpu.load15m = l15;
+    }
   } catch { /* ok */ }
 
   // CPU cores
   try {
-    const cpuinfo = readFileSync("/proc/cpuinfo", "utf8");
-    result.cpu.cores = (cpuinfo.match(/^processor\s/gm) || []).length;
+    if (existsSync("/proc/cpuinfo")) {
+      const cpuinfo = readFileSync("/proc/cpuinfo", "utf8");
+      result.cpu.cores = (cpuinfo.match(/^processor\s/gm) || []).length || 1;
+    } else {
+      
+      result.cpu.cores = cpus()?.length || 1;
+    }
   } catch { /* ok */ }
 
-  // Memory
+  // Memory — Linux: /proc/meminfo, macOS: falls back to os.totalmem/freemem
   try {
-    const meminfo = readFileSync("/proc/meminfo", "utf8");
-    const extract = (key) => {
-      const m = meminfo.match(new RegExp(`^${key}:\\s*(\\d+)`, "m"));
-      return m ? parseInt(m[1], 10) * 1024 : 0; // kB → bytes
-    };
-    result.memory.total = extract("MemTotal");
-    result.memory.free = extract("MemFree");
-    result.memory.available = extract("MemAvailable");
-    result.memory.buffers = extract("Buffers");
-    result.memory.cached = extract("Cached");
-    result.memory.used = result.memory.total - result.memory.available;
-    result.memory.swapTotal = extract("SwapTotal");
-    result.memory.swapFree = extract("SwapFree");
-    result.memory.swapUsed = result.memory.swapTotal - result.memory.swapFree;
+    if (existsSync("/proc/meminfo")) {
+      const meminfo = readFileSync("/proc/meminfo", "utf8");
+      const extract = (key) => {
+        const m = meminfo.match(new RegExp(`^${key}:\\s*(\\d+)`, "m"));
+        return m ? parseInt(m[1], 10) * 1024 : 0; // kB → bytes
+      };
+      result.memory.total = extract("MemTotal");
+      result.memory.free = extract("MemFree");
+      result.memory.available = extract("MemAvailable");
+      result.memory.buffers = extract("Buffers");
+      result.memory.cached = extract("Cached");
+      result.memory.used = result.memory.total - result.memory.available;
+      result.memory.swapTotal = extract("SwapTotal");
+      result.memory.swapFree = extract("SwapFree");
+      result.memory.swapUsed = result.memory.swapTotal - result.memory.swapFree;
+    } else {
+      
+      result.memory.total = totalmem() || 0;
+      result.memory.free = freemem() || 0;
+      result.memory.available = result.memory.free;
+      result.memory.used = result.memory.total - result.memory.free;
+      result.memory.swapTotal = 0;
+      result.memory.swapFree = 0;
+      result.memory.swapUsed = 0;
+    }
   } catch { /* ok */ }
 
-  // Disk
+  // Disk — df syntax differs between Linux and macOS
   try {
-    const df = execSync("df -B1 --output=target,size,used,avail,pcent / /home 2>/dev/null", {
-      encoding: "utf8", timeout: 3000,
-    }).trim();
+    const isLinux = process.platform === "linux";
+    const cmd = isLinux
+      ? "df -B1 --output=target,size,used,avail,pcent / /home 2>/dev/null"
+      : "df -b / 2>/dev/null";
+    const df = execSync(cmd, { encoding: "utf8", timeout: 3000 }).trim();
     for (const line of df.split("\n").slice(1)) {
-      const [mount, size, used, avail, percent] = line.trim().split(/\s+/);
-      result.disk.push({
-        mount,
-        total: parseInt(size, 10),
-        used: parseInt(used, 10),
-        available: parseInt(avail, 10),
-        percent: percent?.replace("%", "") + "%",
-      });
+      const parts = line.trim().split(/\s+/);
+      if (isLinux) {
+        const [mount, size, used, avail, percent] = parts;
+        result.disk.push({ mount, total: parseInt(size, 10), used: parseInt(used, 10), available: parseInt(avail, 10), percent: (percent || "").replace("%", "") + "%" });
+      } else if (parts.length >= 6) {
+        // macOS: Filesystem 512-blocks Used Available Capacity iused ifree %iused Mounted
+        const total = parseInt(parts[1], 10) * 512;
+        const used = parseInt(parts[2], 10) * 512;
+        const avail = parseInt(parts[3], 10) * 512;
+        const mount = parts[parts.length - 1];
+        const pct = total > 0 ? Math.round((used / total) * 100) : 0;
+        result.disk.push({ mount, total, used, available: avail, percent: pct + "%" });
+      }
     }
   } catch { /* ok */ }
 
@@ -344,13 +414,38 @@ export function getSystemOverview() {
   };
 }
 
+// ── Input validation ───────────────────────────────────────────
+
+/** Sanitize names to prevent command injection. Only allow alphanumeric, dash, underscore, dot. */
+function sanitizeName(name) {
+  if (typeof name !== "string" || !name) return null;
+  // Docker container names: [a-zA-Z0-9][a-zA-Z0-9_.-]
+  // Systemd unit names: [a-zA-Z0-9:._@-]
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9_.@:-]*$/.test(name)) return null;
+  if (name.length > 200) return null;
+  return name;
+}
+
+function sanitizeTail(tail) {
+  const n = parseInt(tail, 10);
+  if (!Number.isFinite(n) || n < 1) return 200;
+  return Math.min(n, 5000);
+}
+
+// ── Actions ────────────────────────────────────────────────────
+
 /**
  * Get container logs.
+ * @param {string} nameOrId - Container name or ID (sanitized)
+ * @param {number} [tail=200] - Number of lines to return
  */
 export function getContainerLogs(nameOrId, tail = 200) {
+  const name = sanitizeName(nameOrId);
+  if (!name) return { ok: false, logs: "", error: "Invalid container name" };
+  const lines = sanitizeTail(tail);
   try {
     const logs = execSync(
-      `docker logs --tail ${tail} --timestamps "${nameOrId}" 2>&1`,
+      `docker logs --tail ${lines} --timestamps "${name}" 2>&1`,
       { encoding: "utf8", timeout: 10000, maxBuffer: 5 * 1024 * 1024 }
     );
     return { ok: true, logs };
@@ -361,11 +456,16 @@ export function getContainerLogs(nameOrId, tail = 200) {
 
 /**
  * Get systemd service logs.
+ * @param {string} name - Service name (sanitized, without .service suffix)
+ * @param {number} [tail=200] - Number of lines to return
  */
 export function getServiceLogs(name, tail = 200) {
+  const safeName = sanitizeName(name);
+  if (!safeName) return { ok: false, logs: "", error: "Invalid service name" };
+  const lines = sanitizeTail(tail);
   try {
     const logs = execSync(
-      `journalctl --user -u ${name}.service -n ${tail} --no-pager 2>&1`,
+      `journalctl --user -u ${safeName}.service -n ${lines} --no-pager 2>&1`,
       { encoding: "utf8", timeout: 10000, maxBuffer: 5 * 1024 * 1024 }
     );
     return { ok: true, logs };
@@ -375,35 +475,14 @@ export function getServiceLogs(name, tail = 200) {
 }
 
 /**
- * Stop a container.
+ * Stop a Docker container.
+ * @param {string} nameOrId - Container name or ID (sanitized)
  */
 export function stopContainer(nameOrId) {
+  const name = sanitizeName(nameOrId);
+  if (!name) return { ok: false, message: "Invalid container name" };
   try {
-    execSync(`docker stop "${nameOrId}"`, { encoding: "utf8", timeout: 30000 });
-    return { ok: true, message: `Stopped ${nameOrId}` };
-  } catch (e) {
-    return { ok: false, message: e.message };
-  }
-}
-
-/**
- * Restart a container.
- */
-export function restartContainer(nameOrId) {
-  try {
-    execSync(`docker restart "${nameOrId}"`, { encoding: "utf8", timeout: 30000 });
-    return { ok: true, message: `Restarted ${nameOrId}` };
-  } catch (e) {
-    return { ok: false, message: e.message };
-  }
-}
-
-/**
- * Stop a systemd service.
- */
-export function stopSystemdService(name) {
-  try {
-    execSync(`systemctl --user stop ${name}.service`, { encoding: "utf8", timeout: 10000 });
+    execSync(`docker stop "${name}"`, { encoding: "utf8", timeout: 30000 });
     return { ok: true, message: `Stopped ${name}` };
   } catch (e) {
     return { ok: false, message: e.message };
@@ -411,12 +490,45 @@ export function stopSystemdService(name) {
 }
 
 /**
- * Restart a systemd service.
+ * Restart a Docker container.
+ * @param {string} nameOrId - Container name or ID (sanitized)
+ */
+export function restartContainer(nameOrId) {
+  const name = sanitizeName(nameOrId);
+  if (!name) return { ok: false, message: "Invalid container name" };
+  try {
+    execSync(`docker restart "${name}"`, { encoding: "utf8", timeout: 30000 });
+    return { ok: true, message: `Restarted ${name}` };
+  } catch (e) {
+    return { ok: false, message: e.message };
+  }
+}
+
+/**
+ * Stop a systemd user service.
+ * @param {string} name - Service name (sanitized, without .service suffix)
+ */
+export function stopSystemdService(name) {
+  const safeName = sanitizeName(name);
+  if (!safeName) return { ok: false, message: "Invalid service name" };
+  try {
+    execSync(`systemctl --user stop ${safeName}.service`, { encoding: "utf8", timeout: 10000 });
+    return { ok: true, message: `Stopped ${safeName}` };
+  } catch (e) {
+    return { ok: false, message: e.message };
+  }
+}
+
+/**
+ * Restart a systemd user service.
+ * @param {string} name - Service name (sanitized, without .service suffix)
  */
 export function restartSystemdService(name) {
+  const safeName = sanitizeName(name);
+  if (!safeName) return { ok: false, message: "Invalid service name" };
   try {
-    execSync(`systemctl --user restart ${name}.service`, { encoding: "utf8", timeout: 10000 });
-    return { ok: true, message: `Restarted ${name}` };
+    execSync(`systemctl --user restart ${safeName}.service`, { encoding: "utf8", timeout: 10000 });
+    return { ok: true, message: `Restarted ${safeName}` };
   } catch (e) {
     return { ok: false, message: e.message };
   }
