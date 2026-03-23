@@ -105,17 +105,9 @@ function mergeProjectsWithServices(projects: ProjectInfo[], services: ServiceInf
   return projects.map((project) => ({ ...project, service: byName.get(project.name) }));
 }
 
-/** Shallow-compare two project arrays to avoid unnecessary re-renders */
-function projectsEqual(a: ProjectWithService[], b: ProjectWithService[]): boolean {
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i++) {
-    if (a[i].name !== b[i].name) return false;
-    if (a[i].git?.branch !== b[i].git?.branch) return false;
-    if (a[i].git?.dirty !== b[i].git?.dirty) return false;
-    if (a[i].containers?.length !== b[i].containers?.length) return false;
-    if (a[i].service?.status !== b[i].service?.status) return false;
-  }
-  return true;
+/** Fast structural comparison via JSON serialization */
+function dataEqual(a: unknown, b: unknown): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
 }
 
 export const useProjectStore = create<ProjectStoreState>((set, get) => ({
@@ -143,18 +135,10 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
 
       const merged = mergeProjectsWithServices(projects, services);
       const prev = get();
-      const unchanged = projectsEqual(prev.projects, merged)
-        && prev.untracked.containers.length === untracked.containers.length
-        && prev.untracked.ports.length === untracked.ports.length;
 
-      if (!unchanged || prev.loading) {
-        set({
-          projects: merged,
-          services,
-          untracked,
-          loading: false,
-          error: null,
-        });
+      // Only update if data actually changed — prevents re-render flicker
+      if (prev.loading || !dataEqual(prev.projects, merged) || !dataEqual(prev.untracked, untracked)) {
+        set({ projects: merged, services, untracked, loading: false, error: null });
       }
     } catch (error) {
       set({

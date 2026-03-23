@@ -325,22 +325,19 @@ export function ProjectsPage() {
   const untracked = useProjectStore((s) => s.untracked);
   const loading = useProjectStore((s) => s.loading);
   const error = useProjectStore((s) => s.error);
-  const load = useProjectStore((s) => s.load);
-  const startPolling = useProjectStore((s) => s.startPolling);
-  const stopPolling = useProjectStore((s) => s.stopPolling);
-  const startService = useProjectStore((s) => s.startService);
-  const stopService = useProjectStore((s) => s.stopService);
+  const startServiceAction = useProjectStore((s) => s.startService);
+  const stopServiceAction = useProjectStore((s) => s.stopService);
   const actionLoadingByName = useProjectStore((s) => s.actionLoadingByName);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState<"all" | "running" | "dirty" | "clean">("all");
 
   useEffect(() => {
-    void load(serverToken);
-    startPolling(serverToken, 15_000);
-    return () => {
-      stopPolling();
-    };
-  }, [serverToken, load, startPolling, stopPolling]);
+    const { load: doLoad, startPolling: doStart, stopPolling: doStop } = useProjectStore.getState();
+    void doLoad(serverToken);
+    doStart(serverToken, 30_000);
+    return () => { doStop(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serverToken]);
 
   const toggle = (dir: string) => {
     setExpanded((prev) => {
@@ -438,8 +435,8 @@ export function ProjectsPage() {
                   relatedCrons={rels.crons}
                   onCreateTask={() => openTaskCreate({ title: `[${repo.name}] `, repo: repo.name, sourceLabel: `Project: ${repo.name}` })}
                   actionLoading={Boolean(actionLoadingByName[repo.service?.name || ""])}
-                  onStartService={(name) => { void startService(name, serverToken); }}
-                  onStopService={(name) => { void stopService(name, serverToken); }}
+                  onStartService={(name) => { void startServiceAction(name, serverToken); }}
+                  onStopService={(name) => { void stopServiceAction(name, serverToken); }}
                 />
               );
             })}
