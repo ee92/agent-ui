@@ -6,7 +6,8 @@ export type Route =
   | { page: "files"; path?: string }
   | { page: "flow" }
   | { page: "timeline" }
-  | { page: "projects" };
+  | { page: "projects" }
+  | { page: "system" };
 
 function parseHash(hash: string): Route {
   const raw = hash.replace(/^#\/?/, "");
@@ -14,6 +15,7 @@ function parseHash(hash: string): Route {
   if (raw === "flow") return { page: "flow" };
   if (raw === "timeline") return { page: "timeline" };
   if (raw === "projects") return { page: "projects" };
+  if (raw === "system") return { page: "system" };
   if (raw === "files") return { page: "files" };
   if (raw.startsWith("files/")) return { page: "files", path: decodeURIComponent(raw.slice(6)) };
   if (raw.startsWith("chat/")) return { page: "chat", sessionKey: decodeURIComponent(raw.slice(5)) };

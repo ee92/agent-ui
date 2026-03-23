@@ -26,6 +26,13 @@ import { createBroker } from "./server/claude/ws-broker.mjs";
 import { scanDocker } from "./server/docker-scanner.mjs";
 import { mergeProjects } from "./server/project-merger.mjs";
 import { listServices, startService, stopService, getServiceLogs } from "./server/process-manager.mjs";
+import {
+  getSystemOverview,
+  getContainerLogs as getContainerLogsSystem,
+  getServiceLogs as getServiceLogsSystem,
+  stopContainer, restartContainer,
+  stopSystemdService, restartSystemdService,
+} from "./server/system-scanner.mjs";
 import { validateTransition } from "./lib/task-guards.mjs";
 import {
   createJob as createCronJob,
@@ -840,6 +847,57 @@ const server = createServer(async (req, res) => {
     const name = url.pathname.split("/")[3];
     return jsonResponse(res, getServiceLogs(name));
   }
+
+  // ── System API ──────────────────────────────────────────────────
+
+  if (url.pathname === "/api/system/overview") {
+    if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);
+    try {
+      return jsonResponse(res, getSystemOverview());
+    } catch (e) {
+      return jsonResponse(res, { error: "system scan failed", detail: e.message }, 500);
+    }
+  }
+
+  if (url.pathname.match(/^\/api\/system\/containers\/([^/]+)\/logs$/) && req.method === "GET") {
+    if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);
+    const name = decodeURIComponent(url.pathname.split("/")[4]);
+    const tail = parseInt(url.searchParams.get("tail") || "200", 10);
+    return jsonResponse(res, getContainerLogsSystem(name, tail));
+  }
+
+  if (url.pathname.match(/^\/api\/system\/containers\/([^/]+)\/stop$/) && req.method === "POST") {
+    if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);
+    const name = decodeURIComponent(url.pathname.split("/")[4]);
+    return jsonResponse(res, stopContainer(name));
+  }
+
+  if (url.pathname.match(/^\/api\/system\/containers\/([^/]+)\/restart$/) && req.method === "POST") {
+    if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);
+    const name = decodeURIComponent(url.pathname.split("/")[4]);
+    return jsonResponse(res, restartContainer(name));
+  }
+
+  if (url.pathname.match(/^\/api\/system\/services\/([^/]+)\/logs$/) && req.method === "GET") {
+    if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);
+    const name = decodeURIComponent(url.pathname.split("/")[4]);
+    const tail = parseInt(url.searchParams.get("tail") || "200", 10);
+    return jsonResponse(res, getServiceLogsSystem(name, tail));
+  }
+
+  if (url.pathname.match(/^\/api\/system\/services\/([^/]+)\/stop$/) && req.method === "POST") {
+    if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);
+    const name = decodeURIComponent(url.pathname.split("/")[4]);
+    return jsonResponse(res, stopSystemdService(name));
+  }
+
+  if (url.pathname.match(/^\/api\/system\/services\/([^/]+)\/restart$/) && req.method === "POST") {
+    if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);
+    const name = decodeURIComponent(url.pathname.split("/")[4]);
+    return jsonResponse(res, restartSystemdService(name));
+  }
+
+  // ── Tasks API ─────────────────────────────────────────────────
 
   if (url.pathname.startsWith("/api/tasks/") && req.method === "PATCH") {
     if (!checkAuth(req)) return jsonResponse(res, { error: "unauthorized" }, 401);

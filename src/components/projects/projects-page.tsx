@@ -451,7 +451,7 @@ export function ProjectsPage() {
               </table>
             </div>
 
-            <UntrackedSection untracked={untracked} />
+            {/* Untracked containers/ports moved to System page */}
           </>
         )}
       </div>

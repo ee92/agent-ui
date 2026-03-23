@@ -12,6 +12,7 @@ import { OfflineBanner } from "./components/ui/offline-banner";
 import { SystemFlow } from "./components/flow/system-flow";
 import { TimelinePage } from "./components/timeline/timeline-page";
 import { ProjectsPage } from "./components/projects/projects-page";
+import { SystemPage } from "./components/system/system-page";
 import { StatusPulse } from "./components/workflow/status-pulse";
 import { TaskCreateModalGlobal } from "./components/workflow/task-create-modal";
 import { useTaskCreateStore } from "./lib/stores/task-create-store";
@@ -271,9 +272,9 @@ export function App() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); requestSearchFocus(); closeMobileSidebar(); }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "n") { e.preventDefault(); void createConversation(); }
-      if ((e.metaKey || e.ctrlKey) && e.key >= "1" && e.key <= "5") {
+      if ((e.metaKey || e.ctrlKey) && e.key >= "1" && e.key <= "6") {
         e.preventDefault();
-        const routes = ["#/", "#/flow", "#/files", "#/timeline", "#/projects"];
+        const routes = ["#/", "#/flow", "#/files", "#/timeline", "#/projects", "#/system"];
         navigate(routes[parseInt(e.key, 10) - 1]);
       }
       if (e.key === "Escape") {
@@ -312,6 +313,7 @@ export function App() {
     currentPage === "files" ? "Files"
     : currentPage === "flow" ? "System Flow"
     : currentPage === "timeline" ? "Timeline"
+    : currentPage === "system" ? "System"
     : currentPage === "chat" ? selectedTitle
     : "Dashboard";
 
@@ -364,6 +366,7 @@ export function App() {
             <MobileTabLink href="#/files" label="Files" active={currentPage === "files"} />
             <MobileTabLink href="#/timeline" label="Timeline" active={currentPage === "timeline"} />
             <MobileTabLink href="#/projects" label="Projects" active={currentPage === "projects"} />
+            <MobileTabLink href="#/system" label="System" active={currentPage === "system"} />
           </div>
 
           {/* Desktop top navigation */}
@@ -381,6 +384,7 @@ export function App() {
                 <NavLink href="#/files" label="Files" active={currentPage === "files"} />
                 <NavLink href="#/timeline" label="Timeline" active={currentPage === "timeline"} />
                 <NavLink href="#/projects" label="Projects" active={currentPage === "projects"} />
+                <NavLink href="#/system" label="System" active={currentPage === "system"} />
               </div>
             </div>
             <button type="button" onClick={() => void refreshSessions()} className="rounded-md px-2.5 py-1.5 text-[13px] text-zinc-500 transition-all hover:bg-white/[0.04] hover:text-zinc-300">
@@ -409,6 +413,12 @@ export function App() {
               <ErrorBoundary label="Timeline">
                 <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
                   <TimelinePage />
+                </div>
+              </ErrorBoundary>
+            ) : currentPage === "system" ? (
+              <ErrorBoundary label="System">
+                <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+                  <SystemPage />
                 </div>
               </ErrorBoundary>
             ) : currentPage === "projects" ? (
