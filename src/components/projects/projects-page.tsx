@@ -34,179 +34,151 @@ function gitProblems(p: Project): string[] {
 
 function isUp(status: string) { return status?.toLowerCase().includes("up"); }
 
-/* ── Active Services Panel ── */
-
-function ActiveServices({ projects, services, onStop, onStart, actionLoading }: {
-  projects: Project[];
-  services: Map<string, ServiceInfo>;
-  onStop: (name: string) => void;
-  onStart: (name: string) => void;
-  actionLoading: Record<string, boolean>;
-}) {
-  const active = projects.filter((p) => p.containers.length > 0 || services.get(p.name)?.status === "running");
-
-  // Also include services not matched to a project (bare process dev servers)
-  const unmatchedServices = [...services.values()].filter(
-    (s) => s.status === "running" && !projects.some((p) => p.name === s.name),
-  );
-
-  if (active.length === 0 && unmatchedServices.length === 0) return null;
-
-  return (
-    <div className="mb-5">
-      <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-zinc-600">Running</h2>
-      <div className="rounded-xl border border-white/[0.06] bg-surface-0 overflow-hidden">
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="border-b border-white/[0.06] text-left text-[10px] uppercase tracking-wider text-zinc-600">
-              <th className="py-2 pl-3 font-medium">Name</th>
-              <th className="py-2 font-medium">Ports</th>
-              <th className="py-2 font-medium">Status</th>
-              <th className="py-2 font-medium">Memory</th>
-              <th className="py-2 pr-3 text-right font-medium" />
-            </tr>
-          </thead>
-          <tbody>
-            {active.map((p) => {
-              const svc = services.get(p.name);
-              const ports = p.containers.flatMap((c) => c.ports).filter(Boolean);
-              const totalMem = p.containers.map((c) => c.memory).filter(Boolean).join(" + ");
-              const containerCount = p.containers.length;
-              const allUp = p.containers.every((c) => isUp(c.status));
-              const loading = !!actionLoading[p.name];
-
-              return (
-                <tr key={p.dir} className="border-b border-white/[0.03] hover:bg-white/[0.02]">
-                  <td className="py-2.5 pl-3">
-                    <div className="flex items-center gap-2">
-                      <span className={`h-2 w-2 rounded-full ${allUp ? "bg-emerald-400 shadow-[0_0_6px_rgba(34,197,94,0.4)]" : "bg-amber-400"}`} />
-                      <span className="font-medium text-zinc-100">{p.name}</span>
-                      <span className="text-zinc-600">{containerCount} container{containerCount !== 1 ? "s" : ""}</span>
-                    </div>
-                  </td>
-                  <td className="py-2.5">
-                    <div className="flex flex-wrap gap-1.5">
-                      {ports.map((port) => {
-                        const hostPort = port.split("->")[0];
-                        return (
-                          <a key={port} href={`http://localhost:${hostPort}`} target="_blank" rel="noreferrer"
-                            className="rounded bg-blue-500/10 px-1.5 py-0.5 font-mono text-blue-400 hover:bg-blue-500/20">
-                            :{hostPort}
-                          </a>
-                        );
-                      })}
-                      {svc?.port && !ports.some((p) => p.startsWith(String(svc.port))) && (
-                        <a href={`http://localhost:${svc.port}`} target="_blank" rel="noreferrer"
-                          className="rounded bg-blue-500/10 px-1.5 py-0.5 font-mono text-blue-400 hover:bg-blue-500/20">
-                          :{svc.port}
-                        </a>
-                      )}
-                      {ports.length === 0 && !svc?.port && <span className="text-zinc-600">—</span>}
-                    </div>
-                  </td>
-                  <td className="py-2.5">
-                    <span className="text-emerald-400">{allUp ? "Up" : "Partial"}</span>
-                  </td>
-                  <td className="py-2.5 text-zinc-500">{totalMem || "—"}</td>
-                  <td className="py-2.5 pr-3 text-right">
-                    <button
-                      type="button"
-                      disabled={loading}
-                      onClick={() => onStop(p.name)}
-                      className="rounded px-2 py-1 text-red-400 hover:bg-red-500/10 disabled:opacity-50"
-                    >
-                      {loading ? "..." : "⏹"}
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
-            {unmatchedServices.map((s) => (
-              <tr key={s.name} className="border-b border-white/[0.03] hover:bg-white/[0.02]">
-                <td className="py-2.5 pl-3">
-                  <div className="flex items-center gap-2">
-                    <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(34,197,94,0.4)]" />
-                    <span className="font-medium text-zinc-100">{s.name}</span>
-                    <span className="text-zinc-600">{s.kind}</span>
-                  </div>
-                </td>
-                <td className="py-2.5">
-                  {s.port ? (
-                    <a href={`http://localhost:${s.port}`} target="_blank" rel="noreferrer"
-                      className="rounded bg-blue-500/10 px-1.5 py-0.5 font-mono text-blue-400 hover:bg-blue-500/20">
-                      :{s.port}
-                    </a>
-                  ) : <span className="text-zinc-600">—</span>}
-                </td>
-                <td className="py-2.5"><span className="text-emerald-400">Up</span></td>
-                <td className="py-2.5 text-zinc-500">{s.description || "—"}</td>
-                <td className="py-2.5 pr-3 text-right">
-                  <button type="button" disabled={!!actionLoading[s.name]} onClick={() => onStop(s.name)}
-                    className="rounded px-2 py-1 text-red-400 hover:bg-red-500/10 disabled:opacity-50">
-                    {actionLoading[s.name] ? "..." : "⏹"}
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
+function isRunning(p: Project, svc?: ServiceInfo) {
+  return p.containers.length > 0 || svc?.status === "running";
 }
 
-/* ── Project Row (compact, expandable) ── */
+/* ── Unified Project Row ── */
 
-function ProjectRow({ project, expanded, onToggle, relatedTasks, relatedCrons, onCreateTask, service }: {
-  project: Project;
+function ProjectRow({ project, expanded, onToggle, relatedTasks, relatedCrons, onCreateTask, service, onStop, actionLoading, unmatchedService }: {
+  project?: Project;
   expanded: boolean;
   onToggle: () => void;
   relatedTasks: { id: string; title: string; status: string }[];
   relatedCrons: { id: string; name: string }[];
   onCreateTask: () => void;
   service?: ServiceInfo;
+  onStop: (name: string) => void;
+  actionLoading: boolean;
+  unmatchedService?: ServiceInfo;
 }) {
-  const problems = gitProblems(project);
-  const hasContainers = project.containers.length > 0;
+  const p = project;
+  const svc = unmatchedService || service;
+  const running = p ? isRunning(p, service) : !!unmatchedService;
+
+  // For unmatched services (no project)
+  if (!p && unmatchedService) {
+    return (
+      <tr className="border-b border-white/[0.03] hover:bg-white/[0.02]">
+        <td className="py-2.5 pl-3">
+          <div className="flex items-center gap-2">
+            <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(34,197,94,0.3)]" />
+            <span className="font-medium text-zinc-100">{unmatchedService.name}</span>
+            <span className="rounded bg-white/[0.04] px-1.5 py-0.5 text-[10px] text-zinc-600">{unmatchedService.kind}</span>
+          </div>
+        </td>
+        <td className="py-2.5 text-zinc-600">—</td>
+        <td className="py-2.5">
+          {unmatchedService.port ? (
+            <a href={`http://localhost:${unmatchedService.port}`} target="_blank" rel="noreferrer"
+              className="rounded bg-blue-500/10 px-1.5 py-0.5 font-mono text-blue-400 hover:bg-blue-500/20">
+              :{unmatchedService.port}
+            </a>
+          ) : <span className="text-zinc-700">—</span>}
+        </td>
+        <td className="py-2.5 text-zinc-600">{unmatchedService.description || "—"}</td>
+        <td className="py-2.5 pr-3 text-right">
+          <button type="button" disabled={actionLoading} onClick={() => onStop(unmatchedService.name)}
+            className="rounded px-2 py-0.5 text-zinc-600 transition hover:bg-red-500/10 hover:text-red-400 disabled:opacity-50">
+            {actionLoading ? "…" : "⏹"}
+          </button>
+        </td>
+      </tr>
+    );
+  }
+
+  if (!p) return null;
+
+  const problems = gitProblems(p);
+  const ports = p.containers.flatMap((c) => c.ports).filter(Boolean);
+  const allPorts = [...ports];
+  if (service?.port && !ports.some((pt) => pt.startsWith(String(service.port)))) {
+    allPorts.push(`:${service.port}`);
+  }
+  const totalMem = p.containers.map((c) => c.memory).filter(Boolean);
 
   return (
     <>
-      <tr onClick={onToggle} className="cursor-pointer border-b border-white/[0.03] hover:bg-white/[0.02]">
-        <td className="py-2 pl-3">
+      <tr
+        onClick={onToggle}
+        className={`cursor-pointer border-b border-white/[0.03] transition hover:bg-white/[0.02] ${running ? "bg-white/[0.01]" : ""}`}
+      >
+        {/* Name */}
+        <td className="py-2.5 pl-3">
           <div className="flex items-center gap-2">
-            {hasContainers || service?.status === "running"
-              ? <span className="h-2 w-2 rounded-full bg-emerald-400" />
-              : <span className="h-2 w-2 rounded-full bg-zinc-700" />}
-            <span className="font-medium text-zinc-100">{project.name}</span>
+            <span className={`h-2 w-2 rounded-full ${running ? "bg-emerald-400 shadow-[0_0_6px_rgba(34,197,94,0.3)]" : "bg-zinc-700"}`} />
+            <span className="font-medium text-zinc-100">{p.name}</span>
+            {running && p.containers.length > 0 && (
+              <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-400">
+                {p.containers.length === 1 ? "1 container" : `${p.containers.length} containers`}
+              </span>
+            )}
           </div>
         </td>
-        <td className="py-2">
-          <span className="font-mono text-zinc-300">{project.git.branch}</span>
+
+        {/* Branch + git status */}
+        <td className="py-2.5">
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-zinc-400">{p.git.branch}</span>
+            {problems.length > 0 && (
+              <span className="text-amber-400">{problems.join("  ")}</span>
+            )}
+          </div>
         </td>
-        <td className="py-2">
-          {problems.length > 0
-            ? <span className="text-amber-400">{problems.join("  ")}</span>
-            : <span className="text-emerald-500/60">✓</span>}
+
+        {/* Ports */}
+        <td className="py-2.5">
+          {allPorts.length > 0 ? (
+            <div className="flex flex-wrap gap-1">
+              {allPorts.map((port) => {
+                const hostPort = port.startsWith(":") ? port.slice(1) : port.split("->")[0];
+                return (
+                  <a key={port} href={`http://localhost:${hostPort}`} target="_blank" rel="noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="rounded bg-blue-500/10 px-1.5 py-0.5 font-mono text-blue-400 hover:bg-blue-500/20">
+                    :{hostPort}
+                  </a>
+                );
+              })}
+            </div>
+          ) : (
+            <span className="text-zinc-700">—</span>
+          )}
         </td>
-        <td className="py-2 text-zinc-600">
-          {hasContainers && <span>{project.containers.length} container{project.containers.length !== 1 ? "s" : ""}</span>}
+
+        {/* Memory */}
+        <td className="py-2.5 text-zinc-600">
+          {totalMem.length > 0 ? totalMem.join(" + ") : "—"}
         </td>
-        <td className="py-2 pr-3 text-right text-zinc-600">
-          <span className={`transition-transform inline-block ${expanded ? "rotate-90" : ""}`}>›</span>
+
+        {/* Actions */}
+        <td className="py-2.5 pr-3 text-right">
+          {running ? (
+            <button
+              type="button"
+              disabled={actionLoading}
+              onClick={(e) => { e.stopPropagation(); onStop(p.name); }}
+              className="rounded px-2 py-0.5 text-zinc-600 transition hover:bg-red-500/10 hover:text-red-400 disabled:opacity-50"
+            >
+              {actionLoading ? "…" : "⏹"}
+            </button>
+          ) : (
+            <span className={`inline-block transition-transform ${expanded ? "rotate-90" : ""} text-zinc-600`}>›</span>
+          )}
         </td>
       </tr>
 
       {expanded && (
         <tr>
-          <td colSpan={5} className="border-b border-white/[0.03] bg-white/[0.01] px-3 pb-3 pt-2">
+          <td colSpan={5} className="border-b border-white/[0.03] bg-white/[0.015] px-3 pb-3 pt-2">
             <div className="grid grid-cols-2 gap-4 text-xs">
-              {/* Left column: containers + git */}
+              {/* Left: containers + path */}
               <div>
-                {hasContainers && (
+                {p.containers.length > 0 && (
                   <div className="mb-3">
                     <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-zinc-600">Containers</p>
                     <div className="space-y-0.5">
-                      {project.containers.map((c) => (
+                      {p.containers.map((c) => (
                         <div key={c.name} className="flex items-center gap-2 text-zinc-400">
                           <span className={`h-1.5 w-1.5 rounded-full ${isUp(c.status) ? "bg-emerald-400" : "bg-red-400"}`} />
                           <span className="text-zinc-200">{c.service || c.name}</span>
@@ -218,10 +190,16 @@ function ProjectRow({ project, expanded, onToggle, relatedTasks, relatedCrons, o
                   </div>
                 )}
                 <p className="text-[10px] font-medium uppercase tracking-wider text-zinc-600">Path</p>
-                <p className="mt-0.5 font-mono text-zinc-500">{project.dir}</p>
+                <p className="mt-0.5 font-mono text-zinc-500">{p.dir}</p>
+                {p.git.lastCommitMsg && (
+                  <>
+                    <p className="mt-2 text-[10px] font-medium uppercase tracking-wider text-zinc-600">Last commit</p>
+                    <p className="mt-0.5 truncate text-zinc-500">{p.git.lastCommitMsg}</p>
+                  </>
+                )}
               </div>
 
-              {/* Right column: tasks + actions */}
+              {/* Right: tasks + crons + actions */}
               <div>
                 {relatedTasks.length > 0 && (
                   <div className="mb-3">
@@ -231,7 +209,7 @@ function ProjectRow({ project, expanded, onToggle, relatedTasks, relatedCrons, o
                         <div key={t.id} className="flex items-center gap-2">
                           <span className={`h-1.5 w-1.5 rounded-full ${TASK_STATUS_META[t.status as keyof typeof TASK_STATUS_META]?.dot || "bg-zinc-500"}`} />
                           <span className="truncate text-zinc-300">{t.title}</span>
-                          <span className="ml-auto text-[10px] text-zinc-600">{TASK_STATUS_META[t.status as keyof typeof TASK_STATUS_META]?.label || t.status}</span>
+                          <span className="ml-auto shrink-0 text-[10px] text-zinc-600">{TASK_STATUS_META[t.status as keyof typeof TASK_STATUS_META]?.label || t.status}</span>
                         </div>
                       ))}
                     </div>
@@ -347,6 +325,13 @@ export function ProjectsPage() {
 
   const serviceByName = useMemo(() => new Map(services.map((s) => [s.name, s])), [services]);
 
+  // Services not matched to any project
+  const unmatchedServices = useMemo(() =>
+    [...services.values()].filter(
+      (s) => s.status === "running" && !projects.some((p) => p.name === s.name),
+    ),
+  [services, projects]);
+
   const handleAction = useCallback(async (name: string, action: "start" | "stop") => {
     setActionLoading((prev) => ({ ...prev, [name]: true }));
     try {
@@ -374,13 +359,15 @@ export function ProjectsPage() {
     return map;
   }, [projects, allTasks, cronJobs]);
 
+  // Sort: running first, then by problems, then alpha
   const sorted = useMemo(() => [...projects].sort((a, b) => {
-    const ar = (a.containers.length > 0 || serviceByName.get(a.name)?.status === "running") ? 1 : 0;
-    const br = (b.containers.length > 0 || serviceByName.get(b.name)?.status === "running") ? 1 : 0;
+    const ar = isRunning(a, serviceByName.get(a.name)) ? 1 : 0;
+    const br = isRunning(b, serviceByName.get(b.name)) ? 1 : 0;
     if (br !== ar) return br - ar;
     return gitProblems(b).length - gitProblems(a).length || a.name.localeCompare(b.name);
   }), [projects, serviceByName]);
 
+  const runningCount = sorted.filter((p) => isRunning(p, serviceByName.get(p.name))).length + unmatchedServices.length;
   const dirtyCount = sorted.filter((r) => gitProblems(r).length > 0).length;
 
   return (
@@ -388,64 +375,72 @@ export function ProjectsPage() {
       <div className="mb-4 flex shrink-0 items-center justify-between">
         <div>
           <h1 className="text-[15px] font-semibold tracking-tight text-zinc-100">Projects</h1>
-          <p className="mt-0.5 text-[12px] text-zinc-600">{sorted.length} repos{dirtyCount > 0 ? ` · ${dirtyCount} need attention` : ""}</p>
+          <p className="mt-0.5 text-[12px] text-zinc-600">
+            {sorted.length} repos · {runningCount} running{dirtyCount > 0 ? ` · ${dirtyCount} dirty` : ""}
+          </p>
         </div>
         <button type="button" onClick={() => { setLoading(true); void loadData(); }} disabled={loading}
           className="rounded-lg border border-white/[0.06] bg-white/[0.03] px-2.5 py-1 text-[12px] text-zinc-500 transition hover:border-white/[0.1] hover:bg-white/[0.06] hover:text-zinc-300 disabled:opacity-50">
-          {loading && projects.length > 0 ? "..." : loading ? "Loading" : "Refresh"}
+          {loading && projects.length > 0 ? "…" : loading ? "Loading" : "Refresh"}
         </button>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto pb-[calc(env(safe-area-inset-bottom)+1rem)]">
+      <div className="min-h-0 flex-1 overflow-y-auto scroll-soft pb-[calc(env(safe-area-inset-bottom)+1rem)]">
         {loading && projects.length === 0 && (
-          <div className="flex min-h-40 items-center justify-center text-sm text-zinc-500">Scanning...</div>
+          <div className="flex min-h-40 items-center justify-center text-[13px] text-zinc-600">Scanning…</div>
         )}
         {error && (
-          <div className="flex min-h-40 items-center justify-center rounded-lg border border-dashed border-red-500/20 text-sm text-red-300">{error}</div>
+          <div className="flex min-h-40 items-center justify-center rounded-lg border border-dashed border-red-500/20 text-[13px] text-red-300">{error}</div>
         )}
 
-        {projects.length > 0 && (
+        {(projects.length > 0 || unmatchedServices.length > 0) && (
           <>
-            <ActiveServices
-              projects={projects}
-              services={serviceByName}
-              onStop={(name) => { void handleAction(name, "stop"); }}
-              onStart={(name) => { void handleAction(name, "start"); }}
-              actionLoading={actionLoading}
-            />
-
-            <div>
-              <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-zinc-600">All Projects</h2>
-              <div className="rounded-xl border border-white/[0.06] bg-surface-0 overflow-hidden">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="border-b border-white/[0.06] text-left text-[10px] uppercase tracking-wider text-zinc-600">
-                      <th className="py-2 pl-3 font-medium">Project</th>
-                      <th className="py-2 font-medium">Branch</th>
-                      <th className="py-2 font-medium">Status</th>
-                      <th className="py-2 font-medium">Infra</th>
-                      <th className="py-2 pr-3 font-medium" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sorted.map((p) => {
-                      const rels = repoRelations.get(p.dir) ?? { tasks: [], crons: [] };
-                      return (
-                        <ProjectRow
-                          key={p.dir}
-                          project={p}
-                          expanded={expanded.has(p.dir)}
-                          onToggle={() => toggle(p.dir)}
-                          relatedTasks={rels.tasks}
-                          relatedCrons={rels.crons}
-                          onCreateTask={() => openTaskCreate({ title: `[${p.name}] `, repo: p.name, sourceLabel: `Project: ${p.name}` })}
-                          service={serviceByName.get(p.name)}
-                        />
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+            <div className="rounded-xl border border-white/[0.06] bg-surface-0 overflow-hidden">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-white/[0.06] text-left text-[10px] uppercase tracking-wider text-zinc-600">
+                    <th className="py-2 pl-3 font-medium">Project</th>
+                    <th className="py-2 font-medium">Branch</th>
+                    <th className="py-2 font-medium">Ports</th>
+                    <th className="py-2 font-medium">Memory</th>
+                    <th className="py-2 pr-3 font-medium" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {/* Unmatched services first (running but no project) */}
+                  {unmatchedServices.map((s) => (
+                    <ProjectRow
+                      key={`svc-${s.name}`}
+                      expanded={false}
+                      onToggle={() => {}}
+                      relatedTasks={[]}
+                      relatedCrons={[]}
+                      onCreateTask={() => {}}
+                      onStop={(name) => { void handleAction(name, "stop"); }}
+                      actionLoading={!!actionLoading[s.name]}
+                      unmatchedService={s}
+                    />
+                  ))}
+                  {/* All projects */}
+                  {sorted.map((p) => {
+                    const rels = repoRelations.get(p.dir) ?? { tasks: [], crons: [] };
+                    return (
+                      <ProjectRow
+                        key={p.dir}
+                        project={p}
+                        expanded={expanded.has(p.dir)}
+                        onToggle={() => toggle(p.dir)}
+                        relatedTasks={rels.tasks}
+                        relatedCrons={rels.crons}
+                        onCreateTask={() => openTaskCreate({ title: `[${p.name}] `, repo: p.name, sourceLabel: `Project: ${p.name}` })}
+                        service={serviceByName.get(p.name)}
+                        onStop={(name) => { void handleAction(name, "stop"); }}
+                        actionLoading={!!actionLoading[p.name]}
+                      />
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
 
             <UntrackedSection untracked={untracked} />
