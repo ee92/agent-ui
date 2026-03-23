@@ -339,37 +339,37 @@ export function FileBrowser({
   return (
     <div className="flex h-full min-w-0 flex-col gap-4 overflow-hidden xl:grid xl:grid-cols-[320px_minmax(0,1fr)]">
       <div className={`min-h-0 min-w-0 ${mobilePreviewPath ? "hidden xl:flex" : "flex"}`}>
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col rounded-lg border border-white/4 bg-white/[0.03] p-3 sm:p-4">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col rounded-xl border border-white/[0.06] bg-surface-0 p-3 sm:p-4">
           <div className="mb-3 space-y-3">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="text-xs uppercase tracking-wide text-zinc-500">Workspace</p>
-                <h3 className="mt-1 text-base font-semibold text-white sm:text-sm">Files</h3>
+                <p className="text-[11px] font-medium uppercase tracking-wider text-zinc-600">Workspace</p>
+                <h3 className="mt-0.5 text-[15px] font-semibold tracking-tight text-zinc-100">Files</h3>
               </div>
               {loadingDirectory || searching || openingPath ? (
-                <span className="inline-flex h-7 items-center rounded-full border border-white/4 px-3 text-[10px] text-zinc-400">
+                <span className="inline-flex h-7 items-center rounded-full border border-white/[0.06] px-3 text-[10px] text-zinc-400">
                   Loading
                 </span>
               ) : null}
             </div>
-            <div className="flex items-center gap-2 rounded-lg border border-white/4 bg-surface-1 px-3">
-              <span className="text-sm text-zinc-500">🔎</span>
+            <div className="flex items-center gap-2 rounded-lg border border-transparent bg-white/[0.04] px-3 transition-colors focus-within:border-white/[0.1] focus-within:bg-white/[0.06]">
+              <span className="text-sm text-zinc-600">🔎</span>
               <input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder="Search files"
-                className="h-12 w-full bg-transparent text-sm text-zinc-100 outline-none placeholder:text-zinc-500"
+                className="h-9 w-full bg-transparent text-[13px] text-zinc-100 outline-none placeholder:text-zinc-600"
               />
             </div>
             {!showingSearch ? (
-              <div className="scroll-soft flex items-center gap-1 overflow-x-auto pb-1">
+              <div className="scroll-soft flex items-center gap-0.5 overflow-x-auto pb-1">
                 {breadcrumbs.map((crumb, index) => (
                   <button
                     key={crumb.path || "root"}
                     type="button"
                     onClick={() => void loadDirectory(crumb.path)}
-                    className={`shrink-0 rounded-full px-3 py-2 text-xs ${
-                      index === breadcrumbs.length - 1 ? "bg-white/[0.06] text-white" : "text-zinc-400 hover:bg-white/[0.04] hover:text-zinc-200"
+                    className={`shrink-0 rounded-md px-2 py-1 text-[12px] transition ${
+                      index === breadcrumbs.length - 1 ? "bg-white/[0.06] font-medium text-zinc-200" : "text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-300"
                     }`}
                   >
                     {crumb.label}
@@ -381,13 +381,13 @@ export function FileBrowser({
           <div className="scroll-soft min-h-[320px] flex-1 overflow-y-auto pr-1 xl:min-h-0">
             {!ready && !cache[""]?.length ? <LoadingSkeleton rows={5} /> : null}
             {ready && fallback && !cache[""]?.length ? (
-              <div className="rounded-lg border border-dashed border-white/4 px-4 py-6 text-sm text-zinc-500">
+              <div className="rounded-lg border border-dashed border-white/[0.06] px-4 py-5 text-[13px] text-zinc-600">
                 Unable to load files right now.
               </div>
             ) : null}
             {ready && !fallback && visibleEntries.length === 0 ? (
-              <div className="rounded-lg border border-dashed border-white/4 px-4 py-6 text-sm text-zinc-500">
-                {showingSearch ? "No matching files." : "No files yet. Connect to a workspace to browse files."}
+              <div className="rounded-lg border border-dashed border-white/[0.06] px-4 py-5 text-[13px] text-zinc-600">
+                {showingSearch ? "No matches" : "Empty directory"}
               </div>
             ) : null}
             {visibleEntries.length > 0 ? (
@@ -410,17 +410,14 @@ export function FileBrowser({
                         }
                         void openPreview(entry.path);
                       }}
-                      className="flex min-h-14 w-full items-center gap-3 rounded-lg px-3 py-3 text-left hover:bg-white/[0.04]"
+                      className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition hover:bg-white/[0.04]"
                     >
-                      <span className="text-xl">{isDirectory ? "📁" : "📄"}</span>
+                      <span className="text-base">{isDirectory ? "📁" : "📄"}</span>
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm font-medium text-zinc-100">{entry.name}</span>
-                        <span className="block truncate text-xs text-zinc-500">{showingSearch ? entry.path : meta}</span>
-                        {!showingSearch && modifiedDate ? (
-                          <span className="block truncate text-xs text-zinc-600">Modified {modifiedDate}</span>
-                        ) : null}
+                        <span className="block truncate text-[13px] font-medium text-zinc-100">{entry.name}</span>
+                        <span className="block truncate text-[11px] text-zinc-600">{showingSearch ? entry.path : meta}{!showingSearch && modifiedDate ? ` · ${modifiedDate}` : ""}</span>
                       </span>
-                      {isDirectory ? <span className="text-lg text-zinc-500">›</span> : null}
+                      {isDirectory ? <span className="text-sm text-zinc-600">›</span> : null}
                     </button>
                   );
                 })}
@@ -430,7 +427,7 @@ export function FileBrowser({
         </div>
       </div>
       <div className={`min-h-0 min-w-0 ${mobilePreviewPath ? "flex" : "hidden xl:flex"}`}>
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col rounded-lg border border-white/4 bg-white/[0.03] p-3 sm:p-4">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col rounded-xl border border-white/[0.06] bg-surface-0 p-3 sm:p-4">
           <div className="mb-3 flex items-center gap-3">
             <button
               type="button"
@@ -438,19 +435,19 @@ export function FileBrowser({
                 setMobilePreviewPath(null);
                 setOpeningPath(null);
               }}
-              className="inline-flex h-10 items-center rounded-full border border-white/4 px-3 text-sm text-zinc-300 xl:hidden"
+              className="inline-flex h-8 items-center rounded-lg border border-white/[0.06] bg-white/[0.03] px-2.5 text-[13px] text-zinc-400 xl:hidden"
             >
-              Back
+              ← Back
             </button>
             <div className="min-w-0">
-              <p className="text-xs uppercase tracking-wide text-zinc-500">Preview</p>
-              <h3 className="mt-1 truncate text-base font-semibold text-white sm:text-sm">
+              <p className="text-[11px] font-medium uppercase tracking-wider text-zinc-600">Preview</p>
+              <h3 className="mt-0.5 truncate text-[13px] font-semibold text-zinc-100">
                 {mobilePreviewPath ? fileLabelFromPath(mobilePreviewPath) : preview?.path || "Select a file"}
               </h3>
             </div>
           </div>
           {previewingFile ? (
-            <div className="mb-3 flex flex-wrap items-center gap-3 rounded-lg border border-white/4 bg-surface-1 px-3 py-2">
+            <div className="mb-3 flex flex-wrap items-center gap-3 rounded-lg border border-transparent bg-white/[0.04] px-3 py-1.5 transition-colors focus-within:border-white/[0.1] focus-within:bg-white/[0.06]">
               <input
                 ref={previewSearchInputRef}
                 value={previewSearch}
@@ -464,26 +461,26 @@ export function FileBrowser({
                     movePreviewMatch(event.shiftKey ? -1 : 1);
                   }
                 }}
-                placeholder="Search in file... (Ctrl+F)"
-                className="h-10 min-w-[220px] flex-1 bg-transparent text-sm text-zinc-100 outline-none placeholder:text-zinc-500"
+                placeholder="Search in file…"
+                className="h-8 min-w-[180px] flex-1 bg-transparent text-[13px] text-zinc-100 outline-none placeholder:text-zinc-600"
               />
-              <span className="text-xs text-zinc-500">
+              <span className="text-[11px] tabular-nums text-zinc-600">
                 {previewMatchCount > 0
-                  ? `${Math.min(activePreviewMatch + 1, previewMatchCount)} of ${previewMatchCount} matches`
+                  ? `${Math.min(activePreviewMatch + 1, previewMatchCount)}/${previewMatchCount}`
                   : previewSearch.trim()
-                    ? "0 matches"
-                    : "Type to search"}
+                    ? "0"
+                    : ""}
               </span>
             </div>
           ) : null}
-          <div className="scroll-soft min-h-[360px] flex-1 overflow-auto rounded-lg border border-white/4 bg-surface-1 xl:min-h-0">
+          <div className="scroll-soft min-h-[360px] flex-1 overflow-auto rounded-lg border border-white/[0.05] bg-white/[0.02] xl:min-h-0">
             {previewingFile ? (
               <div ref={previewContentRef} className="min-h-full">
                 {renderPreviewContent()}
               </div>
             ) : (
-              <div className="flex h-full items-center justify-center px-4 text-sm text-zinc-500">
-                {openingPath ? "Opening file..." : "Choose a file to inspect."}
+              <div className="flex h-full items-center justify-center px-4 text-[13px] text-zinc-700">
+                {openingPath ? "Loading…" : "Select a file to preview"}
               </div>
             )}
           </div>

@@ -53,12 +53,12 @@ function ActiveServices({ projects, services, onStop, onStart, actionLoading }: 
   if (active.length === 0 && unmatchedServices.length === 0) return null;
 
   return (
-    <div className="mb-4">
-      <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-zinc-500">Active Services</h2>
-      <div className="rounded-lg border border-white/6 bg-zinc-950/70 overflow-hidden">
+    <div className="mb-5">
+      <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-zinc-600">Running</h2>
+      <div className="rounded-xl border border-white/[0.06] bg-surface-0 overflow-hidden">
         <table className="w-full text-xs">
           <thead>
-            <tr className="border-b border-white/4 text-left text-[10px] uppercase tracking-wider text-zinc-600">
+            <tr className="border-b border-white/[0.06] text-left text-[10px] uppercase tracking-wider text-zinc-600">
               <th className="py-2 pl-3 font-medium">Name</th>
               <th className="py-2 font-medium">Ports</th>
               <th className="py-2 font-medium">Status</th>
@@ -272,7 +272,7 @@ function UntrackedSection({ untracked }: { untracked: UntrackedInfo }) {
         Untracked ({total})
       </button>
       {open && (
-        <div className="mt-2 rounded-lg border border-white/4 bg-zinc-950/50 p-3 text-xs">
+        <div className="mt-2 rounded-lg border border-white/[0.06] bg-zinc-950/50 p-3 text-xs">
           {untracked.containers.length > 0 && (
             <div className="mb-2">
               <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-zinc-600">Orphan Containers</p>
@@ -387,12 +387,12 @@ export function ProjectsPage() {
     <div className="flex min-h-0 flex-1 flex-col px-3 pt-3 xl:px-5">
       <div className="mb-4 flex shrink-0 items-center justify-between">
         <div>
-          <h1 className="text-lg font-semibold text-white">Projects</h1>
-          <p className="text-xs text-zinc-500">{sorted.length} projects · {dirtyCount > 0 ? `${dirtyCount} need attention` : "all clean"}</p>
+          <h1 className="text-[15px] font-semibold tracking-tight text-zinc-100">Projects</h1>
+          <p className="mt-0.5 text-[12px] text-zinc-600">{sorted.length} repos{dirtyCount > 0 ? ` · ${dirtyCount} need attention` : ""}</p>
         </div>
         <button type="button" onClick={() => { setLoading(true); void loadData(); }} disabled={loading}
-          className="rounded-lg border border-white/6 bg-white/[0.04] px-3 py-1.5 text-xs text-zinc-400 hover:bg-white/[0.08] disabled:opacity-50">
-          {loading && projects.length > 0 ? "Refreshing..." : loading ? "Loading..." : "↻ Refresh"}
+          className="rounded-lg border border-white/[0.06] bg-white/[0.03] px-2.5 py-1 text-[12px] text-zinc-500 transition hover:border-white/[0.1] hover:bg-white/[0.06] hover:text-zinc-300 disabled:opacity-50">
+          {loading && projects.length > 0 ? "..." : loading ? "Loading" : "Refresh"}
         </button>
       </div>
 
@@ -415,11 +415,11 @@ export function ProjectsPage() {
             />
 
             <div>
-              <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-zinc-500">All Projects</h2>
-              <div className="rounded-lg border border-white/6 bg-zinc-950/70 overflow-hidden">
+              <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-zinc-600">All Projects</h2>
+              <div className="rounded-xl border border-white/[0.06] bg-surface-0 overflow-hidden">
                 <table className="w-full text-xs">
                   <thead>
-                    <tr className="border-b border-white/4 text-left text-[10px] uppercase tracking-wider text-zinc-600">
+                    <tr className="border-b border-white/[0.06] text-left text-[10px] uppercase tracking-wider text-zinc-600">
                       <th className="py-2 pl-3 font-medium">Project</th>
                       <th className="py-2 font-medium">Branch</th>
                       <th className="py-2 font-medium">Status</th>

@@ -56,8 +56,8 @@ const PRIORITY_ORDER: Record<SessionPriority, number> = {
 const PRIORITY_STYLES: Record<SessionPriority, { dot: string; border: string; bg: string }> = {
   attention: { dot: "bg-amber-400", border: "border-amber-500/25", bg: "bg-amber-500/[0.04]" },
   active: { dot: "animate-pulse bg-emerald-400", border: "border-emerald-500/20", bg: "bg-emerald-500/[0.03]" },
-  recent: { dot: "bg-blue-400", border: "border-white/4", bg: "bg-white/[0.02]" },
-  idle: { dot: "bg-zinc-600", border: "border-white/4", bg: "bg-transparent" },
+  recent: { dot: "bg-blue-400", border: "border-white/[0.06]", bg: "bg-white/[0.02]" },
+  idle: { dot: "bg-zinc-600", border: "border-white/[0.06]", bg: "bg-transparent" },
 };
 
 /* ─── inline preview ─── */
@@ -112,7 +112,7 @@ function InlinePreview({
   };
 
   return (
-    <div className="mt-2 space-y-2 border-t border-white/4 pt-2">
+    <div className="mt-2 space-y-2 border-t border-white/[0.06] pt-2">
       {loading ? (
         <div className="flex items-center gap-2 py-2">
           <div className="h-3 w-3 animate-spin rounded-full border-2 border-zinc-600 border-t-zinc-300" />

@@ -36,7 +36,11 @@ function NavLink({ href, label, active }: { href: string; label: string; active:
     <button
       type="button"
       onClick={() => navigate(href)}
-      className={`text-xs transition-colors ${active ? "text-white font-medium" : "text-zinc-400 hover:text-white"}`}
+      className={`relative rounded-md px-2.5 py-1.5 text-[13px] transition-all duration-200 ${
+        active
+          ? "font-medium text-white bg-white/[0.07]"
+          : "text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.03]"
+      }`}
     >
       {label}
     </button>
@@ -48,11 +52,12 @@ function MobileTabLink({ href, label, active }: { href: string; label: string; a
     <button
       type="button"
       onClick={() => navigate(href)}
-      className={`flex-1 py-2.5 text-center text-xs font-medium transition-colors ${
-        active ? "border-b-2 border-blue-400 text-white" : "text-zinc-500"
+      className={`flex-1 py-2.5 text-center text-[13px] font-medium transition-colors ${
+        active ? "text-white" : "text-zinc-600"
       }`}
     >
-      {label}
+      {active && <span className="absolute inset-x-3 -top-px h-[2px] rounded-full bg-indigo-400" />}
+      <span className="relative">{label}</span>
     </button>
   );
 }
@@ -111,7 +116,7 @@ function ChatView({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 pb-4 xl:px-6">
+      <div className="flex min-h-0 flex-1 flex-col scroll-soft overflow-y-auto px-3 pb-4 xl:px-6">
         <div className="flex-1" />
         {loading && <LoadingSkeleton rows={4} className="h-24 rounded-lg" />}
         {!loading && messages.length === 0 && linkedTask && (
@@ -139,7 +144,7 @@ function ChatView({
         <div ref={endRef} />
       </div>
 
-      <div className="shrink-0 border-t border-white/4 bg-canvas px-3 pb-2 pt-2 xl:px-6 xl:pb-3">
+      <div className="shrink-0 border-t border-white/[0.06] bg-canvas px-3 pb-2 pt-2 xl:px-6 xl:pb-3">
         <ChatComposer
           draft={draft}
           attachments={attachments}
@@ -333,14 +338,14 @@ export function App() {
 
       <div className="relative flex h-full">
         {/* Desktop sidebar */}
-        <div className="hidden w-[360px] shrink-0 border-r border-white/4 xl:block">
-          <div className="h-full overflow-y-auto p-3">{sidebar}</div>
+        <div className="hidden w-[340px] shrink-0 border-r border-white/[0.06] xl:block">
+          <div className="h-full scroll-soft overflow-y-auto p-3">{sidebar}</div>
         </div>
 
         {/* Main content */}
         <div className="flex min-w-0 flex-1 flex-col">
           {/* Mobile header */}
-          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/4 px-4 py-2 xl:hidden">
+          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/[0.06] px-4 py-2 xl:hidden">
             <div className="flex min-w-0 items-center gap-2">
               <IconButton label="Open sidebar" onClick={toggleMobileSidebar}><MenuIcon /></IconButton>
               <p className="truncate text-base font-semibold text-white">{pageTitle}</p>
@@ -354,7 +359,7 @@ export function App() {
           />
 
           {/* Mobile bottom tab bar */}
-          <div className="fixed bottom-0 left-0 right-0 z-20 flex border-t border-white/4 bg-canvas xl:hidden">
+          <div className="fixed bottom-0 left-0 right-0 z-20 flex border-t border-white/[0.06] bg-canvas/95 backdrop-blur-lg xl:hidden">
             <MobileTabLink href="#/" label="Home" active={currentPage === "dashboard"} />
             <MobileTabLink href="#/files" label="Files" active={currentPage === "files"} />
             <MobileTabLink href="#/timeline" label="Timeline" active={currentPage === "timeline"} />
@@ -362,22 +367,23 @@ export function App() {
           </div>
 
           {/* Desktop top navigation */}
-          <div className="hidden shrink-0 items-center justify-between gap-3 border-b border-white/4 px-4 py-2 xl:flex">
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-1">
+          <div className="hidden shrink-0 items-center justify-between border-b border-white/[0.06] px-5 py-0 xl:flex">
+            <div className="flex items-center gap-1">
+              <div className="mr-3 flex items-center gap-1.5">
                 <StatusPulse connectionState={adapterType === "openclaw" ? connectionState : (adapterConnected ? "connected" : "disconnected")} blockedCount={blockedCount} reviewCount={reviewCount} agents={agents} />
-                <span className="text-xs font-medium text-zinc-300">
+                <span className="text-[13px] font-semibold tracking-tight text-zinc-200">
                   {adapterType === "openclaw" ? "OpenClaw" : adapterType === "claude-code" ? "Claude Code" : "Mission Control"}
                 </span>
               </div>
-              <div className="h-4 w-px bg-white/10" />
-              <NavLink href="#/" label="Dashboard" active={currentPage === "dashboard"} />
-              {adapterType === "openclaw" && <NavLink href="#/flow" label="Flow" active={currentPage === "flow"} />}
-              <NavLink href="#/files" label="Files" active={currentPage === "files"} />
-              <NavLink href="#/timeline" label="Timeline" active={currentPage === "timeline"} />
-              <NavLink href="#/projects" label="Projects" active={currentPage === "projects"} />
+              <div className="flex items-center gap-0.5 py-2">
+                <NavLink href="#/" label="Dashboard" active={currentPage === "dashboard"} />
+                {adapterType === "openclaw" && <NavLink href="#/flow" label="Flow" active={currentPage === "flow"} />}
+                <NavLink href="#/files" label="Files" active={currentPage === "files"} />
+                <NavLink href="#/timeline" label="Timeline" active={currentPage === "timeline"} />
+                <NavLink href="#/projects" label="Projects" active={currentPage === "projects"} />
+              </div>
             </div>
-            <button type="button" onClick={() => void refreshSessions()} className="text-xs text-zinc-400 hover:text-white">
+            <button type="button" onClick={() => void refreshSessions()} className="rounded-md px-2.5 py-1.5 text-[13px] text-zinc-500 transition-all hover:bg-white/[0.04] hover:text-zinc-300">
               Refresh
             </button>
           </div>
@@ -463,8 +469,8 @@ export function App() {
         className={`fixed inset-0 z-30 bg-black/60 transition xl:hidden ${mobileSidebarOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"}`}
         onClick={closeMobileSidebar}
       >
-        <div className="h-full w-full max-w-[340px] overflow-hidden border-r border-white/4 bg-canvas" onClick={(e) => e.stopPropagation()}>
-          <div className="h-full overflow-y-auto p-3">{sidebar}</div>
+        <div className="h-full w-full max-w-[340px] overflow-hidden border-r border-white/[0.06] bg-canvas" onClick={(e) => e.stopPropagation()}>
+          <div className="h-full scroll-soft overflow-y-auto p-3">{sidebar}</div>
         </div>
       </div>
 

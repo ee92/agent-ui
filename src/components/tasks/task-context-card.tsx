@@ -23,7 +23,7 @@ export function TaskContextCard({ task }: { task: TaskNode }) {
   const action = ACTION_LABELS[task.status];
 
   return (
-    <div className="mx-auto mb-6 w-full max-w-lg rounded-lg border border-white/4 bg-white/[0.03] p-5">
+    <div className="mx-auto mb-6 w-full max-w-lg rounded-lg border border-white/[0.06] bg-white/[0.03] p-5">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 min-w-0">
           <span className={`h-3 w-3 shrink-0 rounded-full ${STATUS_COLORS[task.status] ?? "bg-zinc-500"}`} />

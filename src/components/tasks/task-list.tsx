@@ -433,7 +433,7 @@ export function TaskList({
 
   return (
     <div className="flex h-full min-w-0 flex-col gap-4 overflow-hidden">
-      <div className="rounded-lg border border-white/4 bg-surface-1 p-4">
+      <div className="rounded-lg border border-white/[0.06] bg-surface-1 p-4">
         <div className="flex flex-wrap gap-2">
           {FILTERS.map((filter) => {
             const count = filter.count === "review" ? reviewCount : filter.count === "blocked" ? blockedCount : null;
@@ -489,7 +489,7 @@ export function TaskList({
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-white/4 bg-surface-1 p-3">
+      <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-white/[0.06] bg-surface-1 p-3">
         {tasks.length === 0 ? (
           <div className="flex h-full min-h-[280px] flex-col items-center justify-center gap-3 text-center text-zinc-500">
             <div className="rounded-full bg-white/5 p-3 text-zinc-400">
@@ -770,14 +770,14 @@ export function TaskList({
                         }
                         finishEditing(true);
                       }}
-                      className="mx-2 mt-2 rounded-lg border border-white/4 bg-surface-1 p-3"
+                      className="mx-2 mt-2 rounded-lg border border-white/[0.06] bg-surface-1 p-3"
                     >
                       <div className="space-y-3">
                         <input
                           ref={editingInputRef}
                           value={editingDraft.title}
                           onChange={(event) => setEditingDraft((current) => (current ? { ...current, title: event.target.value } : current))}
-                          className="h-11 w-full rounded-lg border border-white/4 bg-surface-1 px-3 text-sm text-zinc-100 outline-none transition-all duration-150 focus:border-blue-400/40"
+                          className="h-11 w-full rounded-lg border border-white/[0.06] bg-surface-1 px-3 text-sm text-zinc-100 outline-none transition-all duration-150 focus:border-blue-400/40"
                           placeholder="Task title"
                         />
                         <textarea
@@ -785,7 +785,7 @@ export function TaskList({
                           rows={1}
                           value={editingDraft.notes}
                           onChange={(event) => setEditingDraft((current) => (current ? { ...current, notes: event.target.value } : current))}
-                          className="max-h-56 min-h-20 w-full resize-none rounded-lg border border-white/4 bg-surface-1 px-3 py-2 text-sm text-zinc-100 outline-none transition-all duration-150 placeholder:text-zinc-500 focus:border-blue-400/40"
+                          className="max-h-56 min-h-20 w-full resize-none rounded-lg border border-white/[0.06] bg-surface-1 px-3 py-2 text-sm text-zinc-100 outline-none transition-all duration-150 placeholder:text-zinc-500 focus:border-blue-400/40"
                           placeholder="Notes"
                         />
                         <div className="flex flex-wrap gap-2">
@@ -813,13 +813,13 @@ export function TaskList({
                           <input
                             value={editingDraft.repo}
                             onChange={(event) => setEditingDraft((current) => (current ? { ...current, repo: event.target.value } : current))}
-                            className="h-10 w-full rounded-lg border border-white/4 bg-surface-1 px-3 text-sm text-zinc-100 outline-none transition-all duration-150 placeholder:text-zinc-500 focus:border-blue-400/40"
+                            className="h-10 w-full rounded-lg border border-white/[0.06] bg-surface-1 px-3 text-sm text-zinc-100 outline-none transition-all duration-150 placeholder:text-zinc-500 focus:border-blue-400/40"
                             placeholder="Repo (optional)"
                           />
                           <input
                             value={editingDraft.branch}
                             onChange={(event) => setEditingDraft((current) => (current ? { ...current, branch: event.target.value } : current))}
-                            className="h-10 w-full rounded-lg border border-white/4 bg-surface-1 px-3 text-sm text-zinc-100 outline-none transition-all duration-150 placeholder:text-zinc-500 focus:border-blue-400/40"
+                            className="h-10 w-full rounded-lg border border-white/[0.06] bg-surface-1 px-3 text-sm text-zinc-100 outline-none transition-all duration-150 placeholder:text-zinc-500 focus:border-blue-400/40"
                             placeholder="Branch (optional)"
                           />
                         </div>
@@ -856,7 +856,7 @@ export function TaskList({
 
       {contextMenu && contextTask ? (
         <div
-          className="fixed z-40 w-48 rounded-lg border border-white/4 bg-surface-1/95 p-1.5 shadow-2xl"
+          className="fixed z-40 w-48 rounded-lg border border-white/[0.06] bg-surface-1/95 p-1.5 shadow-2xl"
           style={{
             left: `${Math.min(contextMenu.x, window.innerWidth - 208)}px`,
             top: `${Math.min(contextMenu.y, window.innerHeight - 240)}px`

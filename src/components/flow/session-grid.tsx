@@ -163,7 +163,7 @@ function SessionCard({
 
           {/* Sub-agents in this session */}
           {sessionAgents.length > 0 && (
-            <div className="mt-2 space-y-0.5 border-l border-white/4 pl-2">
+            <div className="mt-2 space-y-0.5 border-l border-white/[0.06] pl-2">
               {sessionAgents.slice(0, 4).map((agent) => (
                 <div key={agent.id} className="flex items-center gap-1.5">
                   <span
@@ -257,7 +257,7 @@ export function SessionGrid({
 
   return (
     <section className="rounded-lg border border-border bg-surface-1 overflow-hidden">
-      <div className="border-b border-white/4 px-4 py-3">
+      <div className="border-b border-white/[0.06] px-4 py-3">
         <h2 className="text-base font-semibold text-white">Sessions</h2>
         <p className="mt-0.5 text-xs text-zinc-500">
           {sessionData.length} in last 24h

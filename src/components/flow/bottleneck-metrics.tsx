@@ -22,7 +22,7 @@ const TONE_BG: Record<MetricTone, string> = {
   urgent: "bg-red-500/10 border-red-500/20",
   warn: "bg-amber-500/10 border-amber-500/20",
   ok: "bg-emerald-500/10 border-emerald-500/20",
-  neutral: "bg-white/[0.03] border-white/4",
+  neutral: "bg-white/[0.03] border-white/[0.06]",
 };
 
 function Metric({

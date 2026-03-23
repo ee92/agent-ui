@@ -66,7 +66,7 @@ export function ActivityFeed({
   }, [events]);
 
   return (
-    <section className="rounded-lg border border-border bg-surface-1 p-3 xl:min-h-0 xl:flex-1 xl:overflow-y-auto xl:p-4">
+    <section className="rounded-xl border border-white/[0.05] bg-surface-0 p-3 xl:min-h-0 xl:flex-1 xl:overflow-y-auto xl:p-4">
       <style>{`
         @keyframes workflow-fade-in {
           from { opacity: 0; transform: translateY(6px); }
@@ -75,13 +75,13 @@ export function ActivityFeed({
       `}</style>
       <div className="mb-3 flex items-center justify-between gap-3">
         <div>
-          <h2 className="text-base font-semibold text-white">Activity Feed</h2>
-          <p className="text-xs text-zinc-500">Recent system events, newest first.</p>
+          <h2 className="text-[15px] font-semibold tracking-tight text-zinc-100">Activity</h2>
+          <p className="mt-0.5 text-[12px] text-zinc-600">Recent events</p>
         </div>
       </div>
 
       {grouped.length === 0 ? (
-        <div className="flex min-h-32 items-center justify-center rounded-lg border border-dashed border-white/4 text-sm text-zinc-600">
+        <div className="flex min-h-28 items-center justify-center rounded-lg border border-dashed border-white/[0.06] text-[13px] text-zinc-700">
           No activity yet
         </div>
       ) : (
@@ -95,7 +95,7 @@ export function ActivityFeed({
                   return (
                     <article
                       key={event.id}
-                      className={`rounded-lg border-l-2 ${style.border} bg-surface-1 px-3 py-3`}
+                      className={`rounded-lg border-l-2 ${style.border} bg-white/[0.02] px-3 py-2.5`}
                       style={{
                         animation: index < 5 ? "workflow-fade-in 320ms ease-out both" : undefined,
                         animationDelay: index < 5 ? `${index * 60}ms` : undefined,
