@@ -143,15 +143,19 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
 
       const merged = mergeProjectsWithServices(projects, services);
       const prev = get();
-      const projectsChanged = !projectsEqual(prev.projects, merged);
+      const unchanged = projectsEqual(prev.projects, merged)
+        && prev.untracked.containers.length === untracked.containers.length
+        && prev.untracked.ports.length === untracked.ports.length;
 
-      set({
-        ...(projectsChanged ? { projects: merged } : {}),
-        services,
-        untracked,
-        loading: false,
-        error: null,
-      });
+      if (!unchanged || prev.loading) {
+        set({
+          projects: merged,
+          services,
+          untracked,
+          loading: false,
+          error: null,
+        });
+      }
     } catch (error) {
       set({
         loading: false,
@@ -160,7 +164,7 @@ export const useProjectStore = create<ProjectStoreState>((set, get) => ({
     }
   },
 
-  startPolling: (token, intervalMs = 15_000) => {
+  startPolling: (token, intervalMs = 30_000) => {
     if (projectPollingInterval) {
       clearInterval(projectPollingInterval);
     }

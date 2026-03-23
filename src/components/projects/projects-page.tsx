@@ -332,7 +332,7 @@ export function ProjectsPage() {
   const stopService = useProjectStore((s) => s.stopService);
   const actionLoadingByName = useProjectStore((s) => s.actionLoadingByName);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [filter, setFilter] = useState<"all" | "dirty" | "clean">("all");
+  const [filter, setFilter] = useState<"all" | "running" | "dirty" | "clean">("all");
 
   useEffect(() => {
     void load(serverToken);
@@ -367,15 +367,28 @@ export function ProjectsPage() {
   }, [projects, allTasks, cronJobs]);
 
   const sortedProjects = useMemo(
-    () => [...projects].sort((a, b) => projectProblems(b).length - projectProblems(a).length || a.name.localeCompare(b.name)),
+    () => [...projects].sort((a, b) => {
+      // Running services first
+      const aRunning = (a.containers?.length > 0 || a.service?.status === "running") ? 1 : 0;
+      const bRunning = (b.containers?.length > 0 || b.service?.status === "running") ? 1 : 0;
+      if (bRunning !== aRunning) return bRunning - aRunning;
+      // Then by issues
+      const issuesDiff = projectProblems(b).length - projectProblems(a).length;
+      if (issuesDiff !== 0) return issuesDiff;
+      return a.name.localeCompare(b.name);
+    }),
     [projects],
   );
 
+  const isRunning = (r: ProjectWithService) => (r.containers?.length > 0 || r.service?.status === "running");
   const filtered = filter === "all"
     ? sortedProjects
-    : filter === "dirty"
-      ? sortedProjects.filter((r) => projectProblems(r).length > 0)
-      : sortedProjects.filter((r) => projectProblems(r).length === 0);
+    : filter === "running"
+      ? sortedProjects.filter(isRunning)
+      : filter === "dirty"
+        ? sortedProjects.filter((r) => projectProblems(r).length > 0)
+        : sortedProjects.filter((r) => projectProblems(r).length === 0);
+  const runningCount = sortedProjects.filter(isRunning).length;
   const dirtyCount = sortedProjects.filter((r) => projectProblems(r).length > 0).length;
   const cleanCount = sortedProjects.length - dirtyCount;
 
@@ -389,6 +402,7 @@ export function ProjectsPage() {
       {/* Filter bar */}
       <div className="mb-3 flex shrink-0 items-center gap-1 rounded-lg border border-white/4 bg-surface-1 p-1">
         <FilterBtn label="All" count={sortedProjects.length} active={filter === "all"} onClick={() => setFilter("all")} />
+        <FilterBtn label="Running" count={runningCount} active={filter === "running"} onClick={() => setFilter("running")} />
         <FilterBtn label="Needs attention" count={dirtyCount} active={filter === "dirty"} onClick={() => setFilter("dirty")} />
         <FilterBtn label="Clean" count={cleanCount} active={filter === "clean"} onClick={() => setFilter("clean")} />
       </div>
