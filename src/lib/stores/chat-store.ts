@@ -371,11 +371,19 @@ function handleClaudeRawEvent(
   }
 
   if (eventName === "session.completed") {
+    const turnCost = typeof payload.totalCostUsd === "number" ? payload.totalCostUsd : 0;
+    const existing = get().conversations.find((c) => c.key === sessionKey)?.totalCostUsd ?? 0;
     set({
       conversations: applyConversationUpdate(
         ensureConversation(get().conversations, sessionKey),
         sessionKey,
-        { isStreaming: false, runId: null, statusText: null, updatedAt: now }
+        {
+          isStreaming: false,
+          runId: null,
+          statusText: null,
+          updatedAt: now,
+          totalCostUsd: turnCost > 0 ? existing + turnCost : existing,
+        }
       ),
     });
     // Safety: any still-pending assistant messages get finalized.
@@ -458,7 +466,10 @@ function handleClaudeRawEvent(
           contextTokens,
           contextWindow,
           contextModel: model,
-          outputTokens,
+          contextInputTokens: inputTokens,
+          contextCacheReadTokens: cacheRead,
+          contextCacheCreationTokens: cacheCreation,
+          contextOutputTokens: outputTokens,
         }
       ),
     });

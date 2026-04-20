@@ -695,6 +695,7 @@ const server = createServer(async (req, res) => {
     return jsonResponse(res, {
       session: applySessionOverrides(session),
       messages: parsed.messages,
+      lastUsage: parsed.metadata?.lastUsage ?? null,
     });
   }
 

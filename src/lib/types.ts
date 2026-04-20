@@ -77,6 +77,13 @@ export type Conversation = {
   contextTokens?: number; // current prompt size: input + cache_read + cache_creation
   contextWindow?: number; // tokens the model accepts (200k default, 1M for -1m variants)
   contextModel?: string | null; // model ID from the most recent assistant usage
+  // Breakdown surfaced in the expanded context-bar panel.
+  contextInputTokens?: number; // fresh input (no cache)
+  contextCacheReadTokens?: number;
+  contextCacheCreationTokens?: number;
+  contextOutputTokens?: number; // last turn only
+  // Running cost accumulated across all result messages this session.
+  totalCostUsd?: number;
 };
 
 export type AgentStatus = "running" | "idle" | "waiting" | "error" | "done";

@@ -306,9 +306,28 @@ export class ClaudeCodeAdapter implements BackendAdapter {
   }
 
   private async history(sessionKey: string): Promise<Message[]> {
-    const data = await this.request<{ messages?: unknown[] }>(
+    const data = await this.request<{ messages?: unknown[]; lastUsage?: unknown }>(
       `/api/claude-code/sessions/${encodeURIComponent(sessionKey)}/history`
     );
+    // Hydrate the context bar from the transcript's final assistant usage —
+    // without this, the bar stays at "—" until the next assistant turn.
+    const u = data.lastUsage;
+    if (u && typeof u === "object") {
+      const usage = u as Record<string, unknown>;
+      this.emit({
+        type: "raw",
+        sessionKey,
+        event: "session.usage",
+        runId: null,
+        payload: {
+          model: typeof usage.model === "string" ? usage.model : null,
+          inputTokens: typeof usage.inputTokens === "number" ? usage.inputTokens : 0,
+          outputTokens: typeof usage.outputTokens === "number" ? usage.outputTokens : 0,
+          cacheCreationTokens: typeof usage.cacheCreationTokens === "number" ? usage.cacheCreationTokens : 0,
+          cacheReadTokens: typeof usage.cacheReadTokens === "number" ? usage.cacheReadTokens : 0,
+        },
+      });
+    }
     const messages = Array.isArray(data.messages) ? data.messages : [];
     return messages.map((message) => normalizeMessage(message));
   }

@@ -119,6 +119,19 @@ function normalizeMessage(record, lineNo) {
   };
 }
 
+function extractUsage(record) {
+  const payload = record?.message && typeof record.message === "object" ? record.message : record;
+  const usage = payload?.usage;
+  if (!usage || typeof usage !== "object") return null;
+  return {
+    model: typeof payload?.model === "string" ? payload.model : null,
+    inputTokens: typeof usage.input_tokens === "number" ? usage.input_tokens : 0,
+    outputTokens: typeof usage.output_tokens === "number" ? usage.output_tokens : 0,
+    cacheCreationTokens: typeof usage.cache_creation_input_tokens === "number" ? usage.cache_creation_input_tokens : 0,
+    cacheReadTokens: typeof usage.cache_read_input_tokens === "number" ? usage.cache_read_input_tokens : 0,
+  };
+}
+
 export async function parseTranscript(transcriptPath, options = {}) {
   const limit = Number.isFinite(options.limit) && options.limit > 0 ? options.limit : null;
   const messages = [];
@@ -128,6 +141,7 @@ export async function parseTranscript(transcriptPath, options = {}) {
   let updatedAt = null;
   let firstUserText = "";
   let lastAssistantText = "";
+  let lastUsage = null;
 
   const input = createReadStream(transcriptPath, { encoding: "utf8" });
   const readline = createInterface({ input, crlfDelay: Infinity });
@@ -163,6 +177,10 @@ export async function parseTranscript(transcriptPath, options = {}) {
     if (message.role === "assistant" && message.content) {
       lastAssistantText = message.content;
     }
+    if (message.role === "assistant") {
+      const u = extractUsage(parsed);
+      if (u) lastUsage = u;
+    }
 
     messages.push(message);
     if (limit && messages.length > limit) {
@@ -179,6 +197,9 @@ export async function parseTranscript(transcriptPath, options = {}) {
       updatedAt: updatedAt || createdAt || new Date().toISOString(),
       title: firstUserText ? firstUserText.slice(0, 120) : "New Chat",
       preview: previewSource.slice(0, 280),
+      // Latest assistant-turn usage — mirrors the session.usage event emitted
+      // at runtime, so the context bar can render immediately on resume.
+      lastUsage,
     },
     malformedLines,
   };
