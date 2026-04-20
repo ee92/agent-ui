@@ -68,6 +68,38 @@ function handleSdkMessage(msg, state) {
     return;
   }
 
+  if (msg.type === "system" && msg.subtype === "local_command_output") {
+    // Slash commands like /context, /cost emit their output as a single system message
+    // with a content string. Synthesize stream_event frames so the client renders it
+    // as a normal assistant text message (matches the transcript-parser result on reload).
+    const text = typeof msg.content === "string" ? msg.content : "";
+    const messageId = typeof msg.uuid === "string" ? msg.uuid : randomUUID();
+    state.currentMessageIds.push(messageId);
+    emit(state, "session.message.start", {
+      messageId,
+      parentToolUseId,
+      role: "assistant",
+      ts: nowIso(),
+    });
+    emit(state, "session.block.start", {
+      messageId,
+      parentToolUseId,
+      index: 0,
+      block: { type: "text", text: "" },
+    });
+    if (text) {
+      emit(state, "session.block.delta", {
+        messageId,
+        index: 0,
+        delta: { type: "text_delta", text },
+      });
+    }
+    emit(state, "session.block.stop", { messageId, index: 0 });
+    state.currentMessageIds.pop();
+    emit(state, "session.message.stop", { messageId });
+    return;
+  }
+
   if (msg.type === "system") {
     // task_started, task_progress, task_notification — forward as subagent hints
     const sub = msg.subtype;
@@ -86,6 +118,7 @@ function handleSdkMessage(msg, state) {
     if (ev.type === "message_start") {
       const messageId = ev.message?.id;
       state.currentMessageIds.push(messageId);
+      if (messageId) state.streamedMessageIds.add(messageId);
       emit(state, "session.message.start", {
         messageId,
         parentToolUseId,
@@ -153,7 +186,49 @@ function handleSdkMessage(msg, state) {
   }
 
   if (msg.type === "assistant") {
-    // Whole-turn checkpoint — stream_event already delivered blocks; nothing extra to emit.
+    // Usually stream_event already delivered blocks and this is a whole-turn checkpoint.
+    // But some SDK paths (e.g. /context, /cost local commands) skip stream_event entirely
+    // and deliver the full content only here. Synthesize frames in that case.
+    const messageId = msg.message?.id;
+    if (!messageId || state.streamedMessageIds.has(messageId)) return;
+    state.streamedMessageIds.add(messageId);
+    const content = Array.isArray(msg.message?.content) ? msg.message.content : [];
+    emit(state, "session.message.start", {
+      messageId,
+      parentToolUseId,
+      role: "assistant",
+      ts: nowIso(),
+    });
+    content.forEach((block, index) => {
+      if (!block || typeof block !== "object") return;
+      emit(state, "session.block.start", {
+        messageId,
+        parentToolUseId,
+        index,
+        block,
+      });
+      if (block.type === "text" && typeof block.text === "string" && block.text) {
+        emit(state, "session.block.delta", {
+          messageId,
+          index,
+          delta: { type: "text_delta", text: block.text },
+        });
+      } else if (block.type === "thinking" && typeof block.thinking === "string" && block.thinking) {
+        emit(state, "session.block.delta", {
+          messageId,
+          index,
+          delta: { type: "thinking_delta", thinking: block.thinking },
+        });
+      } else if (block.type === "tool_use" && block.input && typeof block.input === "object") {
+        emit(state, "session.block.delta", {
+          messageId,
+          index,
+          delta: { type: "input_json_delta", partial_json: JSON.stringify(block.input) },
+        });
+      }
+      emit(state, "session.block.stop", { messageId, index });
+    });
+    emit(state, "session.message.stop", { messageId });
     return;
   }
 
@@ -219,6 +294,7 @@ export async function startRun(sessionKey, message, options = {}) {
     finished: false,
     sessionIdSeen: hasRealSession,
     currentMessageIds: [],
+    streamedMessageIds: new Set(),
   };
   activeRuns.set(runId, state);
 
