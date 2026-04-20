@@ -237,9 +237,11 @@ export class ClaudeCodeAdapter implements BackendAdapter {
   }
 
   private async sendMessage(sessionKey: string, message: string, options?: { cwd?: string }): Promise<Message> {
+    const body: Record<string, unknown> = { message };
+    if (options?.cwd) body.cwd = options.cwd;
     const data = await this.request<{ runId: string }>(`/api/claude-code/sessions/${encodeURIComponent(sessionKey)}/messages`, {
       method: "POST",
-      body: JSON.stringify({ message, cwd: options?.cwd ?? this.workspace }),
+      body: JSON.stringify(body),
     });
 
     return {

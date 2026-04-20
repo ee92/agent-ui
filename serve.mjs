@@ -135,6 +135,27 @@ const workspaceFromConfig =
   OPENCLAW_CONFIG?.workspace ||
   (detectedAgent === "openclaw" ? resolve(homedir(), ".openclaw", "workspace") : process.cwd());
 const WORKSPACE = resolve(expandHome(workspaceFromConfig));
+
+// Default cwd for fresh chats. Precedence: explicit config → outermost ancestor
+// with a CLAUDE.md → $HOME. Never silently inherits the server's launch dir —
+// that would leak /home/clawd/projects/agent-ui (or wherever serve.mjs lives)
+// into every new session.
+function findOutermostClaudeMd(startDir) {
+  let current = resolve(startDir);
+  let topmost = null;
+  while (true) {
+    if (fileExists(resolve(current, "CLAUDE.md"))) topmost = current;
+    const parent = dirname(current);
+    if (parent === current) break;
+    current = parent;
+  }
+  return topmost;
+}
+const DEFAULT_CHAT_CWD = (() => {
+  const explicit = process.env.MC_WORKSPACE || MC_CONFIG?.workspace || OPENCLAW_CONFIG?.workspace;
+  if (explicit) return resolve(expandHome(explicit));
+  return findOutermostClaudeMd(process.cwd()) || homedir();
+})();
 const TASKS_PATH = join(WORKSPACE, "tasks.json");
 
 // Token only used for gateway connection (OpenClaw mode). No auth needed for local API.
@@ -536,6 +557,7 @@ const server = createServer(async (req, res) => {
       token: TOKEN,
       agent: detectedAgent,
       workspace: WORKSPACE,
+      chatCwd: DEFAULT_CHAT_CWD,
       gateway: GATEWAY ? { host: GATEWAY.host, port: GATEWAY.port, enabled: true } : { enabled: false },
       capabilities: adapterCapabilities(detectedAgent),
       configSource: MC_CONFIG_SOURCE_PATH || "defaults",
@@ -728,7 +750,7 @@ const server = createServer(async (req, res) => {
     try {
       const body = await parseJsonBody(req);
       const message = typeof body.message === "string" ? body.message : "";
-      const cwd = typeof body.cwd === "string" && body.cwd.trim() ? body.cwd.trim() : undefined;
+      const cwd = typeof body.cwd === "string" && body.cwd.trim() ? body.cwd.trim() : DEFAULT_CHAT_CWD;
       if (!message.trim()) {
         return jsonResponse(res, { error: "message required" }, 400);
       }

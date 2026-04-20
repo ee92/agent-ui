@@ -176,7 +176,9 @@ export async function startRun(sessionKey, message, options = {}) {
   const sessionKeyInfo = parseSessionKey(sessionKey || "");
   const hasRealSession = String(sessionKey || "").includes("::");
   const resumeSessionId = hasRealSession ? sessionKeyInfo.sessionId : undefined;
-  const resolvedCwd = resolvePath(options.cwd || sessionKeyInfo.cwd || process.cwd());
+  // Resumes keep the session's original cwd (baked into the key at creation).
+  // Fresh chats use whatever the caller supplied.
+  const resolvedCwd = resolvePath(sessionKeyInfo.cwd || options.cwd || process.cwd());
 
   const rawKey = await resolveAnthropicApiKey();
   const apiKey = rawKey.startsWith("sk-ant-api") ? rawKey : "";

@@ -683,48 +683,34 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
     }
   },
   createConversation: async () => {
-    const adapter = getBackendAdapter();
-    const rawKey = `web-${crypto.randomUUID().slice(0, 8)}`;
-    const now = nowIso();
-    const localConversation = {
-      key: rawKey,
-      title: "New Chat",
-      preview: "",
-      updatedAt: now,
-      createdAt: now,
-      isStreaming: false,
-      runId: null
-    };
-    if (!adapter.isConnected()) {
+    const rawKey = "new";
+    const state = get();
+    const draftExists = state.conversations.some((c) => c.key === rawKey);
+    if (!draftExists) {
+      const now = nowIso();
+      const localConversation = {
+        key: rawKey,
+        title: "New Chat",
+        preview: "",
+        updatedAt: now,
+        createdAt: now,
+        isStreaming: false,
+        runId: null
+      };
       set({
-        conversations: [localConversation, ...get().conversations],
+        conversations: [localConversation, ...state.conversations],
         selectedConversationKey: rawKey,
-        messagesByConversation: { ...get().messagesByConversation, [rawKey]: [] }
+        messagesByConversation: { ...state.messagesByConversation, [rawKey]: [] }
       });
-      useUiStore.getState().closeMobileSidebar();
-      return rawKey;
+    } else {
+      set({ selectedConversationKey: rawKey });
     }
-    try {
-      const created = await adapter.sessions.create(rawKey);
-      const key = created.key || rawKey;
-      set({
-        conversations: [
-          { ...localConversation, key, title: created.title || "New Chat" },
-          ...get().conversations.filter((conversation) => conversation.key !== key)
-        ],
-        selectedConversationKey: key,
-        messagesByConversation: { ...get().messagesByConversation, [key]: [] }
-      });
-      useUiStore.getState().closeMobileSidebar();
-      return key;
-    } catch {
-      set({
-        conversations: [localConversation, ...get().conversations],
-        selectedConversationKey: rawKey,
-        messagesByConversation: { ...get().messagesByConversation, [rawKey]: [] }
-      });
-      return rawKey;
+    saveSelectedKey(rawKey);
+    useUiStore.getState().closeMobileSidebar();
+    if (typeof window !== "undefined") {
+      navigate(`#/chat/${encodeURIComponent(rawKey)}`);
     }
+    return rawKey;
   },
   selectConversation: async (key) => {
     saveSelectedKey(key);
@@ -739,7 +725,12 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
       conversations: ensureConversation(get().conversations, key, taskTitle || undefined)
     });
     useUiStore.getState().closeMobileSidebar();
-    if (!adapter.isConnected() || get().messagesByConversation[key]) {
+    // Keys without `::` are local drafts — no transcript on disk to fetch.
+    const isLocalDraft = !key.includes("::");
+    if (!adapter.isConnected() || isLocalDraft || get().messagesByConversation[key]) {
+      if (isLocalDraft && !get().messagesByConversation[key]) {
+        set({ messagesByConversation: { ...get().messagesByConversation, [key]: [] } });
+      }
       set({ loadingConversationKey: null });
       return;
     }

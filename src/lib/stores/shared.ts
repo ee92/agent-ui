@@ -380,7 +380,7 @@ export function ensureConversation(list: Conversation[], key: string, fallbackTi
   return [
     {
       key,
-      title: fallbackTitle || "Untitled conversation",
+      title: fallbackTitle || "New Chat",
       preview: "",
       updatedAt: now,
       createdAt: now,
