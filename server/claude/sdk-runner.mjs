@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { resolve as resolvePath } from "node:path";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { parseSessionKey, refreshIndex, encodeCwd } from "./session-index.mjs";
 import { resolveAnthropicApiKey } from "./auth.mjs";
@@ -175,7 +176,7 @@ export async function startRun(sessionKey, message, options = {}) {
   const sessionKeyInfo = parseSessionKey(sessionKey || "");
   const hasRealSession = String(sessionKey || "").includes("::");
   const resumeSessionId = hasRealSession ? sessionKeyInfo.sessionId : undefined;
-  const resolvedCwd = options.cwd || sessionKeyInfo.cwd || process.cwd();
+  const resolvedCwd = resolvePath(options.cwd || sessionKeyInfo.cwd || process.cwd());
 
   const rawKey = await resolveAnthropicApiKey();
   const apiKey = rawKey.startsWith("sk-ant-api") ? rawKey : "";
