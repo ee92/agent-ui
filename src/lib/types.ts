@@ -73,6 +73,10 @@ export type Conversation = {
   inputTokens?: number;
   outputTokens?: number;
   lastMessageRole?: "user" | "assistant" | "system" | null;
+  // Context window telemetry — latest assistant usage, used for the progress bar.
+  contextTokens?: number; // current prompt size: input + cache_read + cache_creation
+  contextWindow?: number; // tokens the model accepts (200k default, 1M for -1m variants)
+  contextModel?: string | null; // model ID from the most recent assistant usage
 };
 
 export type AgentStatus = "running" | "idle" | "waiting" | "error" | "done";

@@ -440,6 +440,31 @@ function handleClaudeRawEvent(
     return;
   }
 
+  if (eventName === "session.usage") {
+    const model = typeof payload.model === "string" ? payload.model : null;
+    const inputTokens = typeof payload.inputTokens === "number" ? payload.inputTokens : 0;
+    const outputTokens = typeof payload.outputTokens === "number" ? payload.outputTokens : 0;
+    const cacheCreation = typeof payload.cacheCreationTokens === "number" ? payload.cacheCreationTokens : 0;
+    const cacheRead = typeof payload.cacheReadTokens === "number" ? payload.cacheReadTokens : 0;
+    const contextTokens = inputTokens + cacheCreation + cacheRead;
+    // 1M mode for Opus when the model string tags it ("[1m]" or "-1m"); everything else is the Anthropic 200k default.
+    const is1M = model ? /\[?1m\]?|-1m\b/i.test(model) : false;
+    const contextWindow = is1M ? 1_000_000 : 200_000;
+    set({
+      conversations: applyConversationUpdate(
+        ensureConversation(get().conversations, sessionKey),
+        sessionKey,
+        {
+          contextTokens,
+          contextWindow,
+          contextModel: model,
+          outputTokens,
+        }
+      ),
+    });
+    return;
+  }
+
   if (eventName === "session.api_retry") {
     const attempt = typeof payload.attempt === "number" ? payload.attempt : 0;
     const maxRetries = typeof payload.maxRetries === "number" ? payload.maxRetries : 0;

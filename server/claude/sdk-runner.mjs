@@ -242,6 +242,20 @@ function handleSdkMessage(msg, state) {
         stopReason: msg.message?.stop_reason,
       });
     }
+    // Forward usage so the UI can render a context progress bar (CLI-style).
+    // Emit for every assistant turn — also for the synthesized path below,
+    // since whole-turn messages still carry usage even when stream_event did not.
+    const usage = msg.message?.usage;
+    if (usage && typeof usage === "object") {
+      emit(state, "session.usage", {
+        messageId,
+        model: typeof msg.message?.model === "string" ? msg.message.model : undefined,
+        inputTokens: typeof usage.input_tokens === "number" ? usage.input_tokens : 0,
+        outputTokens: typeof usage.output_tokens === "number" ? usage.output_tokens : 0,
+        cacheCreationTokens: typeof usage.cache_creation_input_tokens === "number" ? usage.cache_creation_input_tokens : 0,
+        cacheReadTokens: typeof usage.cache_read_input_tokens === "number" ? usage.cache_read_input_tokens : 0,
+      });
+    }
     // Usually stream_event already delivered blocks and this is a whole-turn checkpoint.
     // But some SDK paths (e.g. /context, /cost local commands) skip stream_event entirely
     // and deliver the full content only here. Synthesize frames in that case.

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { TaskContextCard } from "./components/tasks/task-context-card";
 import { ChatComposer } from "./components/chat/chat-composer";
+import { ContextBar } from "./components/chat/context-bar";
 import { ConversationSidebar } from "./components/chat/conversation-sidebar";
 import { MessageCard } from "./components/chat/message-card";
 import { FileBrowser } from "./components/files/file-browser";
@@ -67,6 +68,7 @@ function MobileTabLink({ href, label, active }: { href: string; label: string; a
 function ChatView({
   title,
   sessionKey,
+  conversation,
   loading,
   messages,
   draft,
@@ -86,6 +88,7 @@ function ChatView({
 }: {
   title: string;
   sessionKey: string | null;
+  conversation: ReturnType<typeof useChatStore.getState>["conversations"][number] | undefined;
   loading: boolean;
   messages: ReturnType<typeof useChatStore.getState>["messagesByConversation"][string];
   draft: string;
@@ -150,6 +153,7 @@ function ChatView({
       </div>
 
       <div className="shrink-0 border-t border-white/[0.06] bg-canvas px-3 pb-2 pt-2 xl:px-6 xl:pb-3">
+        <ContextBar conversation={conversation} />
         <ChatComposer
           draft={draft}
           attachments={attachments}
@@ -439,6 +443,7 @@ export function App() {
                 <ChatView
                   title={selectedTitle}
                   sessionKey={chatSessionKey}
+                  conversation={conversations.find((c) => c.key === chatSessionKey)}
                   loading={loadingConversationKey === chatSessionKey}
                   messages={selectedMessages}
                   draft={draft}
