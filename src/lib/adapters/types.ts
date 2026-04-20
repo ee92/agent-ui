@@ -41,30 +41,35 @@ export type SlashCommandSuggestion = {
 export interface SessionAdapter {
   /** Send a message to a session, returns the response */
   send(sessionKey: string, message: string, options?: { cwd?: string }): Promise<Message>;
-  
+
   /** Get message history for a session */
   history(sessionKey: string): Promise<Message[]>;
-  
+
   /** List all sessions */
   list(): Promise<SessionInfo[]>;
-  
+
   /** Create a new session */
   create(key?: string): Promise<SessionInfo>;
-  
+
   /** Rename a session */
   rename(sessionKey: string, title: string): Promise<void>;
-  
+
   /** Delete a session */
   delete(sessionKey: string): Promise<void>;
-  
+
+  /** Cancel an in-flight run */
+  cancelRun?(runId: string): Promise<void>;
+
   /** Subscribe to real-time updates (returns unsubscribe function) */
   subscribe?(callback: (event: SessionEvent) => void): () => void;
 }
 
-export type SessionEvent = 
+export type SessionEvent =
   | { type: 'message'; sessionKey: string; message: Message }
   | { type: 'streaming'; sessionKey: string; isStreaming: boolean }
-  | { type: 'updated'; sessionKey: string };
+  | { type: 'updated'; sessionKey: string }
+  | { type: 'remap'; fromSessionKey: string; toSessionKey: string }
+  | { type: 'raw'; sessionKey: string; event: string; runId?: string | null; payload: Record<string, unknown> };
 
 /**
  * File adapter — handles workspace file operations

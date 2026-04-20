@@ -21,10 +21,25 @@ export type ActivityEvent = {
 
 export type MessageRole = "user" | "assistant" | "system";
 
+export type ToolResultPayload = {
+  isError: boolean;
+  content: Array<{ type: "text"; text: string }>;
+};
+
 export type MessageContentPart =
   | { type: "text"; text: string }
   | { type: "image"; url: string; alt: string }
-  | { type: "attachment"; name: string; mimeType: string };
+  | { type: "attachment"; name: string; mimeType: string }
+  | {
+      type: "tool_use";
+      id: string;
+      name: string;
+      input: unknown;
+      inputComplete: boolean;
+      result?: ToolResultPayload;
+      subAgentParts?: MessageContentPart[];
+    }
+  | { type: "thinking"; text: string; complete: boolean };
 
 export type ChatMessage = {
   id: string;
@@ -35,6 +50,8 @@ export type ChatMessage = {
   error?: string | null;
   hidden?: boolean;
   runId?: string | null;
+  parentToolUseId?: string | null;
+  blockIndexById?: Record<number, string>;
 };
 
 export type Conversation = {

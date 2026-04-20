@@ -81,6 +81,8 @@ function ChatView({
   onSend,
   onAttach,
   onRemoveAttachment,
+  isStreaming,
+  onCancel,
 }: {
   title: string;
   sessionKey: string | null;
@@ -98,6 +100,8 @@ function ChatView({
   onSend: () => void;
   onAttach: (files: FileList) => void;
   onRemoveAttachment: (id: string) => void;
+  isStreaming: boolean;
+  onCancel: () => void;
 }) {
   const endRef = useRef<HTMLDivElement | null>(null);
   const lastMessage = messages[messages.length - 1];
@@ -151,8 +155,10 @@ function ChatView({
           attachments={attachments}
           tasks={tasks}
           agents={agents}
+          isStreaming={isStreaming}
           onDraftChange={onDraftChange}
           onSend={onSend}
+          onCancel={onCancel}
           onAttach={onAttach}
           onRemoveAttachment={onRemoveAttachment}
         />
@@ -184,6 +190,7 @@ export function App() {
   const renameConversation = useChatStore((s) => s.renameConversation);
   const deleteConversation = useChatStore((s) => s.deleteConversation);
   const sendMessage = useChatStore((s) => s.sendMessage);
+  const cancelStream = useChatStore((s) => s.cancelStream);
   const flushQueuedMessages = useChatStore((s) => s.flushQueuedMessages);
   const retryMessage = useChatStore((s) => s.retryMessage);
   const hideMessage = useChatStore((s) => s.hideMessage);
@@ -456,6 +463,8 @@ export function App() {
                   onSend={() => void sendMessage()}
                   onAttach={(incoming) => void addAttachments(Array.from(incoming))}
                   onRemoveAttachment={removeAttachment}
+                  isStreaming={Boolean(conversations.find((c) => c.key === chatSessionKey)?.isStreaming)}
+                  onCancel={() => void cancelStream()}
                 />
               </ErrorBoundary>
             ) : (
