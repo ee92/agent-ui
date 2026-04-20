@@ -379,6 +379,11 @@ export async function startRun(sessionKey, message, options = {}) {
 
   (async () => {
     try {
+      // Default to Opus in 1M-context mode — matches Claude Code CLI default.
+      // Override via CLAUDE_UI_MODEL (e.g. "sonnet", "opus", "haiku", or any
+      // CLI alias including [1m] suffix). /model <alias> slash command from
+      // the UI still works to switch mid-session without restart.
+      const defaultModel = process.env.CLAUDE_UI_MODEL || "opus[1m]";
       const q = query({
         prompt: message,
         options: {
@@ -386,6 +391,7 @@ export async function startRun(sessionKey, message, options = {}) {
           cwd: resolvedCwd,
           includePartialMessages: true,
           permissionMode: "bypassPermissions",
+          model: defaultModel,
           env,
           abortController: controller,
         },

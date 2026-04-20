@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { ChatMessage, MessageContentPart } from "../types";
+import type { ChatMessage, Conversation, MessageContentPart } from "../types";
 import { getBackendAdapter } from "../adapters";
 import type { SessionEvent } from "../adapters/types";
 import { navigate } from "../use-hash-router";
@@ -449,28 +449,45 @@ function handleClaudeRawEvent(
   }
 
   if (eventName === "session.usage") {
-    const model = typeof payload.model === "string" ? payload.model : null;
+    const usageModel = typeof payload.model === "string" ? payload.model : null;
     const inputTokens = typeof payload.inputTokens === "number" ? payload.inputTokens : 0;
     const outputTokens = typeof payload.outputTokens === "number" ? payload.outputTokens : 0;
     const cacheCreation = typeof payload.cacheCreationTokens === "number" ? payload.cacheCreationTokens : 0;
     const cacheRead = typeof payload.cacheReadTokens === "number" ? payload.cacheReadTokens : 0;
     const contextTokens = inputTokens + cacheCreation + cacheRead;
-    // 1M mode for Opus when the model string tags it ("[1m]" or "-1m"); everything else is the Anthropic 200k default.
-    const is1M = model ? /\[?1m\]?|-1m\b/i.test(model) : false;
-    const contextWindow = is1M ? 1_000_000 : 200_000;
+
+    // Decide whether to update model/window. The API response strips the 1M
+    // tag (e.g. "claude-opus-4-7" instead of "claude-opus-4-7[1m]"), so if
+    // init already set a tagged model for the same family, we must NOT
+    // overwrite it with the API's truncated form. Only overwrite if the
+    // usage model is a genuinely different family/version.
+    const existing = get().conversations.find((c) => c.key === sessionKey);
+    const priorModel = existing?.contextModel ?? null;
+    const stripTag = (s: string) => s.replace(/\[[^\]]*\]$/, "").toLowerCase();
+    const sameFamily = usageModel && priorModel && stripTag(usageModel) === stripTag(priorModel);
+    const shouldUpdateModel = !priorModel || (usageModel && !sameFamily);
+
+    const patch: Partial<Conversation> = {
+      contextTokens,
+      contextInputTokens: inputTokens,
+      contextCacheReadTokens: cacheRead,
+      contextCacheCreationTokens: cacheCreation,
+      contextOutputTokens: outputTokens,
+    };
+    if (shouldUpdateModel && usageModel) {
+      const is1M = /\[?1m\]?|-1m\b/i.test(usageModel);
+      patch.contextModel = usageModel;
+      patch.contextWindow = is1M ? 1_000_000 : 200_000;
+    } else if (!priorModel && usageModel) {
+      // Fallback when no init has fired (e.g. resume hydration path)
+      patch.contextModel = usageModel;
+      patch.contextWindow = 200_000;
+    }
     set({
       conversations: applyConversationUpdate(
         ensureConversation(get().conversations, sessionKey),
         sessionKey,
-        {
-          contextTokens,
-          contextWindow,
-          contextModel: model,
-          contextInputTokens: inputTokens,
-          contextCacheReadTokens: cacheRead,
-          contextCacheCreationTokens: cacheCreation,
-          contextOutputTokens: outputTokens,
-        }
+        patch
       ),
     });
     return;
@@ -492,13 +509,31 @@ function handleClaudeRawEvent(
     return;
   }
 
+  if (eventName === "session.init") {
+    // Init's `model` carries the CLI's effective model ID including 1M tag,
+    // e.g. "claude-opus-4-7[1m]". Assistant-turn model strings from the API
+    // don't include the tag, so init is the only authoritative source here.
+    const model = typeof payload.model === "string" ? payload.model : null;
+    if (model) {
+      const is1M = /\[?1m\]?|-1m\b/i.test(model);
+      const contextWindow = is1M ? 1_000_000 : 200_000;
+      set({
+        conversations: applyConversationUpdate(
+          ensureConversation(get().conversations, sessionKey),
+          sessionKey,
+          { contextModel: model, contextWindow }
+        ),
+      });
+    }
+    return;
+  }
+
   if (
     eventName === "session.status" ||
     eventName === "session.notification" ||
     eventName === "session.memory_recall" ||
     eventName === "session.mirror_error" ||
-    eventName === "session.compact_boundary" ||
-    eventName === "session.init"
+    eventName === "session.compact_boundary"
   ) {
     // Forwarded for future UI rendering; silently dropped for now.
     return;
