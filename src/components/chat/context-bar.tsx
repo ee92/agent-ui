@@ -40,15 +40,13 @@ function textClass(pct: number, is1M: boolean) {
   return "text-red-400";
 }
 
-/** Pre-calibrated gradient spanning the full window 0–100%. */
-function gradientFor(is1M: boolean): string {
+/** Solid fill color matching the current tier — changes as the bar grows. */
+function fillColor(pct: number, is1M: boolean): string {
   const { g, y, o } = thresholds(is1M);
-  return `linear-gradient(to right,
-    ${COLORS.green} 0%,
-    ${COLORS.green} ${g}%,
-    ${COLORS.yellow} ${y}%,
-    ${COLORS.orange} ${o}%,
-    ${COLORS.red} 100%)`;
+  if (pct < g) return COLORS.green;
+  if (pct < y) return COLORS.yellow;
+  if (pct < o) return COLORS.orange;
+  return COLORS.red;
 }
 
 function formatTokens(n: number): string {
@@ -138,8 +136,7 @@ export function ContextBar({ conversation }: { conversation: Conversation | unde
     }
   };
 
-  // Mask reveals the left portion of a fixed gradient that spans the whole track.
-  const maskImage = `linear-gradient(to right, black ${pctClamped}%, transparent ${pctClamped}%)`;
+  const fill = fillColor(pctClamped, is1M);
 
   const input = conversation?.contextInputTokens ?? 0;
   const cacheRead = conversation?.contextCacheReadTokens ?? 0;
@@ -170,12 +167,8 @@ export function ContextBar({ conversation }: { conversation: Conversation | unde
         <div className="relative h-1.5 flex-1 overflow-hidden rounded-full bg-white/[0.05]">
           {hasData ? (
             <div
-              className="absolute inset-0 rounded-full transition-[mask-image,-webkit-mask-image] duration-300"
-              style={{
-                backgroundImage: gradientFor(is1M),
-                maskImage,
-                WebkitMaskImage: maskImage,
-              }}
+              className="absolute inset-y-0 left-0 rounded-full transition-[width,background-color] duration-300"
+              style={{ width: `${pctClamped}%`, backgroundColor: fill }}
             />
           ) : null}
         </div>

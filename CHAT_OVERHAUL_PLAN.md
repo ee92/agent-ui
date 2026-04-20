@@ -715,3 +715,29 @@ Each commit is independently shippable — the app continues to function between
 - `src/lib/stores/chat-store.ts` — central event handler `handleClaudeRawEvent` added; remap logic centralized.
 - `src/components/chat/message-card.tsx` — renders the new part variants through `ToolUseCard` / `ThinkingCard`.
 - `src/lib/types.ts` — widened `MessageContentPart` union.
+
+---
+
+## Followups — Chat polish (captured 2026-04-20)
+
+User feedback after shipping context-bar:
+
+1. **Thinking blocks render empty.** Every expandable "thinking" section is blank.
+   - Likely cause: `extended_thinking` blocks arrive as `content_block_delta` with `delta.type === "thinking_delta"` but we may not be appending to a `thinking` MessageContentPart. Verify transcript-parser + sdk-runner + store append path.
+   - Transcript resume path has its own extraction (`extractTextParts` → `thinkingParts`). Check it's fed into `MessageContentPart[]` not discarded.
+   - Files: `src/lib/stores/chat-store.ts` (block delta handler), `server/claude/transcript-parser.mjs`, `src/components/chat/message-card.tsx` or `src/components/chat/parts/*`.
+
+2. **Message action buttons are over-prominent.** Too many buttons per message, each too large.
+   - Keep: Copy, Create-task (low priority — could stay in a menu)
+   - User messages only: add **Rewind to here** — truncates conversation to that point and re-prompts from there. Needs transcript rewrite + session replay (non-trivial).
+   - Remove: Retry, Hide, other per-message clutter from assistant messages.
+   - Consolidation: collapse into a `⋯` overflow button in the top-right of the bubble. Or: always-small (14px) icons hidden behind hover on desktop, tap-to-reveal on mobile.
+   - Files: `src/components/chat/message-card.tsx`.
+
+3. **Stop button disappears after page refresh during a run.** If the page reloads mid-stream, the UI has no Stop affordance even though the run is still active on the backend.
+   - Root cause: the initial SSE/WebSocket connection doesn't reattach to in-flight streams. Streaming state is local-only and gets reset on reload.
+   - Options:
+     - **Server-side run registry**: on reconnect, query `/api/claude-code/runs/active?sessionKey=...`; if a run is in-flight, hydrate `isStreaming=true` and allow cancel via runId. Requires a small endpoint and that `sdk-runner.mjs` keeps `activeRuns` addressable.
+     - **Stream replay**: far more complex — SDK would need to buffer and replay or we'd need to tee every event through a persistent ring buffer keyed by runId. Probably not worth it.
+   - The cheap win is option 1: just reattach "is running" and let Cancel work. The partial bubble won't animate, but it'll finalize correctly when the run completes (the backend still emits `session.message.stop` / `session.completed` over the WS).
+   - Files: `serve.mjs` (new endpoint), `server/claude/sdk-runner.mjs` (expose active-run lookup), `src/lib/adapters/claude-code-adapter.ts` (hydrate on connect), `src/lib/stores/chat-store.ts` (set streaming from reconnect hydration).
