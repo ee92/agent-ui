@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { query } from "@anthropic-ai/claude-agent-sdk";
-import { parseSessionKey, refreshIndex } from "./session-index.mjs";
+import { parseSessionKey, refreshIndex, encodeCwd } from "./session-index.mjs";
 import { resolveAnthropicApiKey } from "./auth.mjs";
 
 const activeRuns = new Map();
@@ -36,8 +36,7 @@ function handleSdkMessage(msg, state) {
     const sid = msg.session_id;
     if (sid && !state.sessionIdSeen) {
       state.sessionIdSeen = true;
-      const encodedCwd = encodeURIComponent(state.cwd);
-      const canonical = `${encodedCwd}::${sid}`;
+      const canonical = `${encodeCwd(state.cwd)}::${sid}`;
       if (state.sessionKey !== canonical) {
         emit(state, "session.remap", {
           fromSessionKey: state.sessionKey,

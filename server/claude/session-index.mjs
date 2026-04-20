@@ -12,6 +12,16 @@ const cache = {
   sessionsSorted: [],
 };
 
+export function encodeCwd(absPath) {
+  if (typeof absPath !== "string" || !absPath) return "";
+  // Inverse of decodeCwd: `/.` → `--`, then remaining `/` → `-`.
+  const placeholder = "\x00";
+  return absPath
+    .replace(/\/\./g, placeholder)
+    .replace(/\//g, "-")
+    .replace(new RegExp(placeholder, "g"), "--");
+}
+
 function decodeCwd(encoded) {
   if (!encoded) {
     return "";
