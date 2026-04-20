@@ -63,6 +63,7 @@ export type Conversation = {
   createdAt: string;
   isStreaming: boolean;
   runId?: string | null;
+  statusText?: string | null;
   // Session metadata from gateway
   kind?: "direct" | "group" | "global" | "cron" | "agent" | "unknown";
   channel?: string | null;

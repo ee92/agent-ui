@@ -375,7 +375,7 @@ function handleClaudeRawEvent(
       conversations: applyConversationUpdate(
         ensureConversation(get().conversations, sessionKey),
         sessionKey,
-        { isStreaming: false, runId: null, updatedAt: now }
+        { isStreaming: false, runId: null, statusText: null, updatedAt: now }
       ),
     });
     // Safety: any still-pending assistant messages get finalized.
@@ -409,7 +409,7 @@ function handleClaudeRawEvent(
       conversations: applyConversationUpdate(
         ensureConversation(get().conversations, sessionKey),
         sessionKey,
-        { isStreaming: false, runId: null, updatedAt: now }
+        { isStreaming: false, runId: null, statusText: null, updatedAt: now }
       ),
     });
     return;
@@ -418,9 +418,53 @@ function handleClaudeRawEvent(
   if (
     eventName === "session.subagent.started" ||
     eventName === "session.subagent.progress" ||
-    eventName === "session.subagent.notification"
+    eventName === "session.subagent.notification" ||
+    eventName === "session.subagent.updated"
   ) {
     // Optional UI hint — not rendered in MVP. Ignored for now.
+    return;
+  }
+
+  if (eventName === "session.message_error") {
+    const messageId = typeof payload.messageId === "string" ? payload.messageId : null;
+    const errCode = typeof payload.error === "string" ? payload.error : "unknown";
+    const stopReason = typeof payload.stopReason === "string" ? payload.stopReason : null;
+    if (!messageId) return;
+    updateMessagesForConversation(set, get, sessionKey, (msgs) => {
+      const hit = findMessageByMessageId(msgs, messageId);
+      if (!hit) return msgs;
+      const label = stopReason ? `${errCode}: ${stopReason}` : errCode;
+      msgs[hit.index] = { ...hit.message, error: label };
+      return msgs;
+    });
+    return;
+  }
+
+  if (eventName === "session.api_retry") {
+    const attempt = typeof payload.attempt === "number" ? payload.attempt : 0;
+    const maxRetries = typeof payload.maxRetries === "number" ? payload.maxRetries : 0;
+    const delayMs = typeof payload.retryDelayMs === "number" ? payload.retryDelayMs : 0;
+    const delaySec = Math.max(1, Math.round(delayMs / 1000));
+    const statusText = `Rate-limited or transient error — retrying in ${delaySec}s (attempt ${attempt}/${maxRetries})`;
+    set({
+      conversations: applyConversationUpdate(
+        ensureConversation(get().conversations, sessionKey),
+        sessionKey,
+        { statusText }
+      ),
+    });
+    return;
+  }
+
+  if (
+    eventName === "session.status" ||
+    eventName === "session.notification" ||
+    eventName === "session.memory_recall" ||
+    eventName === "session.mirror_error" ||
+    eventName === "session.compact_boundary" ||
+    eventName === "session.init"
+  ) {
+    // Forwarded for future UI rendering; silently dropped for now.
     return;
   }
 }

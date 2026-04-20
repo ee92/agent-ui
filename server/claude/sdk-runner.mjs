@@ -101,13 +101,58 @@ function handleSdkMessage(msg, state) {
   }
 
   if (msg.type === "system") {
-    // task_started, task_progress, task_notification — forward as subagent hints
     const sub = msg.subtype;
-    if (sub === "task_started" || sub === "task_progress" || sub === "task_notification") {
+    if (sub === "task_started" || sub === "task_progress" || sub === "task_notification" || sub === "task_updated") {
       emit(state, `session.subagent.${sub.replace("task_", "")}`, {
         parentToolUseId,
         payload: msg,
       });
+      return;
+    }
+    if (sub === "api_retry") {
+      emit(state, "session.api_retry", {
+        attempt: msg.attempt,
+        maxRetries: msg.max_retries,
+        retryDelayMs: msg.retry_delay_ms,
+        errorStatus: msg.error_status,
+        error: msg.error,
+      });
+      return;
+    }
+    if (sub === "status") {
+      emit(state, "session.status", {
+        status: msg.status,
+        permissionMode: msg.permissionMode,
+        compactResult: msg.compact_result,
+        compactError: msg.compact_error,
+      });
+      return;
+    }
+    if (sub === "notification") {
+      emit(state, "session.notification", {
+        key: msg.key,
+        text: msg.text,
+        priority: msg.priority,
+        color: msg.color,
+        timeoutMs: msg.timeout_ms,
+      });
+      return;
+    }
+    if (sub === "memory_recall") {
+      emit(state, "session.memory_recall", {
+        mode: msg.mode,
+        memories: Array.isArray(msg.memories) ? msg.memories : [],
+      });
+      return;
+    }
+    if (sub === "mirror_error") {
+      // Surfaces transcript-mirror write failures — batch dropped, data loss.
+      console.error("[sdk-runner] mirror_error:", msg.error, msg.key);
+      emit(state, "session.mirror_error", {
+        error: typeof msg.error === "string" ? msg.error : String(msg.error),
+        key: msg.key,
+      });
+      return;
     }
     return;
   }
@@ -186,10 +231,20 @@ function handleSdkMessage(msg, state) {
   }
 
   if (msg.type === "assistant") {
+    const messageId = msg.message?.id;
+    if (messageId && msg.error) {
+      // Model turn failed (rate_limit, billing_error, max_output_tokens, ...).
+      // Surface it so the UI can annotate the message.
+      emit(state, "session.message_error", {
+        messageId,
+        parentToolUseId,
+        error: msg.error,
+        stopReason: msg.message?.stop_reason,
+      });
+    }
     // Usually stream_event already delivered blocks and this is a whole-turn checkpoint.
     // But some SDK paths (e.g. /context, /cost local commands) skip stream_event entirely
     // and deliver the full content only here. Synthesize frames in that case.
-    const messageId = msg.message?.id;
     if (!messageId || state.streamedMessageIds.has(messageId)) return;
     state.streamedMessageIds.add(messageId);
     const content = Array.isArray(msg.message?.content) ? msg.message.content : [];
