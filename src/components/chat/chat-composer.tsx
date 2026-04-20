@@ -19,19 +19,23 @@ export function ChatComposer({
   attachments,
   tasks,
   agents,
+  isStreaming = false,
   onDraftChange,
   onSend,
   onAttach,
-  onRemoveAttachment
+  onRemoveAttachment,
+  onCancel,
 }: {
   draft: string;
   attachments: AttachmentDraft[];
   tasks: TaskNode[];
   agents: AgentRun[];
+  isStreaming?: boolean;
   onDraftChange: (value: string) => void;
   onSend: () => void;
   onAttach: (files: FileList) => void;
   onRemoveAttachment: (id: string) => void;
+  onCancel?: () => void;
 }) {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -194,18 +198,30 @@ export function ChatComposer({
             placeholder="Message agent — type / for commands, # for tasks, @ for agents"
             className="max-h-[220px] min-h-9 flex-1 resize-none bg-transparent py-2 text-base leading-6 text-white outline-none placeholder:text-zinc-600 xl:min-h-[56px]"
           />
-          <button
-            type="button"
-            onClick={() => {
-              if (canSend) {
-                onSend();
-              }
-            }}
-            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-blue-500 text-white hover:bg-blue-400 xl:h-auto xl:w-auto xl:gap-2 xl:rounded-lg xl:px-4 xl:py-2.5 xl:text-sm xl:font-medium"
-          >
-            <SendIcon />
-            <span className="hidden xl:inline">Send</span>
-          </button>
+          {isStreaming ? (
+            <button
+              type="button"
+              onClick={() => onCancel?.()}
+              title="Stop generating"
+              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-rose-500 text-white hover:bg-rose-400 xl:h-auto xl:w-auto xl:gap-2 xl:rounded-lg xl:px-4 xl:py-2.5 xl:text-sm xl:font-medium"
+            >
+              <span className="block h-3 w-3 rounded-sm bg-white" />
+              <span className="hidden xl:inline">Stop</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                if (canSend) {
+                  onSend();
+                }
+              }}
+              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-blue-500 text-white hover:bg-blue-400 xl:h-auto xl:w-auto xl:gap-2 xl:rounded-lg xl:px-4 xl:py-2.5 xl:text-sm xl:font-medium"
+            >
+              <SendIcon />
+              <span className="hidden xl:inline">Send</span>
+            </button>
+          )}
         </div>
         <div className="mt-2 flex items-center justify-between gap-2 xl:mt-3">
           <div className="hidden flex-wrap items-center gap-2 text-sm text-zinc-500 xl:flex">

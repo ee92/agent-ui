@@ -36,7 +36,7 @@ function getSnapshot() {
   return currentHash;
 }
 
-if (typeof window !== "undefined") {
+if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
   window.addEventListener("hashchange", () => {
     currentHash = window.location.hash;
     for (const cb of listeners) cb();
@@ -44,7 +44,9 @@ if (typeof window !== "undefined") {
 }
 
 export function navigate(hash: string) {
-  window.location.hash = hash;
+  if (typeof window !== "undefined" && window.location) {
+    window.location.hash = hash;
+  }
 }
 
 export function useHashRouter() {

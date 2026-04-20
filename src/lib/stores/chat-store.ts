@@ -1,7 +1,8 @@
 import { create } from "zustand";
-import type { ChatMessage } from "../types";
+import type { ChatMessage, MessageContentPart } from "../types";
 import { getBackendAdapter } from "../adapters";
 import type { SessionEvent } from "../adapters/types";
+import { navigate } from "../use-hash-router";
 import { useSessionFlowStore } from "./session-flow-store";
 import { useTaskStore } from "./task-store-v2";
 import { useUiStore } from "./ui-store";
@@ -32,6 +33,530 @@ function loadSelectedKey(): string | null {
   return localStorage.getItem(SELECTED_KEY);
 }
 
+type SetFn = (next: Partial<ChatStoreState> | ((state: ChatStoreState) => Partial<ChatStoreState>)) => void;
+type GetFn = () => ChatStoreState;
+
+type PendingSearchResult = {
+  messages: ChatMessage[];
+  messageIndex: number;
+  message: ChatMessage;
+  parentPart?: Extract<MessageContentPart, { type: "tool_use" }>;
+};
+
+function findToolUseAnywhere(
+  messages: ChatMessage[],
+  predicate: (part: Extract<MessageContentPart, { type: "tool_use" }>) => boolean
+): Extract<MessageContentPart, { type: "tool_use" }> | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const hit = searchParts(messages[i].parts, predicate);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+function searchParts(
+  parts: MessageContentPart[] | undefined,
+  predicate: (part: Extract<MessageContentPart, { type: "tool_use" }>) => boolean
+): Extract<MessageContentPart, { type: "tool_use" }> | null {
+  if (!parts) return null;
+  for (const part of parts) {
+    if (part.type === "tool_use") {
+      if (predicate(part)) return part;
+      const nested = searchParts(part.subAgentParts, predicate);
+      if (nested) return nested;
+    }
+  }
+  return null;
+}
+
+function findMessageByMessageId(
+  messages: ChatMessage[],
+  messageId: string
+): { message: ChatMessage; index: number } | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].id === messageId) return { message: messages[i], index: i };
+  }
+  return null;
+}
+
+function findPendingAssistantStub(
+  messages: ChatMessage[]
+): { message: ChatMessage; index: number } | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m.role === "assistant" && m.pending) return { message: m, index: i };
+  }
+  return null;
+}
+
+function updateMessagesForConversation(
+  set: SetFn,
+  get: GetFn,
+  sessionKey: string,
+  updater: (messages: ChatMessage[]) => ChatMessage[]
+) {
+  const current = get().messagesByConversation[sessionKey] ?? [];
+  const next = updater([...current]);
+  set({
+    messagesByConversation: {
+      ...get().messagesByConversation,
+      [sessionKey]: next,
+    },
+  });
+}
+
+function ensurePartForBlock(
+  message: ChatMessage,
+  index: number,
+  block: { type?: string; id?: string; name?: string; input?: unknown }
+): { message: ChatMessage; partKey: string } {
+  const partKey = `b-${index}`;
+  const indexMap = { ...(message.blockIndexById ?? {}) };
+  indexMap[index] = partKey;
+
+  let newPart: MessageContentPart | null = null;
+  if (block.type === "text") {
+    newPart = { type: "text", text: "" };
+  } else if (block.type === "thinking") {
+    newPart = { type: "thinking", text: "", complete: false };
+  } else if (block.type === "tool_use") {
+    newPart = {
+      type: "tool_use",
+      id: typeof block.id === "string" ? block.id : `tool-${Math.random().toString(36).slice(2, 10)}`,
+      name: typeof block.name === "string" ? block.name : "unknown",
+      input: "",
+      inputComplete: false,
+    };
+  }
+
+  const parts = newPart ? [...message.parts, newPart] : message.parts;
+  return { message: { ...message, parts, blockIndexById: indexMap }, partKey };
+}
+
+function updatePartAtBlockIndex(
+  message: ChatMessage,
+  index: number,
+  mutator: (part: MessageContentPart) => MessageContentPart
+): ChatMessage {
+  const key = message.blockIndexById?.[index];
+  if (!key) return message;
+  // Map key "b-<n>" to position = length-ish; we actually track by order of appending.
+  // Find the part whose position matches by scanning: index in parts is (total parts - 1) when added.
+  // Simpler: find the last N-th part recorded. Since we only ever add at end per content_block_start,
+  // `key` -> part is the last one whose position corresponds. We'll store partKey on parts via a map.
+  // Alternative: we re-derive by counting content_blocks. Easiest: scan parts by `key` stored inline.
+  // We use index in parts array matching insertion order — the Nth content block started is the Nth
+  // non-text-or-image streaming part. But for simplicity: we maintain partKey → partIndex via blockIndexById.
+  // blockIndexById maps SDK index → partKey; we can instead make it map SDK index → parts-array index.
+  const partsIndex = Number(key.slice(2));
+  const partPos = findPartPosByBlockOrder(message, partsIndex);
+  if (partPos < 0) return message;
+  const updated = mutator(message.parts[partPos]);
+  if (updated === message.parts[partPos]) return message;
+  const nextParts = message.parts.slice();
+  nextParts[partPos] = updated;
+  return { ...message, parts: nextParts };
+}
+
+function findPartPosByBlockOrder(message: ChatMessage, blockOrder: number): number {
+  let count = -1;
+  for (let i = 0; i < message.parts.length; i++) {
+    const p = message.parts[i];
+    if (p.type === "text" || p.type === "thinking" || p.type === "tool_use") {
+      count++;
+      if (count === blockOrder) return i;
+    }
+  }
+  return -1;
+}
+
+function handleClaudeRawEvent(
+  eventName: string,
+  payload: Record<string, unknown>,
+  sessionKey: string,
+  runId: string | null,
+  set: SetFn,
+  get: GetFn
+) {
+  const now = nowIso();
+
+  if (eventName === "session.message.start") {
+    const messageId = typeof payload.messageId === "string" ? payload.messageId : null;
+    const parentToolUseId = typeof payload.parentToolUseId === "string" ? payload.parentToolUseId : null;
+    if (!messageId) return;
+
+    if (parentToolUseId) {
+      // Route into parent tool_use.subAgentParts as a new synthetic sub-message.
+      // Represent sub-agent blocks in a single flat array by parent (order preserved).
+      updateMessagesForConversation(set, get, sessionKey, (msgs) => {
+        const parent = findToolUseAnywhere(msgs, (p) => p.id === parentToolUseId);
+        if (!parent) return msgs;
+        // Tag parent with placeholder indicating a new sub-agent message began.
+        // We don't create a separate ChatMessage; blocks accumulate directly in subAgentParts.
+        // Ensure array exists.
+        return msgs.map((m) => ({
+          ...m,
+          parts: mutateToolUseInParts(m.parts, parentToolUseId, (tool) => ({
+            ...tool,
+            subAgentParts: tool.subAgentParts ?? [],
+          })),
+        }));
+      });
+      return;
+    }
+
+    updateMessagesForConversation(set, get, sessionKey, (msgs) => {
+      const existing = findMessageByMessageId(msgs, messageId);
+      if (existing) return msgs;
+      const pending = findPendingAssistantStub(msgs);
+      if (pending) {
+        msgs[pending.index] = {
+          ...pending.message,
+          id: messageId,
+          parts: [],
+          blockIndexById: {},
+          pending: true,
+          runId: runId ?? pending.message.runId ?? null,
+        };
+        return msgs;
+      }
+      msgs.push({
+        id: messageId,
+        role: "assistant",
+        parts: [],
+        createdAt: now,
+        pending: true,
+        blockIndexById: {},
+        runId,
+      });
+      return msgs;
+    });
+    return;
+  }
+
+  if (eventName === "session.block.start") {
+    const messageId = typeof payload.messageId === "string" ? payload.messageId : null;
+    const parentToolUseId = typeof payload.parentToolUseId === "string" ? payload.parentToolUseId : null;
+    const index = typeof payload.index === "number" ? payload.index : null;
+    const block = (payload.block ?? {}) as { type?: string; id?: string; name?: string; input?: unknown };
+    if (index === null) return;
+
+    if (parentToolUseId) {
+      updateMessagesForConversation(set, get, sessionKey, (msgs) =>
+        msgs.map((m) => ({
+          ...m,
+          parts: mutateToolUseInParts(m.parts, parentToolUseId, (tool) => {
+            const parts = tool.subAgentParts ?? [];
+            const newPart = makePartForBlock(block);
+            return {
+              ...tool,
+              subAgentParts: newPart ? [...parts, newPart] : parts,
+              _subBlockIndex: undefined, // unused
+            } as typeof tool;
+          }),
+        }))
+      );
+      return;
+    }
+
+    if (!messageId) return;
+    updateMessagesForConversation(set, get, sessionKey, (msgs) => {
+      const hit = findMessageByMessageId(msgs, messageId);
+      if (!hit) return msgs;
+      const { message: updated } = ensurePartForBlock(hit.message, index, block);
+      msgs[hit.index] = updated;
+      return msgs;
+    });
+    return;
+  }
+
+  if (eventName === "session.block.delta") {
+    const messageId = typeof payload.messageId === "string" ? payload.messageId : null;
+    const index = typeof payload.index === "number" ? payload.index : null;
+    const delta = payload.delta as { type?: string; text?: string; thinking?: string; partial_json?: string } | null;
+    if (index === null || !delta) return;
+
+    if (messageId) {
+      updateMessagesForConversation(set, get, sessionKey, (msgs) => {
+        const hit = findMessageByMessageId(msgs, messageId);
+        if (hit) {
+          const updated = updatePartAtBlockIndex(hit.message, index, (part) => applyDeltaToPart(part, delta));
+          msgs[hit.index] = updated;
+          return msgs;
+        }
+        // Fall back: maybe this delta is for a sub-agent. Try applying to every tool_use's subAgentParts at the last index.
+        return msgs.map((m) => ({
+          ...m,
+          parts: applyDeltaToSubAgentPartsDeep(m.parts, delta),
+        }));
+      });
+      return;
+    }
+
+    // No messageId — best-effort: apply to most recent sub-agent part.
+    updateMessagesForConversation(set, get, sessionKey, (msgs) =>
+      msgs.map((m) => ({
+        ...m,
+        parts: applyDeltaToSubAgentPartsDeep(m.parts, delta),
+      }))
+    );
+    return;
+  }
+
+  if (eventName === "session.block.stop") {
+    const messageId = typeof payload.messageId === "string" ? payload.messageId : null;
+    const index = typeof payload.index === "number" ? payload.index : null;
+    if (index === null) return;
+
+    if (messageId) {
+      updateMessagesForConversation(set, get, sessionKey, (msgs) => {
+        const hit = findMessageByMessageId(msgs, messageId);
+        if (!hit) return msgs;
+        const updated = updatePartAtBlockIndex(hit.message, index, finalizePart);
+        msgs[hit.index] = updated;
+        return msgs;
+      });
+    }
+    return;
+  }
+
+  if (eventName === "session.message.stop") {
+    const messageId = typeof payload.messageId === "string" ? payload.messageId : null;
+    if (!messageId) return;
+    updateMessagesForConversation(set, get, sessionKey, (msgs) => {
+      const hit = findMessageByMessageId(msgs, messageId);
+      if (!hit) return msgs;
+      msgs[hit.index] = { ...hit.message, pending: false };
+      return msgs;
+    });
+
+    // Update conversation preview using combined text parts.
+    const msgs = get().messagesByConversation[sessionKey] ?? [];
+    const m = msgs.find((x) => x.id === messageId);
+    if (m) {
+      set({
+        conversations: applyConversationUpdate(
+          ensureConversation(get().conversations, sessionKey),
+          sessionKey,
+          {
+            preview: buildPreview(m.parts),
+            updatedAt: now,
+          }
+        ),
+      });
+    }
+    return;
+  }
+
+  if (eventName === "session.tool_result") {
+    const toolUseId = typeof payload.toolUseId === "string" ? payload.toolUseId : null;
+    if (!toolUseId) return;
+    const isError = Boolean(payload.isError);
+    const content = Array.isArray(payload.content)
+      ? (payload.content as Array<{ type?: string; text?: string }>).filter(
+          (c): c is { type: "text"; text: string } => !!c && c.type === "text" && typeof c.text === "string"
+        )
+      : [];
+
+    updateMessagesForConversation(set, get, sessionKey, (msgs) =>
+      msgs.map((m) => ({
+        ...m,
+        parts: mutateToolUseInParts(m.parts, toolUseId, (tool) => ({
+          ...tool,
+          result: { isError, content },
+        })),
+      }))
+    );
+    return;
+  }
+
+  if (eventName === "session.completed") {
+    set({
+      conversations: applyConversationUpdate(
+        ensureConversation(get().conversations, sessionKey),
+        sessionKey,
+        { isStreaming: false, runId: null, updatedAt: now }
+      ),
+    });
+    // Safety: any still-pending assistant messages get finalized.
+    updateMessagesForConversation(set, get, sessionKey, (msgs) =>
+      msgs.map((m) => (m.role === "assistant" && m.pending ? { ...m, pending: false } : m))
+    );
+    return;
+  }
+
+  if (eventName === "session.error") {
+    const code = typeof payload.code === "string" ? payload.code : "error";
+    const message = typeof payload.message === "string" ? payload.message : "Unknown error";
+    updateMessagesForConversation(set, get, sessionKey, (msgs) => {
+      const pending = findPendingAssistantStub(msgs);
+      if (!pending) return msgs;
+      const existingText = pending.message.parts.find((p) => p.type === "text") as
+        | Extract<MessageContentPart, { type: "text" }>
+        | undefined;
+      const errorText = existingText?.text
+        ? `${existingText.text}\n\n[${code}] ${message}`
+        : `[${code}] ${message}`;
+      const newParts: MessageContentPart[] = existingText
+        ? pending.message.parts.map((p) =>
+            p === existingText ? ({ type: "text", text: errorText } as const) : p
+          )
+        : [{ type: "text", text: errorText } as const, ...pending.message.parts];
+      msgs[pending.index] = { ...pending.message, parts: newParts, pending: false, error: `${code}: ${message}` };
+      return msgs;
+    });
+    set({
+      conversations: applyConversationUpdate(
+        ensureConversation(get().conversations, sessionKey),
+        sessionKey,
+        { isStreaming: false, runId: null, updatedAt: now }
+      ),
+    });
+    return;
+  }
+
+  if (
+    eventName === "session.subagent.started" ||
+    eventName === "session.subagent.progress" ||
+    eventName === "session.subagent.notification"
+  ) {
+    // Optional UI hint — not rendered in MVP. Ignored for now.
+    return;
+  }
+}
+
+function makePartForBlock(block: { type?: string; id?: string; name?: string }): MessageContentPart | null {
+  if (block.type === "text") return { type: "text", text: "" };
+  if (block.type === "thinking") return { type: "thinking", text: "", complete: false };
+  if (block.type === "tool_use") {
+    return {
+      type: "tool_use",
+      id: typeof block.id === "string" ? block.id : `tool-${Math.random().toString(36).slice(2, 10)}`,
+      name: typeof block.name === "string" ? block.name : "unknown",
+      input: "",
+      inputComplete: false,
+    };
+  }
+  return null;
+}
+
+function applyDeltaToPart(
+  part: MessageContentPart,
+  delta: { type?: string; text?: string; thinking?: string; partial_json?: string }
+): MessageContentPart {
+  if (part.type === "text" && delta.type === "text_delta" && typeof delta.text === "string") {
+    return { ...part, text: part.text + delta.text };
+  }
+  if (part.type === "thinking" && delta.type === "thinking_delta" && typeof delta.thinking === "string") {
+    return { ...part, text: part.text + delta.thinking };
+  }
+  if (part.type === "tool_use" && delta.type === "input_json_delta" && typeof delta.partial_json === "string") {
+    const current = typeof part.input === "string" ? part.input : "";
+    return { ...part, input: current + delta.partial_json };
+  }
+  return part;
+}
+
+function finalizePart(part: MessageContentPart): MessageContentPart {
+  if (part.type === "thinking") return { ...part, complete: true };
+  if (part.type === "tool_use") {
+    const raw = typeof part.input === "string" ? part.input : "";
+    try {
+      const parsed = raw ? JSON.parse(raw) : {};
+      return { ...part, input: parsed, inputComplete: true };
+    } catch {
+      return { ...part, inputComplete: false };
+    }
+  }
+  return part;
+}
+
+function mutateToolUseInParts(
+  parts: MessageContentPart[],
+  toolUseId: string,
+  mutator: (tool: Extract<MessageContentPart, { type: "tool_use" }>) => Extract<MessageContentPart, { type: "tool_use" }>
+): MessageContentPart[] {
+  let changed = false;
+  const next = parts.map((p) => {
+    if (p.type !== "tool_use") return p;
+    if (p.id === toolUseId) {
+      changed = true;
+      return mutator(p);
+    }
+    const subParts = p.subAgentParts ? mutateToolUseInParts(p.subAgentParts, toolUseId, mutator) : p.subAgentParts;
+    if (subParts !== p.subAgentParts) {
+      changed = true;
+      return { ...p, subAgentParts: subParts };
+    }
+    return p;
+  });
+  return changed ? next : parts;
+}
+
+function applyDeltaToSubAgentPartsDeep(
+  parts: MessageContentPart[],
+  delta: { type?: string; text?: string; thinking?: string; partial_json?: string }
+): MessageContentPart[] {
+  return parts.map((p) => {
+    if (p.type !== "tool_use" || !p.subAgentParts || p.subAgentParts.length === 0) return p;
+    const last = p.subAgentParts[p.subAgentParts.length - 1];
+    const updatedLast = applyDeltaToPart(last, delta);
+    if (updatedLast === last) {
+      // recurse
+      const nested = applyDeltaToSubAgentPartsDeep(p.subAgentParts, delta);
+      return nested === p.subAgentParts ? p : { ...p, subAgentParts: nested };
+    }
+    const nextSub = p.subAgentParts.slice();
+    nextSub[nextSub.length - 1] = updatedLast;
+    return { ...p, subAgentParts: nextSub };
+  });
+}
+
+// PendingSearchResult unused — kept for clarity of intent.
+void (null as unknown as PendingSearchResult);
+
+function applyRemap(
+  fromSessionKey: string,
+  toSessionKey: string,
+  set: (next: Partial<ChatStoreState> | ((state: ChatStoreState) => Partial<ChatStoreState>)) => void,
+  get: () => ChatStoreState
+) {
+  if (!fromSessionKey || !toSessionKey || fromSessionKey === toSessionKey) return;
+  const state = get();
+  const existsFrom = state.conversations.some((c) => c.key === fromSessionKey);
+  const existsTo = state.conversations.some((c) => c.key === toSessionKey);
+
+  const conversations = state.conversations.flatMap((c) => {
+    if (c.key === fromSessionKey) {
+      if (existsTo) return []; // drop the duplicate — will merge onto the existing toSessionKey
+      return { ...c, key: toSessionKey };
+    }
+    return c;
+  });
+
+  const messagesByConversation = { ...state.messagesByConversation };
+  if (existsFrom) {
+    const fromMsgs = messagesByConversation[fromSessionKey] ?? [];
+    const toMsgs = messagesByConversation[toSessionKey] ?? [];
+    messagesByConversation[toSessionKey] = existsTo && toMsgs.length > fromMsgs.length ? toMsgs : fromMsgs;
+    delete messagesByConversation[fromSessionKey];
+  }
+
+  const selectedWasFrom = state.selectedConversationKey === fromSessionKey;
+  const nextSelected = selectedWasFrom ? toSessionKey : state.selectedConversationKey;
+
+  set({ conversations, messagesByConversation, selectedConversationKey: nextSelected });
+
+  if (selectedWasFrom) {
+    saveSelectedKey(toSessionKey);
+    if (typeof window !== "undefined") {
+      const current = window.location.hash;
+      const expected = `#/chat/${encodeURIComponent(toSessionKey)}`;
+      if (current !== expected) navigate(expected);
+    }
+  }
+}
+
 function applySessionEventToChatStore(
   event: SessionEvent,
   set: (next: Partial<ChatStoreState> | ((state: ChatStoreState) => Partial<ChatStoreState>)) => void,
@@ -48,6 +573,16 @@ function applySessionEventToChatStore(
   }
 
   if (event.type === "updated") {
+    return;
+  }
+
+  if (event.type === "remap") {
+    applyRemap(event.fromSessionKey, event.toSessionKey, set, get);
+    return;
+  }
+
+  if (event.type === "raw") {
+    handleClaudeRawEvent(event.event, event.payload, event.sessionKey, event.runId ?? null, set, get);
     return;
   }
 
@@ -410,6 +945,19 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
           runId: null
         })
       });
+    }
+  },
+  cancelStream: async (conversationKey) => {
+    const adapter = getBackendAdapter();
+    const key = conversationKey ?? get().selectedConversationKey;
+    if (!key) return;
+    const conversation = get().conversations.find((c) => c.key === key);
+    const runId = conversation?.runId;
+    if (!runId || !adapter.sessions.cancelRun) return;
+    try {
+      await adapter.sessions.cancelRun(runId);
+    } catch {
+      // Surface failure via UI later if needed; for now silent — session.error will arrive anyway.
     }
   },
   flushQueuedMessages: async () => {

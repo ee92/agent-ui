@@ -21,7 +21,7 @@ import { listSessions, getSession, refreshIndex } from "./server/claude/session-
 import { parseTranscript } from "./server/claude/transcript-parser.mjs";
 import { listCodexSessions, getCodexSession } from "./server/codex/session-index.mjs";
 import { parseCodexTranscript } from "./server/codex/transcript-parser.mjs";
-import { startRun, cancelRun, getRunStatus } from "./server/claude/standalone-runner.mjs";
+import { startRun, cancelRun, getRunStatus } from "./server/claude/sdk-runner.mjs";
 import { createBroker } from "./server/claude/ws-broker.mjs";
 import { scanDocker } from "./server/docker-scanner.mjs";
 import { mergeProjects } from "./server/project-merger.mjs";
@@ -516,11 +516,18 @@ const repoCache = (() => {
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
 
-  // Origin check: block cross-origin POST requests (CSRF protection for localhost)
+  // Origin check: block cross-origin POST requests (CSRF protection)
+  // Allows localhost and same-origin (covers reverse-proxy deploys like dev-ui.bots.town)
   if (req.method === "POST") {
     const origin = req.headers.origin;
-    if (origin && !/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
-      return jsonResponse(res, { error: "forbidden: cross-origin POST" }, 403);
+    if (origin) {
+      let originHost = "";
+      try { originHost = new URL(origin).host; } catch { /* invalid origin */ }
+      const isLocal = /^(localhost|127\.0\.0\.1)(:\d+)?$/.test(originHost);
+      const isSameHost = originHost && originHost === req.headers.host;
+      if (!isLocal && !isSameHost) {
+        return jsonResponse(res, { error: "forbidden: cross-origin POST" }, 403);
+      }
     }
   }
 

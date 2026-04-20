@@ -47,6 +47,7 @@ export type ChatStoreState = {
   renameConversation: (key: string, title: string) => Promise<void>;
   deleteConversation: (key: string) => Promise<void>;
   sendMessage: () => Promise<void>;
+  cancelStream: (conversationKey?: string) => Promise<void>;
   flushQueuedMessages: () => Promise<void>;
   retryMessage: (messageId: string) => Promise<void>;
   hideMessage: (messageId: string) => void;

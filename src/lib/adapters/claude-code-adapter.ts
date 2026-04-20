@@ -54,7 +54,6 @@ export class ClaudeCodeAdapter implements BackendAdapter {
   private ws: WebSocket | null = null;
   private reconnectTimer: number | null = null;
   private readonly eventSubscribers = new Set<(event: SessionEvent) => void>();
-  private readonly remappedSessionKeys = new Map<string, string>();
 
   constructor(private readonly workspace: string = ".") {
     this.sessions = {
@@ -64,6 +63,7 @@ export class ClaudeCodeAdapter implements BackendAdapter {
       create: (key) => this.createSession(key),
       rename: (sessionKey, title) => this.renameSession(sessionKey, title),
       delete: (sessionKey) => this.deleteSession(sessionKey),
+      cancelRun: (runId) => this.cancelRun(runId),
       subscribe: (callback) => this.subscribe(callback),
     };
 
@@ -199,14 +199,15 @@ export class ClaudeCodeAdapter implements BackendAdapter {
       const fromSessionKey =
         typeof event.payload?.fromSessionKey === "string" ? event.payload.fromSessionKey : null;
       const toSessionKey = typeof event.payload?.toSessionKey === "string" ? event.payload.toSessionKey : null;
-      if (fromSessionKey && toSessionKey) {
-        this.remappedSessionKeys.set(toSessionKey, fromSessionKey);
-        this.emit({ type: "updated", sessionKey: fromSessionKey });
+      if (fromSessionKey && toSessionKey && fromSessionKey !== toSessionKey) {
+        this.emit({ type: "remap", fromSessionKey, toSessionKey });
       }
       return;
     }
 
-    const mappedSessionKey = this.remappedSessionKeys.get(event.sessionKey) || event.sessionKey;
+    // Store canonicalizes the conversation key on remap, so all subsequent events
+    // are delivered under the real session key as-is.
+    const mappedSessionKey = event.sessionKey;
 
     if (event.event === "session.streaming") {
       const isStreaming = Boolean(event.payload?.isStreaming);
@@ -214,25 +215,14 @@ export class ClaudeCodeAdapter implements BackendAdapter {
       return;
     }
 
-    if (event.event === "session.delta") {
-      // Delta updates the streaming message — emit as "updated" so the store
-      // refreshes from the server rather than appending a duplicate message.
-      // The actual content is shown via the streaming indicator / pending message.
-      this.emit({ type: "updated", sessionKey: mappedSessionKey });
-      return;
-    }
-
-    if (event.event === "session.message") {
-      // Final message — emit once so the store picks it up
-      this.emit({
-        type: "message",
-        sessionKey: mappedSessionKey,
-        message: normalizeMessage(event.payload?.message),
-      });
-      return;
-    }
-
-    this.emit({ type: "updated", sessionKey: mappedSessionKey });
+    // Forward everything else as a raw event for the store to interpret.
+    this.emit({
+      type: "raw",
+      sessionKey: mappedSessionKey,
+      event: event.event,
+      runId: typeof event.runId === "string" ? event.runId : null,
+      payload: event.payload ?? {},
+    });
   }
 
   private subscribe(callback: (event: SessionEvent) => void): () => void {
@@ -302,6 +292,12 @@ export class ClaudeCodeAdapter implements BackendAdapter {
     await this.request(`/api/claude-code/sessions/${encodeURIComponent(sessionKey)}`, {
       method: "PATCH",
       body: JSON.stringify({ title }),
+    });
+  }
+
+  private async cancelRun(runId: string): Promise<void> {
+    await this.request(`/api/claude-code/runs/${encodeURIComponent(runId)}/cancel`, {
+      method: "POST",
     });
   }
 

@@ -1,6 +1,9 @@
 import type { ChatMessage } from "../../lib/types";
 import { formatRelative } from "../../lib/ui-utils";
 import { Markdown } from "./markdown";
+import { ThinkingCard } from "./parts/thinking-card";
+import { ToolUseCard } from "./parts/tool-use-card";
+import { SubAgentTrace } from "./parts/sub-agent-trace";
 import { CopyIcon, RetryIcon, TrashIcon } from "../ui/icons";
 
 export function MessageCard({
@@ -46,6 +49,19 @@ export function MessageCard({
                   alt={part.alt}
                   className="max-h-72 rounded-lg border border-white/[0.06] object-cover"
                 />
+              );
+            }
+            if (part.type === "thinking") {
+              return <ThinkingCard key={`think-${index}`} part={part} />;
+            }
+            if (part.type === "tool_use") {
+              return (
+                <div key={`tool-${index}-${part.id}`} className="space-y-2">
+                  <ToolUseCard part={part} />
+                  {part.name === "Agent" && part.subAgentParts && part.subAgentParts.length > 0 ? (
+                    <SubAgentTrace parts={part.subAgentParts} />
+                  ) : null}
+                </div>
               );
             }
             return (
