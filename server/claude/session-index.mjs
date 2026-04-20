@@ -73,6 +73,11 @@ async function scanJsonlFiles(rootDir) {
     for (const entry of entries) {
       const fullPath = join(current, entry.name);
       if (entry.isDirectory()) {
+        // Claude Code writes sub-agent transcripts under a `subagents/`
+        // subdirectory of the parent session's project folder. These files
+        // are not independent user sessions — skip them so they don't
+        // pollute the sidebar.
+        if (entry.name === "subagents") continue;
         await walk(fullPath);
         continue;
       }
