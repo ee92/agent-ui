@@ -22,6 +22,55 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
+const SLASH_COMMAND_META: Record<string, string> = {
+  compact: "Compact conversation",
+  context: "Show context usage",
+  cost: "Show session cost",
+  mcp: "MCP server status",
+  review: "Code review",
+  init: "Initialize project",
+  clear: "Clear conversation",
+  help: "Show available commands",
+  model: "Switch model",
+  resume: "Resume a session",
+  status: "System status",
+  agents: "List agents",
+  memory: "Edit memory",
+  pr_comments: "Review PR comments",
+  vim: "Toggle vim mode",
+  terminal: "Terminal setup",
+  bug: "Report a bug",
+};
+
+function formatSlashCommandName(raw: string): string {
+  const trimmed = raw.replace(/^\/+/, "");
+  return trimmed.replace(/[_-]+/g, " ");
+}
+
+function slashCommandsFromStrings(names: string[]): SlashCommandSuggestion[] {
+  const seen = new Set<string>();
+  const out: SlashCommandSuggestion[] = [];
+  for (const raw of names) {
+    if (typeof raw !== "string") continue;
+    const name = raw.startsWith("/") ? raw : `/${raw}`;
+    if (seen.has(name)) continue;
+    seen.add(name);
+    const bare = name.slice(1);
+    const meta = SLASH_COMMAND_META[bare] ?? formatSlashCommandName(bare);
+    out.push({ label: name, insert: name, meta });
+  }
+  return out;
+}
+
+const FALLBACK_SLASH_COMMANDS: SlashCommandSuggestion[] = slashCommandsFromStrings([
+  "compact",
+  "context",
+  "cost",
+  "mcp",
+  "review",
+  "init",
+]);
+
 function normalizeMessage(raw: unknown): Message {
   const source = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
   return {
@@ -54,6 +103,7 @@ export class ClaudeCodeAdapter implements BackendAdapter {
   private ws: WebSocket | null = null;
   private reconnectTimer: number | null = null;
   private readonly eventSubscribers = new Set<(event: SessionEvent) => void>();
+  private latestSlashCommands: SlashCommandSuggestion[] | null = null;
 
   constructor(private readonly workspace: string = ".") {
     this.sessions = {
@@ -110,12 +160,7 @@ export class ClaudeCodeAdapter implements BackendAdapter {
   }
 
   slashCommands(): SlashCommandSuggestion[] {
-    return [
-      { label: "/compact", insert: "/compact", meta: "Compact conversation" },
-      { label: "/review", insert: "/review", meta: "Code review" },
-      { label: "/cost", insert: "/cost", meta: "Show costs" },
-      { label: "/init", insert: "/init", meta: "Initialize project" },
-    ];
+    return this.latestSlashCommands ?? FALLBACK_SLASH_COMMANDS;
   }
 
   private async request<T>(input: string, init: RequestInit = {}): Promise<T> {
@@ -213,6 +258,14 @@ export class ClaudeCodeAdapter implements BackendAdapter {
       const isStreaming = Boolean(event.payload?.isStreaming);
       this.emit({ type: "streaming", sessionKey: mappedSessionKey, isStreaming });
       return;
+    }
+
+    if (event.event === "session.init") {
+      const raw = event.payload?.slashCommands;
+      if (Array.isArray(raw)) {
+        this.latestSlashCommands = slashCommandsFromStrings(raw as string[]);
+      }
+      // fall through so the store sees it too
     }
 
     // Forward everything else as a raw event for the store to interpret.

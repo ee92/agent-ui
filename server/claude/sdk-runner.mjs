@@ -46,6 +46,25 @@ function handleSdkMessage(msg, state) {
         state.sessionKey = canonical;
       }
     }
+    emit(state, "session.init", {
+      slashCommands: Array.isArray(msg.slash_commands) ? msg.slash_commands : [],
+      mcpServers: Array.isArray(msg.mcp_servers) ? msg.mcp_servers : [],
+      tools: Array.isArray(msg.tools) ? msg.tools : [],
+      skills: Array.isArray(msg.skills) ? msg.skills : [],
+      agents: Array.isArray(msg.agents) ? msg.agents : [],
+      model: typeof msg.model === "string" ? msg.model : undefined,
+      cwd: typeof msg.cwd === "string" ? msg.cwd : undefined,
+    });
+    return;
+  }
+
+  if (msg.type === "system" && msg.subtype === "compact_boundary") {
+    emit(state, "session.compact_boundary", {
+      trigger: msg.compact_metadata?.trigger,
+      preTokens: msg.compact_metadata?.pre_tokens,
+      postTokens: msg.compact_metadata?.post_tokens,
+      durationMs: msg.compact_metadata?.duration_ms,
+    });
     return;
   }
 
