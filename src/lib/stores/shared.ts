@@ -1,10 +1,8 @@
 import type { StoreApi, UseBoundStore } from "zustand";
-import type { GatewayEvent } from "../gateway";
 import type {
   AgentRun,
   AttachmentDraft,
   ChatMessage,
-  ConnectionState,
   Conversation,
   FileEntry,
   FilePreview,
@@ -19,19 +17,6 @@ export type FileMethodKind = "list" | "read" | "write";
 export type MethodVariant = {
   method: string;
   params: (path: string, content?: string) => Record<string, unknown>;
-};
-
-export type GatewayStoreState = {
-  connectionState: ConnectionState;
-  connectionDetail: string;
-  gatewayUrl: string;
-  gatewayToken: string;
-  gatewayClient: import("../gateway").GatewayClient | null;
-  lastGatewayEvent: GatewayEvent | null;
-  gatewayEventVersion: number;
-  connect: () => void;
-  disconnect: () => void;
-  setGatewayConfig: (url: string, token: string) => void;
 };
 
 export type ChatStoreState = {
@@ -53,7 +38,6 @@ export type ChatStoreState = {
   hideMessage: (messageId: string) => void;
   addTaskFromMessage: (messageId: string) => Promise<void>;
   quickSend: (sessionKey: string, text: string) => Promise<void>;
-  handleChatEvent: (payload: unknown) => void;
 };
 
 export type FilesStoreState = {
@@ -103,32 +87,14 @@ export type UiStoreState = {
   closeOverlays: () => void;
 };
 
-export type AppStoreState = GatewayStoreState &
-  ChatStoreState &
+export type AppStoreState = ChatStoreState &
   FilesStoreState &
   AgentsStoreState &
   UiStoreState;
 
 export type BoundStore<T> = UseBoundStore<StoreApi<T>>;
 
-const SETTINGS_KEY = "openclaw-ui-settings-v1";
-const HIDDEN_MESSAGES_KEY = "openclaw-ui-hidden-messages-v1";
-export const DEFAULT_GATEWAY_URL =
-  typeof window !== "undefined" && window.location.host
-    ? `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host.replace(/:18789$/, ':18790')}/gateway`
-    : "ws://127.0.0.1:18790/gateway";
-export const DEFAULT_GATEWAY_TOKEN = "openclaw";
-
-export async function fetchServerToken(): Promise<string | null> {
-  try {
-    const res = await fetch("/api/config");
-    if (!res.ok) return null;
-    const data = (await res.json()) as { token?: string };
-    return data.token?.trim() || null;
-  } catch {
-    return null;
-  }
-}
+const HIDDEN_MESSAGES_KEY = "agent-ui.hidden-messages.v1";
 
 export const FILE_METHODS: Record<FileMethodKind, MethodVariant[]> = {
   list: [
@@ -164,18 +130,6 @@ export function safeJsonParse<T>(value: string | null, fallback: T): T {
   } catch {
     return fallback;
   }
-}
-
-export function persistSettings(url: string, token: string) {
-  localStorage.setItem(SETTINGS_KEY, JSON.stringify({ url, token }));
-}
-
-export function getInitialSettings() {
-  const stored = safeJsonParse<{ url?: string; token?: string }>(localStorage.getItem(SETTINGS_KEY), {});
-  return {
-    gatewayUrl: stored.url?.trim() || DEFAULT_GATEWAY_URL,
-    gatewayToken: stored.token?.trim() || DEFAULT_GATEWAY_TOKEN
-  };
 }
 
 export function normalizeTime(value: string | number | null | undefined): string {
@@ -217,42 +171,6 @@ export function messageTextFromUnknown(value: unknown): string {
   return "";
 }
 
-function cleanSessionTitle(raw: string): string {
-  let t = raw.trim();
-  // Strip "telegram:g-" prefixes
-  t = t.replace(/^telegram:g-/, "").replace(/^agent:main:/, "");
-  // Strip "[cron:uuid..." prefixes
-  t = t.replace(/^\[cron:[a-f0-9-]+\.{3}$/, "");
-  // Strip "System: [date] Cron: HEARTBEAT_OK..." noise
-  if (/^System:\s*\[/.test(t) || /^HEARTBEAT/i.test(t)) return "";
-  // Strip raw metadata titles (untrusted envelope headers used as derived titles)
-  if (/^Sender \(untrusted/i.test(t) || /^Conversation info \(untrusted/i.test(t)) return "";
-  // Strip "[timestamp] ..." prefixes from user messages used as titles
-  if (/^\[(Mon|Tue|Wed|Thu|Fri|Sat|Sun) \d{4}-/.test(t)) return "";
-  // Strip "[Internal API Access]..." noise
-  if (/^\[Internal API/i.test(t)) return "";
-  // Strip "Pre-compaction memory flush..." noise
-  if (/^Pre-compaction/i.test(t)) return "";
-  // Strip "A scheduled reminder..." noise
-  if (/^A scheduled reminder/i.test(t)) return "";
-  // Clean up telegram session keys
-  t = t.replace(/^telegram:(slash|group):/, "").replace(/:[0-9-]+(:topic:[0-9]+)?$/, "");
-  // Capitalize first letter
-  if (t.length > 0) t = t.charAt(0).toUpperCase() + t.slice(1);
-  return t;
-}
-
-function humanizeSessionKey(key: string): string {
-  if (key.includes("cron:")) {
-    const label = key.split(":").pop() || "Cron job";
-    return "Cron: " + label.replace(/-/g, " ");
-  }
-  if (key.includes("telegram:group:")) return "Group chat";
-  if (key.includes("telegram:slash:")) return "Telegram DM";
-  if (key === "agent:main:main") return "Main session";
-  return key.replace(/^agent:main:/, "").replace(/[-_]/g, " ");
-}
-
 function extractLastMessageRole(value: unknown): "user" | "assistant" | "system" | null {
   if (!value || typeof value !== "object") return null;
   const record = value as Record<string, unknown>;
@@ -261,40 +179,16 @@ function extractLastMessageRole(value: unknown): "user" | "assistant" | "system"
   return null;
 }
 
-/**
- * Strip the internal `agent:<id>:` prefix from session store keys so the UI
- * uses the same short key that tasks, chat.send, and chat.history expect.
- * The gateway resolves both forms, so using the short key everywhere is safe.
- */
-function normalizeSessionKey(key: string): string {
-  return key.replace(/^agent:[^:]+:/, "");
-}
-
 export function normalizeSession(entry: SessionsListEntry): Conversation {
-  // Priority: explicit label > cleaned derivedTitle > cleaned displayName > humanized key
-  const normalizedKey = normalizeSessionKey(entry.key);
-  const candidates = [
-    entry.label?.trim(),
-    entry.title?.trim(),
-    entry.derivedTitle ? cleanSessionTitle(entry.derivedTitle) : "",
-    entry.displayName ? cleanSessionTitle(entry.displayName) : "",
-  ].filter((s): s is string => Boolean(s && s.length > 2));
-  
-  const title = candidates[0] || humanizeSessionKey(entry.key);
-
-  // Auto-detect kind from session key patterns when gateway doesn't provide it
-  let kind = entry.kind ?? undefined;
-  const keyLower = entry.key.toLowerCase();
-  if (!kind || kind === "unknown" || kind === "direct") {
-    if (keyLower.includes("cron:") || keyLower.includes("cron-")) {
-      kind = "cron";
-    } else if (keyLower.includes("subagent:") || keyLower.includes("agent:") && keyLower.includes(":subagent:")) {
-      kind = "agent";
-    }
-  }
+  const title =
+    entry.label?.trim() ||
+    entry.title?.trim() ||
+    entry.derivedTitle?.trim() ||
+    entry.displayName?.trim() ||
+    entry.key;
 
   return {
-    key: normalizedKey,
+    key: entry.key,
     title,
     derivedTitle: entry.derivedTitle ?? null,
     preview: (messageTextFromUnknown(entry.lastMessage) || (typeof entry.lastMessagePreview === "string" ? entry.lastMessagePreview : "")).slice(0, 140),
@@ -302,7 +196,7 @@ export function normalizeSession(entry: SessionsListEntry): Conversation {
     createdAt: normalizeTime(entry.createdAt ?? entry.updatedAt),
     isStreaming: Boolean(entry.activeRunId),
     runId: entry.activeRunId ?? null,
-    kind,
+    kind: entry.kind ?? undefined,
     channel: entry.channel ?? null,
     model: entry.model ?? null,
     modelProvider: entry.modelProvider ?? null,
@@ -310,57 +204,6 @@ export function normalizeSession(entry: SessionsListEntry): Conversation {
     inputTokens: entry.inputTokens,
     outputTokens: entry.outputTokens,
     lastMessageRole: extractLastMessageRole(entry.lastMessage),
-  };
-}
-
-export function normalizeHistoryMessage(message: unknown): ChatMessage | null {
-  if (!message || typeof message !== "object") {
-    return null;
-  }
-  const record = message as Record<string, unknown>;
-  const role = typeof record.role === "string" ? record.role.toLowerCase() : "assistant";
-  const text = messageTextFromUnknown(record);
-  const parts: ChatMessage["parts"] = [];
-  // Extract image content parts if present
-  if (Array.isArray(record.content)) {
-    for (const part of record.content) {
-      if (part && typeof part === "object") {
-        const p = part as Record<string, unknown>;
-        if (p.type === "image" || p.type === "image_url") {
-          const url =
-            (typeof p.url === "string" && p.url) ||
-            (typeof p.image_url === "object" && p.image_url && typeof (p.image_url as Record<string, unknown>).url === "string"
-              ? (p.image_url as Record<string, unknown>).url as string
-              : null) ||
-            (typeof p.source === "object" && p.source && typeof (p.source as Record<string, unknown>).url === "string"
-              ? (p.source as Record<string, unknown>).url as string
-              : null);
-          if (url) {
-            parts.push({ type: "image", url, alt: typeof p.alt === "string" ? p.alt : "" });
-          }
-        }
-      }
-    }
-  }
-  // Extract media URL if present (from message tool sends)
-  if (typeof record.media === "string" && record.media) {
-    parts.push({ type: "image", url: record.media, alt: "" });
-  }
-  if (text) {
-    parts.push({ type: "text", text });
-  }
-  if (parts.length === 0) {
-    return null;
-  }
-  return {
-    id: crypto.randomUUID(),
-    role: role === "user" || role === "assistant" || role === "system" ? role : "assistant",
-    parts,
-    createdAt: normalizeTime(
-      typeof record.timestamp === "number" || typeof record.timestamp === "string"
-        ? record.timestamp
-        : null
-    )
   };
 }
 
@@ -467,26 +310,6 @@ export function updateAgent(agents: AgentRun[], next: AgentRun) {
   return agents
     .flatMap((item) => (item.id === next.id ? { ...item, ...next } : item))
     .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt));
-}
-
-export async function requestFileMethod<T>(
-  client: import("../gateway").GatewayClient,
-  kind: FileMethodKind,
-  path: string,
-  content: string | undefined,
-  known: MethodVariant | undefined
-) {
-  const variants = known ? [known] : FILE_METHODS[kind];
-  let lastError: Error | null = null;
-  for (const variant of variants) {
-    try {
-      const data = await client.request<T>(variant.method, variant.params(path, content));
-      return { data, method: variant };
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error(String(error));
-    }
-  }
-  throw lastError ?? new Error(`No ${kind} method available`);
 }
 
 export function inferMimeType(path: string) {

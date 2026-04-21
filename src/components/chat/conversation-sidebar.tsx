@@ -268,11 +268,10 @@ export function ConversationSidebar({
             aria-label="Adapter type"
             value={adapterType}
             onChange={(event) => {
-              void setAdapterType(event.target.value as "openclaw" | "claude-code" | "codex" | "local");
+              void setAdapterType(event.target.value as "claude-code" | "codex" | "local");
             }}
             className="h-8 rounded-lg border border-white/[0.08] bg-white/[0.03] px-2 text-[13px] text-zinc-300 outline-none transition hover:border-white/[0.14] hover:bg-white/[0.05]"
           >
-            <option value="openclaw">OpenClaw</option>
             <option value="claude-code">Claude Code</option>
             <option value="codex">Codex</option>
           </select>
@@ -530,7 +529,7 @@ export function ConversationSidebar({
             <div className="space-y-2">
               {!capabilities.agents ? (
                 <div className="rounded-lg border border-dashed border-white/[0.06] px-3 py-4 text-sm text-zinc-500">
-                  Agent monitoring requires OpenClaw gateway.
+                  Agent monitoring isn't supported by this backend.
                 </div>
               ) : null}
               {capabilities.agents && agents.length === 0 ? (

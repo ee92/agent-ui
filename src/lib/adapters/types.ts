@@ -1,6 +1,8 @@
 /**
- * Backend adapter interface — abstracts OpenClaw gateway, Claude Code, or local-only modes.
- * All stores should use these interfaces instead of calling gateway directly.
+ * Backend adapter interface — wraps Claude Code, Codex, or local-only modes
+ * behind a uniform session/file/cron surface. In practice the event
+ * vocabulary (`session.*`) is driven by Claude Code; other adapters
+ * synthesize the shape they need.
  */
 
 export interface Message {
@@ -12,8 +14,7 @@ export interface Message {
   /**
    * Structured content parts. When present (Claude Code history path), the
    * store uses these directly so tool_use / thinking blocks render as cards
-   * rather than being collapsed into the flat `content` string. Falls back
-   * to wrapping `content` when absent (OpenClaw, Codex, legacy responses).
+   * rather than being collapsed into the flat `content` string.
    */
   parts?: import('../types').MessageContentPart[];
 }
@@ -72,7 +73,6 @@ export interface SessionAdapter {
 }
 
 export type SessionEvent =
-  | { type: 'message'; sessionKey: string; message: Message }
   | { type: 'streaming'; sessionKey: string; isStreaming: boolean }
   | { type: 'updated'; sessionKey: string }
   | { type: 'remap'; fromSessionKey: string; toSessionKey: string }
@@ -105,7 +105,7 @@ export interface FileAdapter {
  * Combined backend adapter
  */
 export interface BackendAdapter {
-  readonly type: 'openclaw' | 'claude-code' | 'codex' | 'local';
+  readonly type: 'claude-code' | 'codex' | 'local';
   readonly sessions: SessionAdapter;
   readonly files: FileAdapter;
   readonly crons?: CronAdapter;

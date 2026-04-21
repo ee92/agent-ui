@@ -207,6 +207,16 @@ function normalizeMessage(record, lineNo) {
     return null;
   }
 
+  // Claude Code writes synthetic transcript-only records that the CLI hides
+  // from the user. `isMeta: true` flags SDK-internal resumption prompts like
+  // "Continue from where you left off." — these fire when a session is
+  // resumed after an aborted turn, and should NOT look like user input.
+  // `isVisibleInTranscriptOnly: true` marks the compact-summary essay
+  // (also caught by COMPACT_SUMMARY_PREFIX below, but the flag is cheaper).
+  if (record.isMeta === true || record.isVisibleInTranscriptOnly === true) {
+    return null;
+  }
+
   // Claude Code emits a dedicated compact-boundary system record after every
   // /compact. Render it as a horizontal divider instead of a ghost message.
   if (record.type === "system" && record.subtype === "compact_boundary") {

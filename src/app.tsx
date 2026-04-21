@@ -15,7 +15,6 @@ import { IconButton } from "./components/ui/icon-button";
 import { MenuIcon, PlusIcon } from "./components/ui/icons";
 import { LoadingSkeleton } from "./components/ui/loading-skeleton";
 import { OfflineBanner } from "./components/ui/offline-banner";
-import { SystemFlow } from "./components/flow/system-flow";
 import { TimelinePage } from "./components/timeline/timeline-page";
 import { ProjectsPage } from "./components/projects/projects-page";
 import { SystemPage } from "./components/system/system-page";
@@ -32,7 +31,6 @@ import {
 } from "./lib/store";
 import { useAdapterStore } from "./lib/adapters";
 import { useActivityStore } from "./lib/stores/activity-store";
-import { processGatewayEvent, recordConnectionActivity } from "./lib/stores/process-gateway-event";
 import { useBlockedCount, useReviewCount, useTaskStore } from "./lib/stores/task-store-v2";
 import { extractText } from "./lib/ui-utils";
 import { useHashRouter, navigate } from "./lib/use-hash-router";
@@ -245,10 +243,6 @@ function ChatView({
 export function App() {
   const { route } = useHashRouter();
 
-  const connectionState = useAppStore((s) => s.connectionState);
-  const connectionDetail = useAppStore((s) => s.connectionDetail);
-  const lastGatewayEvent = useAppStore((s) => s.lastGatewayEvent);
-  const gatewayEventVersion = useAppStore((s) => s.gatewayEventVersion);
   const adapterType = useAdapterStore((s) => s.config.type);
   const adapterConnected = useAdapterStore((s) => s.connected);
   const connectAdapter = useAdapterStore((s) => s.connect);
@@ -334,26 +328,12 @@ export function App() {
   }, [adapterConnected]);
 
   useEffect(() => {
-    const readyForInitialLoad =
-      (adapterType === "openclaw" && connectionState === "connected") ||
-      (adapterType !== "openclaw" && adapterConnected);
-    if (readyForInitialLoad) {
+    if (adapterConnected) {
       void refreshSessions();
       void loadFiles();
       if (queuedMessages.length > 0) void flushQueuedMessages();
     }
-  }, [adapterConnected, adapterType, connectionState, flushQueuedMessages, loadFiles, queuedMessages.length, refreshSessions]);
-
-  useEffect(() => {
-    if (adapterType === "openclaw") {
-      processGatewayEvent({ lastGatewayEvent });
-    }
-  }, [adapterType, gatewayEventVersion, lastGatewayEvent]);
-  useEffect(() => {
-    if (adapterType === "openclaw") {
-      recordConnectionActivity(connectionState, connectionDetail);
-    }
-  }, [adapterType, connectionDetail, connectionState]);
+  }, [adapterConnected, flushQueuedMessages, loadFiles, queuedMessages.length, refreshSessions]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -362,7 +342,7 @@ export function App() {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "n") { e.preventDefault(); void createConversation(); }
       if ((e.metaKey || e.ctrlKey) && e.key >= "1" && e.key <= "6") {
         e.preventDefault();
-        const routes = ["#/", "#/flow", "#/files", "#/timeline", "#/projects", "#/system"];
+        const routes = ["#/", "#/files", "#/timeline", "#/projects", "#/system"];
         navigate(routes[parseInt(e.key, 10) - 1]);
       }
       if (e.key === "Escape") {
@@ -405,7 +385,6 @@ export function App() {
 
   const pageTitle =
     currentPage === "files" ? "Files"
-    : currentPage === "flow" ? "System Flow"
     : currentPage === "timeline" ? "Timeline"
     : currentPage === "system" ? "System"
     : currentPage === "chat" ? selectedTitle
@@ -486,8 +465,8 @@ export function App() {
           </div>
 
           <OfflineBanner
-            visible={adapterType === "openclaw" ? connectionState !== "connected" : !adapterConnected}
-            detail={adapterType === "openclaw" ? connectionDetail : `${adapterType} adapter`}
+            visible={!adapterConnected}
+            detail={`${adapterType} adapter`}
           />
 
           {/* Mobile bottom tab bar — pb safe-area keeps the labels above the home indicator */}
@@ -503,14 +482,13 @@ export function App() {
           <div className="hidden shrink-0 items-center justify-between border-b border-white/[0.06] px-5 py-0 xl:flex">
             <div className="flex items-center gap-1">
               <div className="mr-3 flex items-center gap-1.5">
-                <StatusPulse connectionState={adapterType === "openclaw" ? connectionState : (adapterConnected ? "connected" : "disconnected")} blockedCount={blockedCount} reviewCount={reviewCount} agents={agents} />
+                <StatusPulse connectionState={adapterConnected ? "connected" : "disconnected"} blockedCount={blockedCount} reviewCount={reviewCount} agents={agents} />
                 <span className="text-[13px] font-semibold tracking-tight text-zinc-200">
-                  {adapterType === "openclaw" ? "OpenClaw" : adapterType === "claude-code" ? "Claude Code" : "Mission Control"}
+                  {adapterType === "claude-code" ? "Claude Code" : adapterType === "codex" ? "Codex" : "Local"}
                 </span>
               </div>
               <div className="flex items-center gap-0.5 py-2">
                 <NavLink href="#/" label="Dashboard" active={currentPage === "dashboard"} />
-                {adapterType === "openclaw" && <NavLink href="#/flow" label="Flow" active={currentPage === "flow"} />}
                 <NavLink href="#/files" label="Files" active={currentPage === "files"} />
                 <NavLink href="#/timeline" label="Timeline" active={currentPage === "timeline"} />
                 <NavLink href="#/projects" label="Projects" active={currentPage === "projects"} />
@@ -524,16 +502,7 @@ export function App() {
 
           {/* Main view area — reserve space for the fixed tab bar + iOS home-indicator safe area */}
           <div className="flex min-h-0 flex-1 flex-col pb-[calc(3rem+env(safe-area-inset-bottom))] xl:pb-0">
-            {currentPage === "flow" ? (
-              <ErrorBoundary label="System Flow">
-                <SystemFlow
-                  conversations={conversations}
-                  agents={agents}
-                  onOpenSession={openSession}
-                  onQuickSend={quickSend}
-                />
-              </ErrorBoundary>
-            ) : currentPage === "files" ? (
+            {currentPage === "files" ? (
               <ErrorBoundary label="Files">
                 <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-3 xl:p-5">
                   <FileBrowser entries={fileEntries} ready={filesReady} fallback={filesFallback} preview={filePreview} onOpen={openFile} />

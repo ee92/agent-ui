@@ -39,7 +39,7 @@ describe("chat store", () => {
   beforeEach(() => {
     localStorage.clear();
     useAdapterStore.setState({
-      config: { type: "local", gatewayUrl: "ws://localhost", gatewayToken: "token", workspace: "." },
+      config: { type: "local", workspace: "." },
       adapter: mockAdapter,
       connected: true,
     });

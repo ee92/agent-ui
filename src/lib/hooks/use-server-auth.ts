@@ -11,12 +11,12 @@ async function loadServerToken(): Promise<string> {
     pendingToken = fetch("/api/config")
       .then(async (response) => {
         if (!response.ok) {
-          return "openclaw";
+          return "";
         }
         const data = (await response.json()) as { token?: string };
-        return data.token?.trim() || "openclaw";
+        return data.token?.trim() || "";
       })
-      .catch(() => "openclaw")
+      .catch(() => "")
       .then((token) => {
         cachedToken = token;
         pendingToken = null;
@@ -41,5 +41,5 @@ export function useServerToken(): string {
     };
   }, []);
 
-  return token || "openclaw";
+  return token || "";
 }

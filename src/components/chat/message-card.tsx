@@ -143,6 +143,11 @@ export function MessageCard({
               );
             }
             if (part.type === "thinking") {
+              // Hide empty thinking blocks — opus[1m] returns signed-but-redacted
+              // thinking (signature present, text ""), and resumed transcripts
+              // often have the same pattern. Show while streaming so the
+              // "Thinking…" indicator still appears for models that emit deltas.
+              if (part.complete && !part.text.trim()) return null;
               return <ThinkingCard key={`think-${index}`} part={part} />;
             }
             if (part.type === "tool_use") {

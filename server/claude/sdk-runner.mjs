@@ -450,6 +450,15 @@ export function cancelRun(runId) {
 // `startRun` so callers (e.g. /history) can tell the UI what window to expect
 // before a live `session.init` arrives — the API response strips the `[1m]`
 // suffix so without this hint, hydration can't distinguish 1M from 200k.
+//
+// LIMITATION — single-model assumption: this reads a process-wide env var,
+// so if a user runs two concurrent sessions with different models (not
+// currently surfaced in the UI, but possible if CLAUDE_UI_MODEL changes
+// between starts), both get reported as the same tagged model on hydration.
+// The live `session.init` event still carries per-session truth, so the UI
+// self-corrects on the first turn. If per-session model selection becomes a
+// feature, this needs to move from env-var-at-boot to a session→model map
+// threaded through startRun and persisted alongside the transcript.
 export function getConfiguredModel() {
   return process.env.CLAUDE_UI_MODEL || "opus[1m]";
 }
