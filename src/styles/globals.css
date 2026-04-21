@@ -51,10 +51,14 @@
     box-sizing: border-box;
   }
 
+  html,
   body {
     margin: 0;
     min-width: 320px;
     background: var(--color-canvas);
+    /* Kill iOS Safari's pull-to-refresh and vertical bounce so users don't
+       accidentally reload while scrolling a chat transcript. */
+    overscroll-behavior-y: none;
   }
 
   button,
@@ -65,6 +69,8 @@
 
   button {
     cursor: pointer;
+    /* No grey tap flash on iOS — we already style :active/:focus ourselves. */
+    -webkit-tap-highlight-color: transparent;
   }
 
   img {

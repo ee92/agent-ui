@@ -422,8 +422,8 @@ export function App() {
 
         {/* Main content */}
         <div className="flex min-w-0 flex-1 flex-col">
-          {/* Mobile header */}
-          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/[0.06] px-4 py-2 xl:hidden">
+          {/* Mobile header — pt safe-area so title clears the notch when viewport-fit=cover is active */}
+          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/[0.06] px-4 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] xl:hidden">
             <div className="flex min-w-0 items-center gap-2">
               <IconButton label="Open sidebar" onClick={toggleMobileSidebar}><MenuIcon /></IconButton>
               <p className="truncate text-base font-semibold text-white">{pageTitle}</p>
@@ -436,8 +436,8 @@ export function App() {
             detail={adapterType === "openclaw" ? connectionDetail : `${adapterType} adapter`}
           />
 
-          {/* Mobile bottom tab bar */}
-          <div className="fixed bottom-0 left-0 right-0 z-20 flex border-t border-white/[0.06] bg-canvas/95 backdrop-blur-lg xl:hidden">
+          {/* Mobile bottom tab bar — pb safe-area keeps the labels above the home indicator */}
+          <div className="fixed bottom-0 left-0 right-0 z-20 flex border-t border-white/[0.06] bg-canvas/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-lg xl:hidden">
             <MobileTabLink href="#/" label="Home" active={currentPage === "dashboard"} />
             <MobileTabLink href="#/files" label="Files" active={currentPage === "files"} />
             <MobileTabLink href="#/timeline" label="Timeline" active={currentPage === "timeline"} />
@@ -468,8 +468,8 @@ export function App() {
             </button>
           </div>
 
-          {/* Main view area */}
-          <div className="flex min-h-0 flex-1 flex-col pb-12 xl:pb-0">
+          {/* Main view area — reserve space for the fixed tab bar + iOS home-indicator safe area */}
+          <div className="flex min-h-0 flex-1 flex-col pb-[calc(3rem+env(safe-area-inset-bottom))] xl:pb-0">
             {currentPage === "flow" ? (
               <ErrorBoundary label="System Flow">
                 <SystemFlow
