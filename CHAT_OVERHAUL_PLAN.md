@@ -727,12 +727,13 @@ User feedback after shipping context-bar:
    - Transcript resume path has its own extraction (`extractTextParts` → `thinkingParts`). Check it's fed into `MessageContentPart[]` not discarded.
    - Files: `src/lib/stores/chat-store.ts` (block delta handler), `server/claude/transcript-parser.mjs`, `src/components/chat/message-card.tsx` or `src/components/chat/parts/*`.
 
-2. **Message action buttons are over-prominent.** Too many buttons per message, each too large.
+2. **[DONE]** **Message action buttons are over-prominent.** Too many buttons per message, each too large.
    - Keep: Copy, Create-task (low priority — could stay in a menu)
-   - User messages only: add **Rewind to here** — truncates conversation to that point and re-prompts from there. Needs transcript rewrite + session replay (non-trivial).
+   - User messages only: add **Rewind to here** — truncates conversation to that point and re-prompts from there. Needs transcript rewrite + session replay (non-trivial). (Still open; not part of this pass.)
    - Remove: Retry, Hide, other per-message clutter from assistant messages.
    - Consolidation: collapse into a `⋯` overflow button in the top-right of the bubble. Or: always-small (14px) icons hidden behind hover on desktop, tap-to-reveal on mobile.
    - Files: `src/components/chat/message-card.tsx`.
+   - **Resolution:** collapsed all four actions (Copy / Create task / Retry / Hide) behind a single kebab `⋯` button in the top-right of every bubble. Dropdown opens via portal to escape transcript overflow, closes on outside click or Escape. Kebab is dim-until-hover on desktop, always visible on mobile. Net: bubble footprint dropped by ~44px of chrome per message.
 
 3. **Stop button disappears after page refresh during a run.** If the page reloads mid-stream, the UI has no Stop affordance even though the run is still active on the backend.
    - Root cause: the initial SSE/WebSocket connection doesn't reattach to in-flight streams. Streaming state is local-only and gets reset on reload.
@@ -925,7 +926,7 @@ User feedback after shipping context-bar:
 
 ### Context window starts at 200k on refresh, snaps to 1M after next turn
 
-35. **Context-window indicator lies until the first assistant response.** Reload the page on any 1M-mode conversation → the context bar reads `77.1k / 200k` (39%). Send a message, wait for the reply → the bar jumps to `77.1k / 1M` (8%). The tokens didn't change; only the denominator did, because the 1M tag only reaches the UI via the live `session.init` event. Fingerprint and fix:
+35. **[DONE]** **Context-window indicator lies until the first assistant response.** Reload the page on any 1M-mode conversation → the context bar reads `77.1k / 200k` (39%). Send a message, wait for the reply → the bar jumps to `77.1k / 1M` (8%). The tokens didn't change; only the denominator did, because the 1M tag only reaches the UI via the live `session.init` event. Fingerprint and fix:
     - The API strips the `[1m]` tag on its way out: `assistant.message.model` is always `"claude-opus-4-7"`, even when `--betas context-1m-2025-08-07` is active.
     - The runtime `system.init` event (emitted once per `query()` by the SDK) carries the tagged string `"claude-opus-4-7[1m]"`. Commit `c4723b4` wired init → `conversation.contextModel/contextWindow` — this is why a turn fixes it.
     - The transcript `.jsonl` never persists the init record. `server/claude/transcript-parser.mjs` only exposes `lastUsage` (model, input/output/cache tokens), all API-shape, so the tag is already gone. On refresh, the adapter emits a synthetic `session.usage` with that stripped model → the store's regex fails to match 1M → `contextWindow = 200_000` (see `src/lib/stores/chat-store.ts:466-485`).
@@ -935,3 +936,8 @@ User feedback after shipping context-bar:
       - **Nuclear:** persist init's model into the transcript on our own sidecar file (e.g. `<sessionId>.meta.json`) since Claude Code won't. More moving parts than it's worth.
     - Files: `server/claude/sdk-runner.mjs` (export runner model), `server/claude/transcript-parser.mjs` (pipe through `runnerModel` or compute the token-exceeds-200k heuristic), `server/claude/session-index.mjs` (may need to update the history handler shape), `src/lib/adapters/claude-code-adapter.ts` (prefer runnerModel), `src/lib/stores/chat-store.ts` (use the preferred model in `session.usage` fallback branch).
     - Verify by: reload `http://127.0.0.1:18795/#/chat/…` on any Opus-1M session; the bar must read `/1M` before any user turn is sent. Current behavior on `e1845fe8-bf3f-4979-97f2-55341616453e`: reads `/200k`.
+    - **Resolution:** went with "Preferred" option. `sdk-runner.mjs` exports `getConfiguredModel()`; `serve.mjs` `/history` includes it as `runnerModel`; `claude-code-adapter.ts` `history()` synthesizes a `session.init` with that model *before* emitting the synthetic `session.usage`, so the store's existing init handler sets the right window on resume. Simplified `session.usage` handler (dropped `stripTag`/`sameFamily`/`shouldUpdateModel` workaround block) — net negative LOC.
+
+### Status pill stale after /compact
+
+36. **[DONE]** Status pill doesn't update when `/compact` runs — stays frozen at the pre-compact token count until the next assistant turn fires a `session.usage`. The `compact_boundary` divider in the transcript shows the correct `pre → post` numbers, so the data is clearly in flight; `sdk-runner` emits `session.compact_boundary` carrying `postTokens`; `chat-store` was explicitly dropping that event ("forwarded for future UI rendering; silently dropped for now"). Fixed by wiring the handler to patch `contextTokens` from `postTokens` immediately. Component sub-totals (input/cache/output) get refreshed on the next assistant turn.
