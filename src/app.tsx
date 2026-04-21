@@ -354,6 +354,12 @@ export function App() {
         navigate(routes[parseInt(e.key, 10) - 1]);
       }
       if (e.key === "Escape") {
+        // Priority: if the mobile drawer is open, Escape just closes it —
+        // don't also navigate away from the current page.
+        if (useUiStore.getState().mobileSidebarOpen) {
+          closeMobileSidebar();
+          return;
+        }
         if (currentPage === "chat") navigate("#/");
         closeOverlays();
       }
@@ -553,12 +559,19 @@ export function App() {
         </div>
       </div>
 
-      {/* Mobile sidebar overlay */}
+      {/* Mobile sidebar drawer — backdrop fades, panel slides in from the left */}
       <div
-        className={`fixed inset-0 z-30 bg-black/60 transition xl:hidden ${mobileSidebarOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"}`}
+        aria-hidden={!mobileSidebarOpen}
+        className={`fixed inset-0 z-30 bg-black/60 transition-opacity duration-200 ease-out xl:hidden ${mobileSidebarOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"}`}
         onClick={closeMobileSidebar}
       >
-        <div className="h-full w-full max-w-[340px] overflow-hidden border-r border-white/[0.06] bg-canvas" onClick={(e) => e.stopPropagation()}>
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Navigation sidebar"
+          className={`h-full w-full max-w-[340px] overflow-hidden border-r border-white/[0.06] bg-canvas pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] shadow-2xl transition-transform duration-200 ease-out will-change-transform ${mobileSidebarOpen ? "translate-x-0" : "-translate-x-full"}`}
+          onClick={(e) => e.stopPropagation()}
+        >
           <div className="h-full scroll-soft overflow-y-auto p-3">{sidebar}</div>
         </div>
       </div>
