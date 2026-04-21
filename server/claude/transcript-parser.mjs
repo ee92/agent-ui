@@ -19,63 +19,112 @@ function normalizeRole(raw) {
   return null;
 }
 
-function extractToolUse(block) {
-  if (!block || typeof block !== "object") {
-    return null;
+// Normalize a tool_result block's content into the shape the frontend expects:
+// Array<{ type: "text"; text: string }>. Transcripts store this as either
+// a plain string or an array of typed blocks; we coerce everything to text.
+function normalizeToolResultContent(raw) {
+  if (raw == null) return [];
+  if (typeof raw === "string") {
+    return raw ? [{ type: "text", text: raw }] : [];
   }
-  if (block.type !== "tool_use") {
-    return null;
+  if (Array.isArray(raw)) {
+    const out = [];
+    for (const block of raw) {
+      if (typeof block === "string") {
+        if (block) out.push({ type: "text", text: block });
+        continue;
+      }
+      if (!block || typeof block !== "object") continue;
+      if (typeof block.text === "string" && block.text) {
+        out.push({ type: "text", text: block.text });
+      } else if (typeof block.content === "string" && block.content) {
+        out.push({ type: "text", text: block.content });
+      } else {
+        // Fallback: JSON-stringify the block so nothing is silently dropped.
+        try {
+          out.push({ type: "text", text: JSON.stringify(block) });
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+    return out;
   }
-  const name = typeof block.name === "string" ? block.name : "tool";
-  const input = block.input && typeof block.input === "object" ? JSON.stringify(block.input) : "";
-  return `[tool_use:${name}]${input ? ` ${input}` : ""}`;
+  if (typeof raw === "object") {
+    try {
+      return [{ type: "text", text: JSON.stringify(raw) }];
+    } catch {
+      return [];
+    }
+  }
+  return [];
 }
 
-function extractTextParts(content) {
-  const textParts = [];
-  const thinkingParts = [];
-
-  const consumeBlock = (block) => {
-    if (typeof block === "string") {
-      textParts.push(block);
-      return;
-    }
-    if (!block || typeof block !== "object") {
-      return;
-    }
-
-    if (typeof block.text === "string" && (block.type === "text" || !block.type)) {
-      textParts.push(block.text);
-    }
-
-    if (typeof block.thinking === "string") {
-      thinkingParts.push(block.thinking);
-    }
-
-    if (typeof block.content === "string" && !block.type) {
-      textParts.push(block.content);
-    }
-
-    const toolUse = extractToolUse(block);
-    if (toolUse) {
-      textParts.push(toolUse);
-    }
-  };
+// Convert one assistant/user message's raw `content` into structured parts that
+// match the frontend MessageContentPart union. Tool_result blocks are returned
+// as a synthetic { type: "tool_result", ... } part so the caller can route them
+// onto the matching tool_use from a prior assistant turn.
+function extractParts(content) {
+  const parts = [];
 
   if (typeof content === "string") {
-    textParts.push(content);
-  } else if (Array.isArray(content)) {
-    for (const block of content) {
-      consumeBlock(block);
+    if (content.trim()) parts.push({ type: "text", text: content });
+    return parts;
+  }
+  if (!Array.isArray(content)) {
+    if (content && typeof content === "object") {
+      return extractParts([content]);
     }
-  } else {
-    consumeBlock(content);
+    return parts;
   }
 
-  return {
-    content: textParts.join("\n").trim(),
-    thinking: thinkingParts.join("\n\n").trim() || undefined,
-  };
+  for (const block of content) {
+    if (typeof block === "string") {
+      if (block.trim()) parts.push({ type: "text", text: block });
+      continue;
+    }
+    if (!block || typeof block !== "object") continue;
+
+    const t = block.type;
+
+    if (t === "text" || (!t && typeof block.text === "string")) {
+      const text = typeof block.text === "string" ? block.text : "";
+      if (text.trim()) parts.push({ type: "text", text });
+      continue;
+    }
+
+    if (t === "thinking") {
+      const text = typeof block.thinking === "string" ? block.thinking : "";
+      if (text.trim()) parts.push({ type: "thinking", text, complete: true });
+      continue;
+    }
+
+    if (t === "tool_use") {
+      parts.push({
+        type: "tool_use",
+        id: typeof block.id === "string" ? block.id : `tu-${parts.length}`,
+        name: typeof block.name === "string" ? block.name : "tool",
+        input: block.input ?? {},
+        inputComplete: true,
+      });
+      continue;
+    }
+
+    if (t === "tool_result") {
+      // Synthetic part — the main loop folds this into the matching tool_use.
+      parts.push({
+        type: "tool_result",
+        toolUseId: typeof block.tool_use_id === "string" ? block.tool_use_id : null,
+        isError: Boolean(block.is_error),
+        content: normalizeToolResultContent(block.content),
+      });
+      continue;
+    }
+
+    // Unknown block type — skip silently.
+  }
+
+  return parts;
 }
 
 function pickTimestamp(record) {
@@ -89,6 +138,8 @@ function pickTimestamp(record) {
   );
 }
 
+// Build the structured message + the raw parts array (which may still include
+// a `tool_result` sentinel that the main loop will fold away).
 function normalizeMessage(record, lineNo) {
   if (!record || typeof record !== "object") {
     return null;
@@ -105,7 +156,7 @@ function normalizeMessage(record, lineNo) {
   }
 
   const payload = record.message && typeof record.message === "object" ? record.message : record;
-  const extracted = extractTextParts(payload.content ?? payload.text ?? record.content ?? record.text ?? "");
+  const parts = extractParts(payload.content ?? payload.text ?? record.content ?? record.text ?? "");
 
   return {
     id:
@@ -113,9 +164,8 @@ function normalizeMessage(record, lineNo) {
       (typeof record.id === "string" && record.id) ||
       `line-${lineNo}`,
     role,
-    content: extracted.content,
+    parts,
     timestamp: pickTimestamp(record),
-    thinking: extracted.thinking,
   };
 }
 
@@ -132,15 +182,43 @@ function extractUsage(record) {
   };
 }
 
+// Collapse an array of parts into a short plain-text preview for the sidebar.
+function previewFromParts(parts) {
+  if (!Array.isArray(parts)) return "";
+  for (const part of parts) {
+    if (part && part.type === "text" && typeof part.text === "string" && part.text.trim()) {
+      return part.text.trim();
+    }
+  }
+  // Fall back to first tool_use name so the preview isn't blank when the final
+  // assistant turn is pure-tool.
+  for (const part of parts) {
+    if (part && part.type === "tool_use" && typeof part.name === "string") {
+      return `[${part.name}]`;
+    }
+  }
+  return "";
+}
+
+function titleFromParts(parts) {
+  if (!Array.isArray(parts)) return "";
+  for (const part of parts) {
+    if (part && part.type === "text" && typeof part.text === "string" && part.text.trim()) {
+      return part.text.trim();
+    }
+  }
+  return "";
+}
+
 export async function parseTranscript(transcriptPath, options = {}) {
   const limit = Number.isFinite(options.limit) && options.limit > 0 ? options.limit : null;
-  const messages = [];
+  const rawMessages = [];
   let malformedLines = 0;
 
   let createdAt = null;
   let updatedAt = null;
   let firstUserText = "";
-  let lastAssistantText = "";
+  let lastAssistantParts = null;
   let lastUsage = null;
 
   const input = createReadStream(transcriptPath, { encoding: "utf8" });
@@ -149,9 +227,7 @@ export async function parseTranscript(transcriptPath, options = {}) {
   let lineNo = 0;
   for await (const line of readline) {
     lineNo += 1;
-    if (!line.trim()) {
-      continue;
-    }
+    if (!line.trim()) continue;
 
     let parsed;
     try {
@@ -162,36 +238,79 @@ export async function parseTranscript(transcriptPath, options = {}) {
     }
 
     const message = normalizeMessage(parsed, lineNo);
-    if (!message) {
-      continue;
-    }
+    if (!message) continue;
 
-    if (!createdAt) {
-      createdAt = message.timestamp;
-    }
+    if (!createdAt) createdAt = message.timestamp;
     updatedAt = message.timestamp;
 
-    if (!firstUserText && message.role === "user" && message.content) {
-      firstUserText = message.content;
-    }
-    if (message.role === "assistant" && message.content) {
-      lastAssistantText = message.content;
+    if (!firstUserText && message.role === "user") {
+      const t = titleFromParts(message.parts);
+      if (t) firstUserText = t;
     }
     if (message.role === "assistant") {
+      if (message.parts.length > 0) lastAssistantParts = message.parts;
       const u = extractUsage(parsed);
       if (u) lastUsage = u;
     }
 
-    messages.push(message);
-    if (limit && messages.length > limit) {
-      messages.shift();
-    }
+    rawMessages.push(message);
   }
 
-  const previewSource = lastAssistantText || messages[messages.length - 1]?.content || "";
+  // Second pass: fold user `tool_result` parts into the matching `tool_use`
+  // on a prior assistant turn, and drop messages that end up with zero parts.
+  const toolUseMap = new Map();
+  const finalMessages = [];
+  for (const msg of rawMessages) {
+    if (msg.role === "assistant") {
+      for (const part of msg.parts) {
+        if (part && part.type === "tool_use" && typeof part.id === "string") {
+          toolUseMap.set(part.id, part);
+        }
+      }
+      if (msg.parts.length > 0) finalMessages.push(msg);
+      continue;
+    }
+
+    if (msg.role === "user") {
+      const kept = [];
+      for (const part of msg.parts) {
+        if (part && part.type === "tool_result") {
+          const target = part.toolUseId ? toolUseMap.get(part.toolUseId) : null;
+          if (target) {
+            target.result = {
+              isError: Boolean(part.isError),
+              content: Array.isArray(part.content) ? part.content : [],
+            };
+          }
+          // Drop the tool_result part from the user bubble either way —
+          // if the parent tool_use wasn't captured, the result would still
+          // render as an orphan that the renderer doesn't know how to show.
+          continue;
+        }
+        kept.push(part);
+      }
+      if (kept.length > 0) {
+        finalMessages.push({ ...msg, parts: kept });
+      }
+      continue;
+    }
+
+    // system / other roles — keep only if they have real parts.
+    if (msg.parts.length > 0) finalMessages.push(msg);
+  }
+
+  // Apply `limit` AFTER folding so truncation doesn't orphan a tool_use from
+  // its tool_result.
+  const trimmed = limit && finalMessages.length > limit
+    ? finalMessages.slice(finalMessages.length - limit)
+    : finalMessages;
+
+  const previewSource = lastAssistantParts
+    ? previewFromParts(lastAssistantParts)
+    : previewFromParts(trimmed[trimmed.length - 1]?.parts || []);
 
   return {
-    messages,
+    messages: trimmed,
     metadata: {
       createdAt: createdAt || new Date().toISOString(),
       updatedAt: updatedAt || createdAt || new Date().toISOString(),

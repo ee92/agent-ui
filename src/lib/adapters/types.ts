@@ -9,6 +9,13 @@ export interface Message {
   content: string;
   timestamp: string;
   thinking?: string;
+  /**
+   * Structured content parts. When present (Claude Code history path), the
+   * store uses these directly so tool_use / thinking blocks render as cards
+   * rather than being collapsed into the flat `content` string. Falls back
+   * to wrapping `content` when absent (OpenClaw, Codex, legacy responses).
+   */
+  parts?: import('../types').MessageContentPart[];
 }
 
 export interface SessionInfo {

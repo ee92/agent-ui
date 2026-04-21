@@ -850,15 +850,33 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
       return;
     }
     try {
-      const messages = (await adapter.sessions.history(key)).map((message) => ({
-        id: message.id,
-        role: message.role,
-        parts: [{ type: "text" as const, text: message.content }],
-        createdAt: message.timestamp,
-        pending: false,
-        hidden: hiddenMessageIds.includes(message.id),
-        runId: message.id,
-      }));
+      const rawMessages = await adapter.sessions.history(key);
+      const messages = rawMessages
+        .map((message) => {
+          // Prefer structured `parts` (Claude Code transcript parser returns
+          // tool_use / thinking / text parts directly). Fall back to wrapping
+          // `content` as a single text part for legacy / other adapters.
+          let parts: ChatMessage["parts"];
+          if (message.parts && message.parts.length > 0) {
+            parts = message.parts;
+          } else if (message.content && message.content.trim()) {
+            parts = [{ type: "text" as const, text: message.content }];
+          } else {
+            parts = [];
+          }
+          return {
+            id: message.id,
+            role: message.role,
+            parts,
+            createdAt: message.timestamp,
+            pending: false,
+            hidden: hiddenMessageIds.includes(message.id),
+            runId: message.id,
+          };
+        })
+        // Drop ghost messages that have no renderable parts — this was the
+        // root cause of empty bubbles on resume.
+        .filter((m) => m.parts.length > 0);
       set({
         messagesByConversation: { ...get().messagesByConversation, [key]: messages },
         loadingConversationKey: null

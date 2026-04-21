@@ -73,15 +73,30 @@ const FALLBACK_SLASH_COMMANDS: SlashCommandSuggestion[] = slashCommandsFromStrin
 
 function normalizeMessage(raw: unknown): Message {
   const source = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  const parts = Array.isArray(source.parts)
+    ? (source.parts as Message["parts"])
+    : undefined;
+  // Derive a flat `content` from text parts so anything that still reads
+  // `message.content` (legacy code, previews, copy-to-clipboard, …) stays
+  // working. Non-text parts are left to the structured-parts consumer.
+  let content = typeof source.content === "string" ? source.content : "";
+  if (!content && parts) {
+    content = parts
+      .filter((p): p is { type: "text"; text: string } => p?.type === "text")
+      .map((p) => p.text)
+      .join("\n")
+      .trim();
+  }
   return {
     id: typeof source.id === "string" ? source.id : crypto.randomUUID(),
     role:
       source.role === "user" || source.role === "assistant" || source.role === "system"
         ? source.role
         : "assistant",
-    content: typeof source.content === "string" ? source.content : "",
+    content,
     timestamp: typeof source.timestamp === "string" ? source.timestamp : nowIso(),
     thinking: typeof source.thinking === "string" ? source.thinking : undefined,
+    parts,
   };
 }
 
