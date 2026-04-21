@@ -48,8 +48,35 @@ export function ChatComposer({
     if (!element) {
       return;
     }
-    element.style.height = "0px";
-    element.style.height = `${Math.min(element.scrollHeight, 220)}px`;
+    // Composer height policy:
+    //   empty  -> exactly one line (LINE_HEIGHT + PADDING_Y = 40px)
+    //   typing -> grow with scrollHeight, capped so we never dominate small screens
+    //   over cap -> internal scroll
+    // We measure by collapsing to MIN first, so scrollHeight reports content-only
+    // and never inherits the placeholder's wrapped height.
+    const LINE_HEIGHT = 24; // matches `leading-6`
+    const PADDING_Y = 16; // `py-2` top+bottom
+    const MIN_H = LINE_HEIGHT + PADDING_Y; // 40px — one visible line
+
+    const resize = () => {
+      // Cap at ~40% of the dynamic viewport, with a floor and ceiling.
+      // On a 700px phone that's 280px (~7 lines). On a 450px landscape that's 180px (~4 lines).
+      const cap = Math.max(MIN_H * 2, Math.min(320, Math.round(window.innerHeight * 0.4)));
+      if (element.value.length === 0) {
+        element.style.height = `${MIN_H}px`;
+        element.style.overflowY = "hidden";
+        return;
+      }
+      element.style.height = `${MIN_H}px`;
+      const content = element.scrollHeight;
+      const next = Math.min(Math.max(content, MIN_H), cap);
+      element.style.height = `${next}px`;
+      element.style.overflowY = content > cap ? "auto" : "hidden";
+    };
+
+    resize();
+    window.addEventListener("resize", resize);
+    return () => window.removeEventListener("resize", resize);
   }, [draft]);
 
   const updateSuggestions = (value: string) => {
@@ -195,8 +222,8 @@ export function ChatComposer({
             value={draft}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
-            placeholder="Message agent — type / for commands, # for tasks, @ for agents"
-            className="max-h-[220px] min-h-9 flex-1 resize-none bg-transparent py-2 text-base leading-6 text-white outline-none placeholder:text-zinc-600 xl:min-h-[56px]"
+            placeholder="Message agent"
+            className="flex-1 resize-none bg-transparent py-2 text-base leading-6 text-white outline-none placeholder:text-zinc-600"
           />
           {isStreaming ? (
             <button

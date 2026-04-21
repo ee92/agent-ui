@@ -904,3 +904,21 @@ User feedback after shipping context-bar:
       - A concrete token diff to `src/styles/*` or Tailwind config: font stacks, color tokens, spacing scale, typography scale.
       - Before/after screenshots on desktop + phone.
     - **Files:** new `docs/READABILITY.md`, `tailwind.config.*`, `src/index.css` (or design tokens file), `src/components/chat/markdown.tsx`, `src/components/chat/message-card.tsx`, `src/components/chat/parts/*`.
+
+### Compaction artifacts leak into rendered transcript
+
+34. **Claude Code's compaction plumbing renders as real messages.** Verified against `-home-clawd-projects::e1845fe8-bf3f-4979-97f2-55341616453e`, which has been compacted **54 times** (19MB, 6451-line `.jsonl`). After every `/compact`, Claude Code writes two records to the transcript:
+    1. `{"type":"system","subtype":"compact_boundary","content":"Conversation compacted","compactMetadata":{preTokens, postTokens, durationMs, ...}}`
+    2. `{"type":"user","message":{"role":"user","content":"This session is being continued from a previous conversation that ran out of context.\n\nSummary:\n..."}}` — the synthetic re-seed prompt containing the model's multi-thousand-word summary of the prior window.
+    Our parser has zero handling for either. Result: every compaction shows up in the UI as (a) a silently-swallowed system line and (b) a giant user bubble that looks like the human sent a wall of text they never wrote. Compounds: 54 compactions → 54 ghost-essays in this one session.
+    - User messages in the transcript also contain Claude Code harness tags that render as literal text because the markdown pipeline doesn't strip them:
+      - `<system-reminder>…</system-reminder>` (TodoWrite reminders, deferred-tool notifications, available-skills listings)
+      - `<local-command-caveat>…</local-command-caveat>` (wrapper around slash-command stdout)
+      - `<command-name>…</command-name>`, `<command-message>…</command-message>`, `<command-args>…</command-args>` (slash-command invocation metadata)
+      - `<bash-input>…</bash-input>`, `<bash-stdout>…</bash-stdout>`, `<bash-stderr>…</bash-stderr>` (from `!` bash mode)
+    - Fix direction:
+      - **Parser (`server/claude/transcript-parser.mjs`)** — recognize `type:"system"` + `subtype:"compact_boundary"` and emit a dedicated `compact_boundary` message variant carrying `preTokens/postTokens/durationMs/trigger`. Detect the synthetic summary user message (heuristic: first user message after a boundary, or content starts with the literal `"This session is being continued from a previous conversation"` sentinel) and either drop it entirely — its value is for the model, not the human — or attach it as metadata on the boundary marker so it can be shown on demand ("Show summary").
+      - **Renderer** — render the boundary as a slim horizontal divider: `— Conversation compacted · 176k → 5.7k tokens · 1m46s —`. Never as a bubble.
+      - **Tag stripping** — before markdown parse, strip or fold the harness tags above. Either regex-strip (cleanest for model-facing noise the human never intended to send) or render as dimmed collapsed `<details>` chips labeled "system reminder" / "slash-command output" so power users can audit what reached the model. Default: strip.
+    - Also expose compaction count + ratio in the session header (e.g. sidebar tooltip: "compacted 54×"), since a heavily-compacted session is a different beast (smaller retained context, more summary-of-summary drift). Ties into feedback about 1M context quality degradation.
+    - Files: `server/claude/transcript-parser.mjs` (detect boundary + synthetic summary), `src/lib/types.ts` (new message variant or `MessageContentPart` kind), `src/components/chat/message-card.tsx` (render divider), `src/components/chat/markdown.tsx` (tag-stripping pre-pass), possibly `src/components/chat/parts/text-part.tsx`.
