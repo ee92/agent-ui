@@ -103,6 +103,16 @@ function PencilIcon() {
   );
 }
 
+function DownloadIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="7 10 12 15 17 10" />
+      <line x1="12" y1="15" x2="12" y2="3" />
+    </svg>
+  );
+}
+
 /** Check if a conversation matches a filter tab */
 function matchesTab(conversation: Conversation, tab: FilterTab): boolean {
   const kind = conversation.kind || "unknown";
@@ -137,6 +147,7 @@ export function ConversationSidebar({
   onSelect,
   onDelete,
   onRename,
+  onExport,
   onNewChat,
   onToggleFilesMode,
 }: {
@@ -150,6 +161,7 @@ export function ConversationSidebar({
   onSelect: (key: string) => void;
   onDelete: (key: string) => void;
   onRename: (key: string, title: string) => void;
+  onExport: (key: string) => void;
   onNewChat: () => void;
   onToggleFilesMode: () => void;
 }) {
@@ -463,6 +475,18 @@ export function ConversationSidebar({
                                       >
                                         <PencilIcon />
                                         Rename
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          onExport(conversation.key);
+                                          setMenuKey(null);
+                                        }}
+                                        className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm text-zinc-300 hover:bg-white/[0.06]"
+                                      >
+                                        <DownloadIcon />
+                                        Export markdown
                                       </button>
                                       <button
                                         type="button"

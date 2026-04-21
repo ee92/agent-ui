@@ -811,7 +811,7 @@ User feedback after shipping context-bar:
 
 ### Session management
 
-19. **Export conversation** as markdown. One-click from the session's kebab menu. Includes tool calls collapsed as code fences. Plain markdown, no frontmatter.
+19. **[DONE]** **Export conversation** as markdown. One-click from the session's kebab menu. Includes tool calls collapsed as code fences. Plain markdown, no frontmatter.
     - Files: new `src/lib/export-conversation.ts`, sidebar kebab menu.
 
 20. **Pin/favorite sessions + folder grouping.** Sidebar section for pinned at top. Optional folder grouping by `cwd` prefix (already have `~/projects/*` structure). Drag to pin, right-click to assign folder.

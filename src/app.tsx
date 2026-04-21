@@ -3,6 +3,11 @@ import { TaskContextCard } from "./components/tasks/task-context-card";
 import { ChatComposer } from "./components/chat/chat-composer";
 import { ContextBar } from "./components/chat/context-bar";
 import { ConversationSidebar } from "./components/chat/conversation-sidebar";
+import {
+  downloadMarkdown,
+  messagesToMarkdown,
+  slugForFilename,
+} from "./lib/export-markdown";
 import { MessageCard } from "./components/chat/message-card";
 import { FileBrowser } from "./components/files/file-browser";
 import { ErrorBoundary } from "./components/ui/error-boundary";
@@ -406,6 +411,41 @@ export function App() {
     : currentPage === "chat" ? selectedTitle
     : "Dashboard";
 
+  const exportConversation = useCallback(
+    async (key: string) => {
+      const conv = conversations.find((c) => c.key === key);
+      const title = conv?.title || "Conversation";
+      let messages = messagesByConversation[key];
+      // Hydrate from disk if the user hasn't opened this session yet — export
+      // shouldn't force them to open it first, which is disruptive on mobile.
+      if (!messages || messages.length === 0) {
+        try {
+          const adapter = useAdapterStore.getState().adapter;
+          const raw = await adapter.sessions.history(key);
+          messages = raw.map((m, i) => ({
+            id: m.id || `line-${i}`,
+            role: m.role,
+            parts:
+              m.parts && m.parts.length > 0
+                ? m.parts
+                : m.content && m.content.trim()
+                  ? [{ type: "text" as const, text: m.content }]
+                  : [],
+            createdAt: m.timestamp || new Date().toISOString(),
+          }));
+        } catch (err) {
+          console.error("[export] history fetch failed", err);
+          // Fall through to whatever we have (possibly empty).
+          messages = messages || [];
+        }
+      }
+      const markdown = messagesToMarkdown(title, messages);
+      const stamp = new Date().toISOString().slice(0, 10);
+      downloadMarkdown(`${slugForFilename(title)}-${stamp}.md`, markdown);
+    },
+    [conversations, messagesByConversation]
+  );
+
   const sidebar = (
     <ConversationSidebar
       conversations={conversations}
@@ -418,6 +458,7 @@ export function App() {
       onSelect={openSession}
       onDelete={(key) => void deleteConversation(key)}
       onRename={(key, title) => void renameConversation(key, title)}
+      onExport={(key) => void exportConversation(key)}
       onNewChat={() => void createConversation()}
       onToggleFilesMode={() => navigate("#/files")}
     />
