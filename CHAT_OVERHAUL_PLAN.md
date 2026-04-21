@@ -835,16 +835,18 @@ User feedback after shipping context-bar:
 
 ### Composer sizing & reading mode
 
-25. **Composer auto-sizes: small when empty, grows with content.** Current composer is too tall at rest. Goal: single-line height when empty (~40–44px), auto-grow per line up to a cap (say 50% of viewport height), then internal scroll. Plain `textarea` with JS-driven height: reset to `auto`, read `scrollHeight`, clamp to max. Debounce on `input`. The current size-when-full is good — just shrink the empty state.
+25. **[DONE]** **Composer auto-sizes: small when empty, grows with content.** Current composer is too tall at rest. Goal: single-line height when empty (~40–44px), auto-grow per line up to a cap (say 50% of viewport height), then internal scroll. Plain `textarea` with JS-driven height: reset to `auto`, read `scrollHeight`, clamp to max. Debounce on `input`. The current size-when-full is good — just shrink the empty state.
     - Files: `src/components/chat/chat-composer.tsx`.
+    - **Resolution:** the auto-size logic already existed; it was the surrounding chrome that made the composer feel tall. Trimmed outer wrapper `p-2.5` → `p-1.5`, inner dropzone `p-2.5` → `px-2 py-1`, and wrapper around ContextBar + ChatComposer from `pb-2 pt-2` → `pb-1 pt-1` (mobile only; desktop unchanged). Dropped the mobile-visible "Enter to send" hint row. Net: the empty-state composer chrome shrunk by ~18–22px.
 
-26. **Footer/menu bar overlaps composer as it grows.** As the textarea expands with content, the fixed bottom action/menu bar starts covering the bottom of the composer, hiding text and buttons.
+26. **[DONE]** **Footer/menu bar overlaps composer as it grows.** As the textarea expands with content, the fixed bottom action/menu bar starts covering the bottom of the composer, hiding text and buttons.
     - Root cause likely: composer is positioned absolutely or fixed and the footer sits at a fixed z-order/position that assumes a static composer height.
     - Fix options:
       - Stack composer *above* the footer in normal flow so the footer naturally pushes down the page (cleanest).
       - Or: make the footer sticky-at-bottom-of-viewport with composer reserving space via `padding-bottom`, and have the composer's max-height respect `100dvh - footer - context-bar - header` so it never overlaps.
     - Also: context bar above composer should stack cleanly with the growing textarea.
     - Files: `src/app.tsx` (layout), `src/components/chat/chat-composer.tsx`, any bottom nav/footer component.
+    - **Resolution:** the layout was already structurally correct (chat view is a flex column inside a wrapper that reserves `pb-[calc(3rem+env(safe-area-inset-bottom))]` for the mobile tab bar). What leaked was the composer's growth cap — 40% of innerHeight was too generous once you added context bar + tab bar reservation, so a long message could still push visually into the reserved area. Dropped the cap to 32% of `window.innerHeight` (with a hard ceiling of 280px). Combined with the #25 chrome trim, the composer now comfortably coexists with the tab bar on every viewport tested.
 
 27. **Full-screen reading mode.** A toggle that hides sidebar, header, composer, footer — everything except the message list — for distraction-free reading of long replies.
     - Keybind: maybe `Cmd+.` or a dedicated button (expand icon) near the model badge / context bar.

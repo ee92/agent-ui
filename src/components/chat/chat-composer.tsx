@@ -59,9 +59,11 @@ export function ChatComposer({
     const MIN_H = LINE_HEIGHT + PADDING_Y; // 40px — one visible line
 
     const resize = () => {
-      // Cap at ~40% of the dynamic viewport, with a floor and ceiling.
-      // On a 700px phone that's 280px (~7 lines). On a 450px landscape that's 180px (~4 lines).
-      const cap = Math.max(MIN_H * 2, Math.min(320, Math.round(window.innerHeight * 0.4)));
+      // Cap the textarea at ~32% of the dynamic viewport. Below that we still
+      // leave room for the context bar, the mobile tab bar (≈3rem + safe-area),
+      // and the send button — so growth never pushes the composer off-screen
+      // or under the fixed tab bar. On a 700px phone that's ~224px (~6 lines).
+      const cap = Math.max(MIN_H * 2, Math.min(280, Math.round(window.innerHeight * 0.32)));
       if (element.value.length === 0) {
         element.style.height = `${MIN_H}px`;
         element.style.overflowY = "hidden";
@@ -207,7 +209,7 @@ export function ChatComposer({
   };
 
   return (
-    <div className="bg-white/[0.03] p-2.5 xl:rounded-lg xl:border xl:border-white/[0.06] xl:p-3">
+    <div className="bg-white/[0.03] p-1.5 xl:rounded-lg xl:border xl:border-white/[0.06] xl:p-3">
       {attachments.length > 0 ? (
         <div className="mb-3 flex flex-wrap gap-2">
           {attachments.map((attachment) => {
@@ -272,7 +274,7 @@ export function ChatComposer({
             onAttach(event.dataTransfer.files);
           }
         }}
-        className="rounded-lg bg-black/25 p-2.5 xl:border xl:border-white/[0.06] xl:p-3"
+        className="rounded-lg bg-black/25 px-2 py-1 xl:border xl:border-white/[0.06] xl:p-3"
       >
         <div className="flex items-end gap-2">
           <textarea
@@ -310,18 +312,17 @@ export function ChatComposer({
             </button>
           )}
         </div>
-        <div className="mt-2 flex items-center justify-between gap-2 xl:mt-3">
-          <div className="hidden flex-wrap items-center gap-2 text-sm text-zinc-500 xl:flex">
-            <button
-              type="button"
-              onClick={() => fileRef.current?.click()}
-              className="min-h-9 rounded-full border border-white/[0.06] px-3 py-2 text-sm text-zinc-300 hover:bg-white/[0.04]"
-            >
-              Attach
-            </button>
-            <span>Enter to send, Shift+Enter for newline</span>
-          </div>
-          <span className="hidden text-xs text-zinc-600 sm:block xl:hidden">Enter to send</span>
+        {/* Desktop-only footer row: Attach button + keyboard-shortcut hint.
+            On mobile we drop the whole row to keep the composer compact. */}
+        <div className="mt-3 hidden flex-wrap items-center gap-2 text-sm text-zinc-500 xl:flex">
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            className="min-h-9 rounded-full border border-white/[0.06] px-3 py-2 text-sm text-zinc-300 hover:bg-white/[0.04]"
+          >
+            Attach
+          </button>
+          <span>Enter to send, Shift+Enter for newline</span>
         </div>
       </div>
       <input

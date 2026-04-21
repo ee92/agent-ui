@@ -222,7 +222,7 @@ function ChatView({
         )}
       </div>
 
-      <div className="shrink-0 border-t border-white/[0.06] bg-canvas px-3 pb-2 pt-2 xl:px-6 xl:pb-3">
+      <div className="shrink-0 border-t border-white/[0.06] bg-canvas px-2 pb-1 pt-1 xl:px-6 xl:pb-3 xl:pt-2">
         <ContextBar conversation={conversation} />
         <ChatComposer
           draft={draft}
