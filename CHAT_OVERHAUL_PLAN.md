@@ -777,7 +777,7 @@ User feedback after shipping context-bar:
    - Commands route to the same handler `quickSend` already uses; new commands might need backend routing (e.g., `/cost` should render locally, not send to Claude).
    - Files: new `src/components/chat/slash-menu.tsx`, `chat-composer.tsx`.
 
-10. **Draft persistence per conversation.** Typing a message, switching sessions, coming back — the draft is still there. Also survives page reload. `localStorage` keyed by sessionKey, cleared on send.
+10. **[DONE]** **Draft persistence per conversation.** Typing a message, switching sessions, coming back — the draft is still there. Also survives page reload. `localStorage` keyed by sessionKey, cleared on send.
     - Files: `src/components/chat/chat-composer.tsx`, `src/lib/stores/chat-store.ts` (drafts map).
 
 11. **Keyboard shortcuts + cheat sheet.** Cmd+K new chat, Cmd+/ opens shortcuts modal, Esc cancels active stream, Cmd+Shift+F search, Cmd+↑ edit last user message (→ #12), Cmd+Enter send. Display a "?" button in the corner that opens the cheat sheet.
@@ -907,7 +907,7 @@ User feedback after shipping context-bar:
 
 ### Compaction artifacts leak into rendered transcript
 
-34. **Claude Code's compaction plumbing renders as real messages.** Verified against `-home-clawd-projects::e1845fe8-bf3f-4979-97f2-55341616453e`, which has been compacted **54 times** (19MB, 6451-line `.jsonl`). After every `/compact`, Claude Code writes two records to the transcript:
+34. **[DONE — `27a0fe4`]** **Claude Code's compaction plumbing renders as real messages.** Verified against `-home-clawd-projects::e1845fe8-bf3f-4979-97f2-55341616453e`, which has been compacted **54 times** (19MB, 6451-line `.jsonl`). After every `/compact`, Claude Code writes two records to the transcript:
     1. `{"type":"system","subtype":"compact_boundary","content":"Conversation compacted","compactMetadata":{preTokens, postTokens, durationMs, ...}}`
     2. `{"type":"user","message":{"role":"user","content":"This session is being continued from a previous conversation that ran out of context.\n\nSummary:\n..."}}` — the synthetic re-seed prompt containing the model's multi-thousand-word summary of the prior window.
     Our parser has zero handling for either. Result: every compaction shows up in the UI as (a) a silently-swallowed system line and (b) a giant user bubble that looks like the human sent a wall of text they never wrote. Compounds: 54 compactions → 54 ghost-essays in this one session.

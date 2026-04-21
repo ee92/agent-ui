@@ -995,7 +995,15 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
       pending: true,
       runId: userMessage.id
     };
-    useUiStore.setState({ draft: "", attachments: [] });
+    // Clear the draft for the current session (both the mirrored `draft`
+    // field and the persisted per-session entry) so it doesn't resurrect on
+    // the next reload.
+    {
+      const uiState = useUiStore.getState();
+      const nextDrafts = { ...uiState.drafts };
+      if (uiState.activeDraftKey) delete nextDrafts[uiState.activeDraftKey];
+      useUiStore.setState({ draft: "", attachments: [], drafts: nextDrafts });
+    }
     set({
       messagesByConversation: {
         ...get().messagesByConversation,

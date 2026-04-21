@@ -79,11 +79,19 @@ export type UiStoreState = {
   mobileSidebarOpen: boolean;
   sidebarFilesMode: boolean;
   draft: string;
+  // Per-session drafts, persisted to localStorage. The `draft` field above is
+  // the currently-loaded draft (mirrors drafts[activeDraftKey]).
+  drafts: Record<string, string>;
+  activeDraftKey: string | null;
   attachments: AttachmentDraft[];
   conversationSearch: string;
   focusSearchVersion: number;
   setConversationSearch: (value: string) => void;
   setDraft: (value: string) => void;
+  // Called by the app whenever the active chat session changes. Saves the
+  // outgoing session's draft, loads the incoming one's, and leaves `draft`
+  // mirroring the new key.
+  setActiveDraftKey: (sessionKey: string | null) => void;
   addAttachments: (files: File[]) => Promise<void>;
   removeAttachment: (id: string) => void;
   setCurrentPanel: (panel: PanelMode) => void;

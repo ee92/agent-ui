@@ -284,6 +284,7 @@ export function App() {
   const focusSearchVersion = useUiStore((s) => s.focusSearchVersion);
   const setConversationSearch = useUiStore((s) => s.setConversationSearch);
   const setDraft = useUiStore((s) => s.setDraft);
+  const setActiveDraftKey = useUiStore((s) => s.setActiveDraftKey);
   const addAttachments = useUiStore((s) => s.addAttachments);
   const removeAttachment = useUiStore((s) => s.removeAttachment);
   const toggleMobileSidebar = useUiStore((s) => s.toggleMobileSidebar);
@@ -303,6 +304,12 @@ export function App() {
       void selectConversation(chatSessionKey);
     }
   }, [chatSessionKey, selectConversation]);
+
+  // Swap the composer draft in/out per session so each conversation keeps its
+  // own WIP text across switches and reloads.
+  useEffect(() => {
+    setActiveDraftKey(chatSessionKey);
+  }, [chatSessionKey, setActiveDraftKey]);
 
   // Startup effects
   useEffect(() => { void connectAdapter(); }, [connectAdapter]);
