@@ -36,6 +36,18 @@ function loadSelectedKey(): string | null {
 type SetFn = (next: Partial<ChatStoreState> | ((state: ChatStoreState) => Partial<ChatStoreState>)) => void;
 type GetFn = () => ChatStoreState;
 
+// Detect the 1M-context variant from a model string. Claude Code tags it as
+// "opus[1m]" / "claude-opus-4-7[1m]" on init, but the API strips the suffix
+// on assistant-turn payloads ("claude-opus-4-7"). Only the init / runnerModel
+// hint carries the signal.
+function is1MModel(model: string): boolean {
+  return /\[?1m\]?|-1m\b/i.test(model);
+}
+
+function windowForModel(model: string): number {
+  return is1MModel(model) ? 1_000_000 : 200_000;
+}
+
 type PendingSearchResult = {
   messages: ChatMessage[];
   messageIndex: number;
@@ -456,17 +468,6 @@ function handleClaudeRawEvent(
     const cacheRead = typeof payload.cacheReadTokens === "number" ? payload.cacheReadTokens : 0;
     const contextTokens = inputTokens + cacheCreation + cacheRead;
 
-    // Decide whether to update model/window. The API response strips the 1M
-    // tag (e.g. "claude-opus-4-7" instead of "claude-opus-4-7[1m]"), so if
-    // init already set a tagged model for the same family, we must NOT
-    // overwrite it with the API's truncated form. Only overwrite if the
-    // usage model is a genuinely different family/version.
-    const existing = get().conversations.find((c) => c.key === sessionKey);
-    const priorModel = existing?.contextModel ?? null;
-    const stripTag = (s: string) => s.replace(/\[[^\]]*\]$/, "").toLowerCase();
-    const sameFamily = usageModel && priorModel && stripTag(usageModel) === stripTag(priorModel);
-    const shouldUpdateModel = !priorModel || (usageModel && !sameFamily);
-
     const patch: Partial<Conversation> = {
       contextTokens,
       contextInputTokens: inputTokens,
@@ -474,14 +475,15 @@ function handleClaudeRawEvent(
       contextCacheCreationTokens: cacheCreation,
       contextOutputTokens: outputTokens,
     };
-    if (shouldUpdateModel && usageModel) {
-      const is1M = /\[?1m\]?|-1m\b/i.test(usageModel);
+    // Only fill in model/window when nothing is set yet. `session.init` and
+    // the history hydration path (adapter synthesizes a session.init from
+    // `runnerModel`) are authoritative because the API strips the `[1m]`
+    // suffix from usage payloads — we must not overwrite a tagged model
+    // with the truncated one.
+    const priorModel = get().conversations.find((c) => c.key === sessionKey)?.contextModel ?? null;
+    if (!priorModel && usageModel) {
       patch.contextModel = usageModel;
-      patch.contextWindow = is1M ? 1_000_000 : 200_000;
-    } else if (!priorModel && usageModel) {
-      // Fallback when no init has fired (e.g. resume hydration path)
-      patch.contextModel = usageModel;
-      patch.contextWindow = 200_000;
+      patch.contextWindow = windowForModel(usageModel);
     }
     set({
       conversations: applyConversationUpdate(
@@ -515,13 +517,36 @@ function handleClaudeRawEvent(
     // don't include the tag, so init is the only authoritative source here.
     const model = typeof payload.model === "string" ? payload.model : null;
     if (model) {
-      const is1M = /\[?1m\]?|-1m\b/i.test(model);
-      const contextWindow = is1M ? 1_000_000 : 200_000;
       set({
         conversations: applyConversationUpdate(
           ensureConversation(get().conversations, sessionKey),
           sessionKey,
-          { contextModel: model, contextWindow }
+          { contextModel: model, contextWindow: windowForModel(model) }
+        ),
+      });
+    }
+    return;
+  }
+
+  if (eventName === "session.compact_boundary") {
+    // The SDK doesn't emit a fresh session.usage after /compact, so the
+    // context pill would stay frozen at the pre-compact count until the
+    // next assistant turn. Patch contextTokens from postTokens so the bar
+    // drops immediately. The component totals (input/cache/output) get
+    // refreshed by the next session.usage event.
+    const postTokens = typeof payload.postTokens === "number" ? payload.postTokens : null;
+    if (postTokens != null) {
+      set({
+        conversations: applyConversationUpdate(
+          ensureConversation(get().conversations, sessionKey),
+          sessionKey,
+          {
+            contextTokens: postTokens,
+            contextInputTokens: 0,
+            contextCacheReadTokens: 0,
+            contextCacheCreationTokens: postTokens,
+            contextOutputTokens: 0,
+          }
         ),
       });
     }
@@ -532,8 +557,7 @@ function handleClaudeRawEvent(
     eventName === "session.status" ||
     eventName === "session.notification" ||
     eventName === "session.memory_recall" ||
-    eventName === "session.mirror_error" ||
-    eventName === "session.compact_boundary"
+    eventName === "session.mirror_error"
   ) {
     // Forwarded for future UI rendering; silently dropped for now.
     return;

@@ -321,9 +321,23 @@ export class ClaudeCodeAdapter implements BackendAdapter {
   }
 
   private async history(sessionKey: string): Promise<Message[]> {
-    const data = await this.request<{ messages?: unknown[]; lastUsage?: unknown }>(
+    const data = await this.request<{ messages?: unknown[]; lastUsage?: unknown; runnerModel?: unknown }>(
       `/api/claude-code/sessions/${encodeURIComponent(sessionKey)}/history`
     );
+    // The server reports the runner's *configured* model (tag intact, e.g.
+    // "opus[1m]"). Synthesize a session.init so the store picks the right
+    // context window before any live init fires. This is the only signal
+    // carrying the [1m] suffix on resume — the API strips it from usage.
+    const runnerModel = typeof data.runnerModel === "string" ? data.runnerModel : null;
+    if (runnerModel) {
+      this.emit({
+        type: "raw",
+        sessionKey,
+        event: "session.init",
+        runId: null,
+        payload: { model: runnerModel },
+      });
+    }
     // Hydrate the context bar from the transcript's final assistant usage —
     // without this, the bar stays at "—" until the next assistant turn.
     const u = data.lastUsage;

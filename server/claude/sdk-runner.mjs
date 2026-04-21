@@ -446,6 +446,14 @@ export function cancelRun(runId) {
   return true;
 }
 
+// Model the runner uses for new/resumed turns. Matches the default set inside
+// `startRun` so callers (e.g. /history) can tell the UI what window to expect
+// before a live `session.init` arrives — the API response strips the `[1m]`
+// suffix so without this hint, hydration can't distinguish 1M from 200k.
+export function getConfiguredModel() {
+  return process.env.CLAUDE_UI_MODEL || "opus[1m]";
+}
+
 export function getRunStatus(runId) {
   const state = activeRuns.get(runId);
   if (!state) return null;

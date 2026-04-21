@@ -21,7 +21,7 @@ import { listSessions, getSession, refreshIndex } from "./server/claude/session-
 import { parseTranscript } from "./server/claude/transcript-parser.mjs";
 import { listCodexSessions, getCodexSession } from "./server/codex/session-index.mjs";
 import { parseCodexTranscript } from "./server/codex/transcript-parser.mjs";
-import { startRun, cancelRun, getRunStatus } from "./server/claude/sdk-runner.mjs";
+import { startRun, cancelRun, getRunStatus, getConfiguredModel } from "./server/claude/sdk-runner.mjs";
 import { createBroker } from "./server/claude/ws-broker.mjs";
 import { scanDocker } from "./server/docker-scanner.mjs";
 import { mergeProjects } from "./server/project-merger.mjs";
@@ -696,6 +696,10 @@ const server = createServer(async (req, res) => {
       session: applySessionOverrides(session),
       messages: parsed.messages,
       lastUsage: parsed.metadata?.lastUsage ?? null,
+      // The runner's configured model including any `[1m]` suffix — the API
+      // strips it from assistant-turn payloads, so the client needs this hint
+      // to pick the right context window on resume before a live init arrives.
+      runnerModel: getConfiguredModel(),
     });
   }
 
