@@ -1,4 +1,4 @@
-import { type ChangeEvent, type KeyboardEvent, useEffect, useRef, useState } from "react";
+import { type ChangeEvent, type ClipboardEvent, type KeyboardEvent, useEffect, useRef, useState } from "react";
 import { getBackendAdapter } from "../../lib/adapters";
 import type { SlashCommandSuggestion } from "../../lib/adapters/types";
 import type { TaskNode } from "../../lib/task-types";
@@ -168,20 +168,79 @@ export function ChatComposer({
     }
   };
 
+  const handlePaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = event.clipboardData?.items;
+    if (!items || items.length === 0) return;
+
+    // Walk clipboard items; grab anything that's a file with an image MIME type.
+    // Screenshots come in as `image/png` with an empty filename; rename them so
+    // the attachment chip is readable and the backend sees something sensible.
+    const pasted: File[] = [];
+    for (const item of items) {
+      if (item.kind !== "file") continue;
+      if (!item.type.startsWith("image/")) continue;
+      const file = item.getAsFile();
+      if (!file) continue;
+      const hasRealName = file.name && file.name !== "image.png" && !file.name.startsWith("image.");
+      if (hasRealName) {
+        pasted.push(file);
+      } else {
+        const ext = item.type.split("/")[1] || "png";
+        const stamp = new Date()
+          .toISOString()
+          .replace(/[-:T]/g, "")
+          .slice(0, 15); // YYYYMMDDTHHMMSS-ish
+        pasted.push(new File([file], `pasted-${stamp}.${ext}`, { type: item.type }));
+      }
+    }
+
+    if (pasted.length === 0) return;
+
+    // Only swallow the paste when we actually captured an image — plain-text
+    // paste still goes through to the textarea untouched.
+    event.preventDefault();
+
+    // onAttach takes a FileList, so build one via DataTransfer.
+    const dt = new DataTransfer();
+    for (const f of pasted) dt.items.add(f);
+    onAttach(dt.files);
+  };
+
   return (
     <div className="bg-white/[0.03] p-2.5 xl:rounded-lg xl:border xl:border-white/[0.06] xl:p-3">
       {attachments.length > 0 ? (
         <div className="mb-3 flex flex-wrap gap-2">
-          {attachments.map((attachment) => (
-            <button
-              key={attachment.id}
-              type="button"
-              onClick={() => onRemoveAttachment(attachment.id)}
-              className="min-h-9 rounded-lg border border-white/[0.06] bg-surface-1 px-3 py-2 text-sm text-zinc-200"
-            >
-              {attachment.name} ×
-            </button>
-          ))}
+          {attachments.map((attachment) => {
+            const isImage = attachment.mimeType.startsWith("image/") && attachment.dataUrl;
+            return (
+              <button
+                key={attachment.id}
+                type="button"
+                onClick={() => onRemoveAttachment(attachment.id)}
+                title={`Remove ${attachment.name}`}
+                className={
+                  isImage
+                    ? "group relative h-16 w-16 overflow-hidden rounded-lg border border-white/[0.06] bg-surface-1"
+                    : "min-h-9 rounded-lg border border-white/[0.06] bg-surface-1 px-3 py-2 text-sm text-zinc-200"
+                }
+              >
+                {isImage ? (
+                  <>
+                    <img
+                      src={attachment.dataUrl as string}
+                      alt={attachment.name}
+                      className="h-full w-full object-cover"
+                    />
+                    <span className="pointer-events-none absolute inset-0 flex items-start justify-end p-1 opacity-0 transition group-hover:opacity-100">
+                      <span className="rounded-full bg-black/70 px-1.5 py-0.5 text-[10px] text-white">×</span>
+                    </span>
+                  </>
+                ) : (
+                  <>{attachment.name} ×</>
+                )}
+              </button>
+            );
+          })}
         </div>
       ) : null}
       {suggestions.length > 0 ? (
@@ -222,6 +281,7 @@ export function ChatComposer({
             value={draft}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
             placeholder="Message agent"
             className="flex-1 resize-none bg-transparent py-2 text-base leading-6 text-white outline-none placeholder:text-zinc-600"
           />
