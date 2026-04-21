@@ -39,7 +39,16 @@ export type MessageContentPart =
       result?: ToolResultPayload;
       subAgentParts?: MessageContentPart[];
     }
-  | { type: "thinking"; text: string; complete: boolean };
+  | { type: "thinking"; text: string; complete: boolean }
+  | {
+      // Emitted by Claude Code after every /compact. Rendered as a slim
+      // horizontal divider with the pre/post token counts.
+      type: "compact_boundary";
+      trigger: string | null;
+      preTokens: number | null;
+      postTokens: number | null;
+      durationMs: number | null;
+    };
 
 export type ChatMessage = {
   id: string;

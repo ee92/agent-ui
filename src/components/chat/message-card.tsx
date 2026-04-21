@@ -22,6 +22,33 @@ export function MessageCard({
   if (message.hidden) {
     return null;
   }
+
+  // System-only marker messages (e.g. /compact boundary) render as a slim
+  // divider instead of a chat bubble so they don't masquerade as assistant
+  // output.
+  if (
+    message.role === "system" &&
+    message.parts.length === 1 &&
+    message.parts[0].type === "compact_boundary"
+  ) {
+    const part = message.parts[0];
+    const pre = typeof part.preTokens === "number" ? part.preTokens : null;
+    const post = typeof part.postTokens === "number" ? part.postTokens : null;
+    const stats =
+      pre != null && post != null
+        ? `${Math.round(pre / 1000)}k → ${Math.round(post / 1000)}k tokens`
+        : null;
+    return (
+      <div className="my-2 flex items-center gap-3 px-1 text-[10px] uppercase tracking-wider text-zinc-500">
+        <span className="h-px flex-1 bg-white/[0.06]" />
+        <span className="whitespace-nowrap">
+          Context compacted{stats ? ` · ${stats}` : ""}
+        </span>
+        <span className="h-px flex-1 bg-white/[0.06]" />
+      </div>
+    );
+  }
+
   const isUser = message.role === "user";
   const bubbleClass = isUser
     ? "bg-blue-500 text-white"
@@ -64,14 +91,27 @@ export function MessageCard({
                 </div>
               );
             }
-            return (
-              <div
-                key={`${part.type}-${index}`}
-                className="rounded-lg border border-white/[0.06] bg-surface-1 px-3 py-2 text-sm text-zinc-100"
-              >
-                {part.name}
-              </div>
-            );
+            if (part.type === "compact_boundary") {
+              // Shouldn't usually reach here — the role==="system" short-circuit
+              // above handles the standalone case. Render a tiny inline marker
+              // for the odd case where it's mixed with other parts.
+              return (
+                <div key={`cb-${index}`} className="text-[10px] uppercase tracking-wider text-zinc-500">
+                  — context compacted —
+                </div>
+              );
+            }
+            if (part.type === "attachment") {
+              return (
+                <div
+                  key={`${part.type}-${index}`}
+                  className="rounded-lg border border-white/[0.06] bg-surface-1 px-3 py-2 text-sm text-zinc-100"
+                >
+                  {part.name}
+                </div>
+              );
+            }
+            return null;
           })}
         </div>
         <div className="mt-3 flex flex-wrap gap-1 opacity-100 md:opacity-0 md:transition md:group-hover:opacity-100">

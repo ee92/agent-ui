@@ -19,26 +19,85 @@ function normalizeRole(raw) {
   return null;
 }
 
+// Harness meta-tags that Claude Code injects into the conversation stream for
+// its own bookkeeping. Two categories:
+//
+// 1. NOISE — tag + content is pure metadata and should be stripped entirely.
+//    (system-reminders, slash-command plumbing, command stdout/stderr).
+// 2. WRAPPER — the tag marks content that the user still wants to read
+//    (bash tool output, paginated output markers). Strip only the tag.
+const NOISE_TAGS = [
+  "system-reminder",
+  "local-command-caveat",
+  "command-name",
+  "command-message",
+  "command-args",
+  "command-stdout",
+  "command-stderr",
+  "local-command-stdout",
+  "local-command-stderr",
+];
+const WRAPPER_TAGS = [
+  "bash-input",
+  "bash-stdout",
+  "bash-stderr",
+  "persisted-output",
+];
+const NOISE_TAG_RE = new RegExp(
+  `<(?:${NOISE_TAGS.join("|")})(?:\\s[^>]*)?>[\\s\\S]*?<\\/(?:${NOISE_TAGS.join("|")})>|<(?:${NOISE_TAGS.join("|")})(?:\\s[^>]*)?\\/>`,
+  "g"
+);
+const WRAPPER_TAG_RE = new RegExp(
+  `<\\/?(?:${WRAPPER_TAGS.join("|")})(?:\\s[^>]*)?\\/?>`,
+  "g"
+);
+
+export function stripHarnessTags(text) {
+  if (typeof text !== "string" || text.length === 0) return text;
+  // Fast path — skip the regex dance if no `<` appears at all.
+  if (!text.includes("<")) return text;
+  return text
+    .replace(NOISE_TAG_RE, "")
+    .replace(WRAPPER_TAG_RE, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+// The synthetic "continuation" user message Claude Code writes after every
+// compact. We want to drop it from the rendered transcript (replacing it with
+// our own compact boundary marker) rather than show a huge wall of text that
+// looks like the user typed an essay.
+const COMPACT_SUMMARY_PREFIX =
+  "This session is being continued from a previous conversation that ran out of context";
+
+function isCompactSummaryText(text) {
+  return typeof text === "string" && text.trimStart().startsWith(COMPACT_SUMMARY_PREFIX);
+}
+
 // Normalize a tool_result block's content into the shape the frontend expects:
 // Array<{ type: "text"; text: string }>. Transcripts store this as either
 // a plain string or an array of typed blocks; we coerce everything to text.
 function normalizeToolResultContent(raw) {
   if (raw == null) return [];
   if (typeof raw === "string") {
-    return raw ? [{ type: "text", text: raw }] : [];
+    const stripped = stripHarnessTags(raw);
+    return stripped ? [{ type: "text", text: stripped }] : [];
   }
   if (Array.isArray(raw)) {
     const out = [];
     for (const block of raw) {
       if (typeof block === "string") {
-        if (block) out.push({ type: "text", text: block });
+        const stripped = stripHarnessTags(block);
+        if (stripped) out.push({ type: "text", text: stripped });
         continue;
       }
       if (!block || typeof block !== "object") continue;
       if (typeof block.text === "string" && block.text) {
-        out.push({ type: "text", text: block.text });
+        const stripped = stripHarnessTags(block.text);
+        if (stripped) out.push({ type: "text", text: stripped });
       } else if (typeof block.content === "string" && block.content) {
-        out.push({ type: "text", text: block.content });
+        const stripped = stripHarnessTags(block.content);
+        if (stripped) out.push({ type: "text", text: stripped });
       } else {
         // Fallback: JSON-stringify the block so nothing is silently dropped.
         try {
@@ -68,7 +127,8 @@ function extractParts(content) {
   const parts = [];
 
   if (typeof content === "string") {
-    if (content.trim()) parts.push({ type: "text", text: content });
+    const stripped = stripHarnessTags(content);
+    if (stripped && stripped.trim()) parts.push({ type: "text", text: stripped });
     return parts;
   }
   if (!Array.isArray(content)) {
@@ -80,7 +140,8 @@ function extractParts(content) {
 
   for (const block of content) {
     if (typeof block === "string") {
-      if (block.trim()) parts.push({ type: "text", text: block });
+      const stripped = stripHarnessTags(block);
+      if (stripped && stripped.trim()) parts.push({ type: "text", text: stripped });
       continue;
     }
     if (!block || typeof block !== "object") continue;
@@ -88,8 +149,9 @@ function extractParts(content) {
     const t = block.type;
 
     if (t === "text" || (!t && typeof block.text === "string")) {
-      const text = typeof block.text === "string" ? block.text : "";
-      if (text.trim()) parts.push({ type: "text", text });
+      const raw = typeof block.text === "string" ? block.text : "";
+      const text = stripHarnessTags(raw);
+      if (text && text.trim()) parts.push({ type: "text", text });
       continue;
     }
 
@@ -145,6 +207,29 @@ function normalizeMessage(record, lineNo) {
     return null;
   }
 
+  // Claude Code emits a dedicated compact-boundary system record after every
+  // /compact. Render it as a horizontal divider instead of a ghost message.
+  if (record.type === "system" && record.subtype === "compact_boundary") {
+    const meta = record.compactMetadata && typeof record.compactMetadata === "object" ? record.compactMetadata : {};
+    return {
+      id:
+        (typeof record.uuid === "string" && record.uuid) ||
+        (typeof record.id === "string" && record.id) ||
+        `compact-${lineNo}`,
+      role: "system",
+      parts: [
+        {
+          type: "compact_boundary",
+          trigger: typeof meta.trigger === "string" ? meta.trigger : null,
+          preTokens: typeof meta.preTokens === "number" ? meta.preTokens : null,
+          postTokens: typeof meta.postTokens === "number" ? meta.postTokens : null,
+          durationMs: typeof meta.durationMs === "number" ? meta.durationMs : null,
+        },
+      ],
+      timestamp: pickTimestamp(record),
+    };
+  }
+
   const role =
     normalizeRole(record.role) ||
     normalizeRole(record.message?.role) ||
@@ -156,7 +241,24 @@ function normalizeMessage(record, lineNo) {
   }
 
   const payload = record.message && typeof record.message === "object" ? record.message : record;
-  const parts = extractParts(payload.content ?? payload.text ?? record.content ?? record.text ?? "");
+  const rawContent = payload.content ?? payload.text ?? record.content ?? record.text ?? "";
+
+  // The continuation essay Claude Code writes right after a compact looks like
+  // a real user turn, complete with tag noise. Drop it — the compact boundary
+  // divider communicates what happened.
+  if (role === "user" && typeof rawContent === "string" && isCompactSummaryText(rawContent)) {
+    return null;
+  }
+  if (role === "user" && Array.isArray(rawContent)) {
+    const firstText = rawContent.find(
+      (b) => b && typeof b === "object" && (b.type === "text" || (!b.type && typeof b.text === "string"))
+    );
+    if (firstText && isCompactSummaryText(typeof firstText.text === "string" ? firstText.text : "")) {
+      return null;
+    }
+  }
+
+  const parts = extractParts(rawContent);
 
   return {
     id:
