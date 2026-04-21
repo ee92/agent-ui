@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { TaskContextCard } from "./components/tasks/task-context-card";
 import { ChatComposer } from "./components/chat/chat-composer";
 import { ContextBar } from "./components/chat/context-bar";
@@ -107,6 +107,11 @@ function ChatView({
   onCancel: () => void;
 }) {
   const endRef = useRef<HTMLDivElement | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  // Track whether the scroll container is pinned near the bottom. Auto-scroll
+  // only fires when this is true, so incoming messages don't yank the user
+  // back down while they're reading earlier context.
+  const [isAtBottom, setIsAtBottom] = useState(true);
   const lastMessage = messages[messages.length - 1];
 
   // Find linked task for this session
@@ -118,38 +123,98 @@ function ChatView({
     return keys?.includes(sk) ?? false;
   });
 
+  // Watch the scroll container to know whether we're at the bottom.
+  // ~40px tolerance so a few pixels of drift (or a thin floating element)
+  // doesn't flip the state.
   useEffect(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    const computeAtBottom = () => {
+      const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+      setIsAtBottom(dist < 40);
+    };
+    el.addEventListener("scroll", computeAtBottom, { passive: true });
+    computeAtBottom();
+    return () => el.removeEventListener("scroll", computeAtBottom);
+  }, []);
+
+  // On session switch: reset to the bottom and jump (no smooth animation —
+  // we want the new session to open pre-scrolled, not animate there).
+  useEffect(() => {
+    setIsAtBottom(true);
+    requestAnimationFrame(() => {
+      endRef.current?.scrollIntoView({ block: "end" });
+    });
+  }, [sessionKey]);
+
+  // New content auto-scrolls only if the user is already pinned to the bottom.
+  useEffect(() => {
+    if (!isAtBottom) return;
     endRef.current?.scrollIntoView({ block: "end" });
-  }, [lastMessage?.id, lastMessage?.pending, loading, messages.length]);
+  }, [lastMessage?.id, lastMessage?.pending, loading, messages.length, isAtBottom]);
+
+  const scrollToBottom = useCallback(() => {
+    setIsAtBottom(true);
+    endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, []);
+
+  const showScrollFab = !isAtBottom && messages.length > 0;
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex min-h-0 flex-1 flex-col scroll-soft overflow-y-auto px-3 pb-4 xl:px-6">
-        <div className="flex-1" />
-        {loading && <LoadingSkeleton rows={4} className="h-24 rounded-lg" />}
-        {!loading && messages.length === 0 && linkedTask && (
-          <TaskContextCard task={linkedTask} />
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        <div
+          ref={scrollContainerRef}
+          className="flex min-h-0 flex-1 flex-col scroll-soft overflow-y-auto px-3 pb-4 xl:px-6"
+        >
+          <div className="flex-1" />
+          {loading && <LoadingSkeleton rows={4} className="h-24 rounded-lg" />}
+          {!loading && messages.length === 0 && linkedTask && (
+            <TaskContextCard task={linkedTask} />
+          )}
+          {!loading && messages.length === 0 && !linkedTask && (
+            <div className="flex flex-col items-center justify-center px-8 py-16 text-center">
+              <p className="text-lg font-medium text-white">Start something new</p>
+              <p className="mt-2 max-w-xs text-sm leading-6 text-zinc-400">
+                Send a message to get started.
+              </p>
+            </div>
+          )}
+          {messages.map((message) => (
+            <div key={message.id} className="mb-4">
+              <MessageCard
+                message={message}
+                onCopy={() => void navigator.clipboard.writeText(extractText(message))}
+                onRetry={() => onRetry(message.id)}
+                onHide={() => onHide(message.id)}
+                onTask={(text) => onTask(text)}
+              />
+            </div>
+          ))}
+          <div ref={endRef} />
+        </div>
+        {showScrollFab && (
+          <button
+            type="button"
+            onClick={scrollToBottom}
+            aria-label="Scroll to bottom"
+            className="absolute bottom-3 right-4 z-10 flex h-9 w-9 items-center justify-center rounded-full border border-white/[0.08] bg-zinc-900/90 text-zinc-200 shadow-lg backdrop-blur transition hover:bg-zinc-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+          >
+            <svg
+              viewBox="0 0 16 16"
+              width="14"
+              height="14"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.75"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M4 6l4 4 4-4" />
+            </svg>
+          </button>
         )}
-        {!loading && messages.length === 0 && !linkedTask && (
-          <div className="flex flex-col items-center justify-center px-8 py-16 text-center">
-            <p className="text-lg font-medium text-white">Start something new</p>
-            <p className="mt-2 max-w-xs text-sm leading-6 text-zinc-400">
-              Send a message to get started.
-            </p>
-          </div>
-        )}
-        {messages.map((message) => (
-          <div key={message.id} className="mb-4">
-            <MessageCard
-              message={message}
-              onCopy={() => void navigator.clipboard.writeText(extractText(message))}
-              onRetry={() => onRetry(message.id)}
-              onHide={() => onHide(message.id)}
-              onTask={(text) => onTask(text)}
-            />
-          </div>
-        ))}
-        <div ref={endRef} />
       </div>
 
       <div className="shrink-0 border-t border-white/[0.06] bg-canvas px-3 pb-2 pt-2 xl:px-6 xl:pb-3">
