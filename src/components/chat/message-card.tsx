@@ -1,12 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import type { ChatMessage } from "../../lib/types";
+import type { ChatMessage, MessageContentPart } from "../../lib/types";
 import { formatRelative } from "../../lib/ui-utils";
 import { Markdown } from "./markdown";
 import { ThinkingCard } from "./parts/thinking-card";
 import { ToolUseCard } from "./parts/tool-use-card";
+import { ToolLogGroup } from "./parts/tool-log-group";
 import { SubAgentTrace } from "./parts/sub-agent-trace";
 import { CopyIcon, RetryIcon, TrashIcon } from "../ui/icons";
+
+type ToolUsePart = Extract<MessageContentPart, { type: "tool_use" }>;
 
 function EllipsisIcon() {
   return (
@@ -128,60 +131,7 @@ export function MessageCard({
           {message.error ? <span className="text-rose-200/80">Issue</span> : null}
         </div>
         <div className="space-y-3 overflow-x-hidden">
-          {message.parts.map((part, index) => {
-            if (part.type === "text") {
-              return <Markdown key={`${part.type}-${index}`} text={part.text || " "} />;
-            }
-            if (part.type === "image") {
-              return (
-                <img
-                  key={`${part.type}-${index}`}
-                  src={part.url}
-                  alt={part.alt}
-                  className="max-h-72 rounded-lg border border-white/[0.06] object-cover"
-                />
-              );
-            }
-            if (part.type === "thinking") {
-              // Hide empty thinking blocks — opus[1m] returns signed-but-redacted
-              // thinking (signature present, text ""), and resumed transcripts
-              // often have the same pattern. Show while streaming so the
-              // "Thinking…" indicator still appears for models that emit deltas.
-              if (part.complete && !part.text.trim()) return null;
-              return <ThinkingCard key={`think-${index}`} part={part} />;
-            }
-            if (part.type === "tool_use") {
-              return (
-                <div key={`tool-${index}-${part.id}`} className="space-y-2">
-                  <ToolUseCard part={part} />
-                  {part.name === "Agent" && part.subAgentParts && part.subAgentParts.length > 0 ? (
-                    <SubAgentTrace parts={part.subAgentParts} />
-                  ) : null}
-                </div>
-              );
-            }
-            if (part.type === "compact_boundary") {
-              // Shouldn't usually reach here — the role==="system" short-circuit
-              // above handles the standalone case. Render a tiny inline marker
-              // for the odd case where it's mixed with other parts.
-              return (
-                <div key={`cb-${index}`} className="text-[10px] uppercase tracking-wider text-zinc-500">
-                  — context compacted —
-                </div>
-              );
-            }
-            if (part.type === "attachment") {
-              return (
-                <div
-                  key={`${part.type}-${index}`}
-                  className="rounded-lg border border-white/[0.06] bg-surface-1 px-3 py-2 text-sm text-zinc-100"
-                >
-                  {part.name}
-                </div>
-              );
-            }
-            return null;
-          })}
+          {renderParts(message.parts)}
         </div>
       </div>
 
@@ -244,6 +194,94 @@ export function MessageCard({
         : null}
     </div>
   );
+}
+
+// Walk the parts array rendering each component inline, but collapse runs of
+// consecutive plain `tool_use` parts into a single `ToolLogGroup` so we get
+// the compact-log-under-one-rail treatment. `Agent` tool parts opt out — they
+// keep the full-card rendering (plus their <SubAgentTrace>) because sub-agent
+// traces are substantive work, not chrome.
+function renderParts(parts: MessageContentPart[]): React.ReactNode[] {
+  const nodes: React.ReactNode[] = [];
+  let toolBuf: ToolUsePart[] = [];
+  let toolBufStart = 0;
+
+  const flushTools = () => {
+    if (toolBuf.length === 0) return;
+    nodes.push(
+      <ToolLogGroup key={`tools-${toolBufStart}`} parts={toolBuf} />
+    );
+    toolBuf = [];
+  };
+
+  parts.forEach((part, index) => {
+    if (part.type === "tool_use" && part.name !== "Agent") {
+      if (toolBuf.length === 0) toolBufStart = index;
+      toolBuf.push(part);
+      return;
+    }
+    // Any non-grouped part flushes the buffer so ordering is preserved.
+    flushTools();
+    if (part.type === "text") {
+      nodes.push(<Markdown key={`text-${index}`} text={part.text || " "} />);
+      return;
+    }
+    if (part.type === "image") {
+      nodes.push(
+        <img
+          key={`image-${index}`}
+          src={part.url}
+          alt={part.alt}
+          className="max-h-72 rounded-lg border border-white/[0.06] object-cover"
+        />
+      );
+      return;
+    }
+    if (part.type === "thinking") {
+      // Hide empty thinking blocks — opus[1m] returns signed-but-redacted
+      // thinking (signature present, text ""), and resumed transcripts often
+      // have the same pattern. Show while streaming so the "Thinking…"
+      // indicator still appears for models that emit deltas.
+      if (part.complete && !part.text.trim()) return;
+      nodes.push(<ThinkingCard key={`think-${index}`} part={part} />);
+      return;
+    }
+    if (part.type === "tool_use") {
+      // Agent tool — keep the full card + sub-agent trace.
+      nodes.push(
+        <div key={`tool-${index}-${part.id}`} className="space-y-2">
+          <ToolUseCard part={part} />
+          {part.subAgentParts && part.subAgentParts.length > 0 ? (
+            <SubAgentTrace parts={part.subAgentParts} />
+          ) : null}
+        </div>
+      );
+      return;
+    }
+    if (part.type === "compact_boundary") {
+      nodes.push(
+        <div key={`cb-${index}`} className="text-[10px] uppercase tracking-wider text-zinc-500">
+          — context compacted —
+        </div>
+      );
+      return;
+    }
+    if (part.type === "attachment") {
+      nodes.push(
+        <div
+          key={`attachment-${index}`}
+          className="rounded-lg border border-white/[0.06] bg-surface-1 px-3 py-2 text-sm text-zinc-100"
+        >
+          {part.name}
+        </div>
+      );
+      return;
+    }
+  });
+
+  // Trailing tools that never hit a flushing part.
+  flushTools();
+  return nodes;
 }
 
 function MenuItem({
