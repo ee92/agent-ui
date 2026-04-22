@@ -138,25 +138,54 @@ function ChatView({
     return keys?.includes(sk) ?? false;
   });
 
-  // Watch the scroll container to know whether we're at the bottom.
-  // ~40px tolerance so a few pixels of drift (or a thin floating element)
-  // doesn't flip the state. The measurement runs synchronously on every
-  // scroll event and writes the ref immediately — any async throttle here
-  // creates a race where async observers (RO, rAF) read a stale `true` and
-  // pin the user back down after they scrolled up. `setState` with the same
-  // value is a React no-op, so paying for a per-event setState is fine.
+  // Watch the scroll container to know whether we're at the bottom. A very
+  // small tolerance (4px) because any larger threshold means a casual
+  // wheel/touch scroll that lands within the threshold gets treated as
+  // "still pinned" and the ResizeObserver yanks the user back down on the
+  // next content growth. 4px is enough to forgive sub-pixel rounding from
+  // the clamp but not enough to swallow real user intent.
+  //
+  // Measurement runs synchronously on every scroll event and writes the ref
+  // immediately — any async throttle creates a race where the ResizeObserver
+  // reads a stale `true` and re-pins.
   useEffect(() => {
     const el = scrollContainerRef.current;
     if (!el) return;
     const measure = () => {
       const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
-      const atBottom = dist < 40;
+      const atBottom = dist < 4;
       isAtBottomRef.current = atBottom;
       setIsAtBottom((prev) => (prev === atBottom ? prev : atBottom));
     };
     el.addEventListener("scroll", measure, { passive: true });
     measure();
     return () => el.removeEventListener("scroll", measure);
+  }, []);
+
+  // User-scroll intent: wheel / touchmove / keyboard arrow = "I want to
+  // leave the bottom." Flip the ref to false *immediately* so the next
+  // ResizeObserver growth event (which can fire in the same frame as the
+  // user's scroll) doesn't re-pin before the scroll event has had a chance
+  // to update the ref. Without this, a casual wheel scroll of a few pixels
+  // while the page is streaming feels jittery because the user's scroll
+  // races the RO callback and the rAF pin used to always win.
+  useEffect(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    const markManual = () => { isAtBottomRef.current = false; };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "ArrowUp" || e.key === "PageUp" || e.key === "Home") {
+        markManual();
+      }
+    };
+    el.addEventListener("wheel", markManual, { passive: true });
+    el.addEventListener("touchmove", markManual, { passive: true });
+    el.addEventListener("keydown", onKey);
+    return () => {
+      el.removeEventListener("wheel", markManual);
+      el.removeEventListener("touchmove", markManual);
+      el.removeEventListener("keydown", onKey);
+    };
   }, []);
 
   // In-place content growth (tokens streaming into a bubble, tool card
@@ -166,6 +195,9 @@ function ChatView({
   // pinned, so scrolling up to read is not disturbed. Direct scrollTop
   // assignment instead of scrollIntoView — no browser variance, no smooth-
   // scroll interception, no endRef offset math.
+  //
+  // No rAF pin loop — the RO fires before paint, so there's no gap frame.
+  // An rAF loop makes casual user scroll impossible to escape.
   useEffect(() => {
     const target = contentRef.current;
     const el = scrollContainerRef.current;
@@ -177,29 +209,6 @@ function ChatView({
     ro.observe(target);
     return () => ro.disconnect();
   }, []);
-
-  // Belt-and-suspenders for streaming: as long as the session is actively
-  // streaming and the user is pinned, re-assert `scrollTop = scrollHeight`
-  // every animation frame. Catches any growth the ResizeObserver hasn't
-  // yet noticed (RO fires async, React commits are async, rapid token bursts
-  // can produce a visible un-pinned frame between RO callbacks). The write
-  // is a no-op when already at the bottom — cost is one property assignment
-  // per frame while streaming.
-  useEffect(() => {
-    if (!isStreaming) return;
-    let rafId: number | null = null;
-    const tick = () => {
-      if (isAtBottomRef.current) {
-        const el = scrollContainerRef.current;
-        if (el) el.scrollTop = el.scrollHeight;
-      }
-      rafId = requestAnimationFrame(tick);
-    };
-    rafId = requestAnimationFrame(tick);
-    return () => {
-      if (rafId !== null) cancelAnimationFrame(rafId);
-    };
-  }, [isStreaming]);
 
   // On session switch: reset to the bottom and jump (no smooth animation —
   // we want the new session to open pre-scrolled, not animate there).

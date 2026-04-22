@@ -136,6 +136,10 @@ export function useTurnStatus(sessionKey: string | null): {
   }, [isStreaming]);
 
   if (!isStreaming) return { text: null, stalled: false };
-  const stalled = lastEventAt !== null && now - lastEventAt > 20000;
+  // 60s, not 20s — Claude regularly takes 30–45s of silent thinking on
+  // complex prompts, and flagging that as a stall makes the UI feel broken
+  // when it isn't. 60s comfortably clears normal think-time; real hangs
+  // still get caught.
+  const stalled = lastEventAt !== null && now - lastEventAt > 60000;
   return { text: deriveStatus(lastMessage), stalled };
 }

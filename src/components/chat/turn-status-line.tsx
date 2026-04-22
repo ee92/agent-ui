@@ -30,7 +30,7 @@ export function TurnStatusLine({
       {stalled ? (
         <div className="flex items-center gap-2 rounded-md border border-amber-400/20 bg-amber-500/5 px-2.5 py-1.5 text-[11px] text-amber-200/80">
           <span aria-hidden="true">⚠</span>
-          <span className="flex-1">No activity for 20s</span>
+          <span className="flex-1">No activity for 60s</span>
           <button
             type="button"
             onClick={onRetry}
