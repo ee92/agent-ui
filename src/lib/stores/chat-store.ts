@@ -108,6 +108,10 @@ function isAssistantStubEmpty(m: ChatMessage): boolean {
   });
 }
 
+function hasToolUsePart(m: ChatMessage): boolean {
+  return m.parts.some((p) => p.type === "tool_use");
+}
+
 function updateMessagesForConversation(
   set: SetFn,
   get: GetFn,
@@ -399,17 +403,26 @@ function handleClaudeRawEvent(
         }
       ),
     });
-    // Safety: any still-pending assistant messages get finalized. If the stub
-    // is empty (no streamed text, thinking, or tool_use ever landed), drop it
-    // entirely — leaving it around shows as a permanent empty bubble until
-    // refresh, since the transcript-parser doesn't include stubs. This covers
-    // edge paths where the SDK finishes a turn without emitting any
-    // assistant-content events (e.g. aborted mid-stream, local commands that
-    // produce no visible output).
+    // Safety: any still-pending assistant messages get finalized. Three
+    // terminal states depending on what was produced:
+    //   1. True empty stub (no text, thinking, or tool_use ever landed) →
+    //      drop it. Leaving it shows a permanent empty bubble until refresh.
+    //   2. Turn produced a tool_use but no assistant text → append a
+    //      synthesized "✓ Done" text part so the bubble has a visible closing
+    //      signal instead of just a row of tool log rows with nothing after.
+    //   3. Turn produced text → just flip `pending: false`; the text itself
+    //      is the done signal.
     updateMessagesForConversation(set, get, sessionKey, (msgs) =>
-      msgs
-        .filter((m) => !(m.role === "assistant" && m.pending && isAssistantStubEmpty(m)))
-        .map((m) => (m.role === "assistant" && m.pending ? { ...m, pending: false } : m))
+      msgs.flatMap((m) => {
+        if (!(m.role === "assistant" && m.pending)) return m;
+        if (isAssistantStubEmpty(m) && !hasToolUsePart(m)) return []; // drop
+        const hasText = m.parts.some((p) => p.type === "text" && p.text.trim());
+        const needsDoneMark = !hasText && hasToolUsePart(m);
+        const parts = needsDoneMark
+          ? [...m.parts, { type: "text" as const, text: "✓ Done" }]
+          : m.parts;
+        return { ...m, pending: false, parts };
+      })
     );
     return;
   }
@@ -749,6 +762,17 @@ function applySessionEventToChatStore(
   set: (next: Partial<ChatStoreState> | ((state: ChatStoreState) => Partial<ChatStoreState>)) => void,
   get: () => ChatStoreState
 ) {
+  // Stall detector input: any signal of life from a session bumps its
+  // timestamp. The hook that polls this treats silence > 20s during streaming
+  // as a hang. "updated" is a pure bookkeeping signal from the adapter —
+  // exclude it so nothing but real session activity counts.
+  if (event.type !== "updated" && "sessionKey" in event && event.sessionKey) {
+    const prev = get().lastEventAtBySession;
+    set({
+      lastEventAtBySession: { ...prev, [event.sessionKey]: Date.now() },
+    });
+  }
+
   if (event.type === "streaming") {
     set({
       conversations: applyConversationUpdate(ensureConversation(get().conversations, event.sessionKey), event.sessionKey, {
@@ -804,6 +828,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
   sessionsReady: false,
   selectedConversationKey: null,
   messagesByConversation: {},
+  lastEventAtBySession: {},
   queuedMessages: [],
   loadingConversationKey: null,
   refreshSessions: async () => {

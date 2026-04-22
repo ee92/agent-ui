@@ -751,11 +751,8 @@ User feedback after shipping context-bar:
    - UX: per-message play button; global "auto-read new replies" toggle (off by default); respect the `session.message.stop` event so mid-stream clicks don't speak half a reply.
    - Files: `src/components/chat/message-card.tsx` (button), new `src/lib/tts.ts` (wrap SpeechSynthesis with abort + markdown stripping), optional server endpoint if going with cloud TTS.
 
-5. **Auto-collapse completed tool calls; keep only the running one expanded.** Each tool_use card is currently collapsed by default. User wants: *all* cards collapsed *except* the one currently executing, which should be expanded until it finishes, then auto-collapse.
-   - Implementation: in `ToolUseCard`, derive `defaultExpanded` from status: `"running" | "streaming"` → expanded; `"done" | "error"` → collapsed. User can still manually toggle and their choice sticks (don't auto-collapse if the user manually expanded).
-   - Edge case: multiple parallel tool calls in one turn — each runs briefly; auto-expand each while running is fine, they'll collapse as they finish.
-   - Edge case: on history reload everything is `done`, so all collapsed — matches current behavior.
-   - Files: `src/components/chat/parts/tool-use-card.tsx` (status-driven expand, track manual override).
+5. **[DONE — UX Tightening Pass 2026-04-22]** **Auto-collapse completed tool calls; keep only the running one expanded.** Addressed by Workstream A of `UX_TIGHTENING_PLAN.md`: consecutive tool_use parts now render as a left-railed group of compact log rows (ToolLogGroup + ToolLogRow). The first running tool auto-expands; completed ones stay collapsed; manual toggles latch so they don't get overridden. Sub-agent (Agent) tools keep the full card treatment.
+   - Files: `src/components/chat/parts/tool-log-row.tsx` (new), `src/components/chat/parts/tool-log-group.tsx` (new), `src/components/chat/message-card.tsx` (part-loop grouping).
 
 *Top 3 highest-leverage for phone use (per 2026-04-20 discussion): image paste (#8), slash-command menu (#9), edit-last-user-message (#12).*
 
@@ -974,3 +971,37 @@ User feedback after shipping context-bar:
 39. **[DONE]** Client hammered `/api/files/read?path=tasks.json` hundreds of times per page load. Two causes in `task-store-v2.ts`:
     - `loadRemote()` did `files.exists()` *and* `files.read()` on every poll — doubled the request count for no gain, since `/api/files/read` already returns 404 when the file is missing and `loadRemote` already catches that into `null`. Dropped the `exists()` round-trip.
     - Polling ran unconditionally, including when the tab was hidden. Added a `document.hidden` short-circuit and bumped the default interval from 3s → 5s. Background-tab traffic is now zero; foreground traffic is one request every 5s instead of two every 3s (~6× reduction overall).
+
+
+---
+
+## UX Tightening Pass (2026-04-22)
+
+Addressed four user-reported chat UX issues in a single pass. Full plan and
+rationale kept in `UX_TIGHTENING_PLAN.md` (do not delete — historical record).
+
+- **Workstream D — sidebar preview.** `buildPreview` rewritten to return
+  last-assistant-text only; the in-flight state is communicated via a
+  `"Working…"` override that reads from `conversation.isStreaming`. User-sent
+  messages and tool calls no longer leak into the preview slot.
+- **Workstream B — scroll pin.** ResizeObserver on the content wrapper re-pins
+  to the bottom whenever it grows and the user is already pinned. In-place
+  streaming text growth and expanding tool panels no longer let the bottom
+  drift offscreen. Scroll listener rAF-throttled to survive iOS touch-momentum.
+- **Workstream A — compact tool log rows.** New `ToolLogGroup` + `ToolLogRow`
+  collapse consecutive `tool_use` parts into a left-railed group of one-line
+  log rows. The first running tool auto-expands; completed ones stay
+  collapsed; manual toggles latch. `Agent` tool kept as full card with
+  `SubAgentTrace` below. Addresses plan item #5.
+- **Workstream C — turn status + stall detector + "✓ Done".** New
+  `useTurnStatus` hook reads the last pending assistant message and derives a
+  one-line activity label (`Reading …`, `Running bash …`, `Thinking…`,
+  `Writing…`, `Waiting for Claude…`). New `TurnStatusLine` mounts at the tail
+  of the scroll flow. `chat-store` now records `lastEventAtBySession` on every
+  session event; if streaming and silence > 20s, a stall pill with Retry/Stop
+  buttons appears. `session.completed` now appends `"✓ Done"` as a text part
+  for turns that produced tool calls but no assistant text, so the bubble
+  always has a visible closing signal.
+
+Commits: `8e3d017` (D), `a9464cb` (B), `3b58b94` (A), + workstream C.
+

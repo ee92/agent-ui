@@ -24,6 +24,10 @@ export type ChatStoreState = {
   sessionsReady: boolean;
   selectedConversationKey: string | null;
   messagesByConversation: Record<string, ChatMessage[]>;
+  // Timestamp (Date.now() ms) of the most recent session event observed per
+  // sessionKey. The stall detector reads this to decide whether a streaming
+  // conversation has gone silent for too long.
+  lastEventAtBySession: Record<string, number>;
   queuedMessages: PendingSend[];
   loadingConversationKey: string | null;
   refreshSessions: () => Promise<void>;

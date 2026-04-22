@@ -9,6 +9,7 @@ import {
   slugForFilename,
 } from "./lib/export-markdown";
 import { MessageCard } from "./components/chat/message-card";
+import { TurnStatusLine } from "./components/chat/turn-status-line";
 import { FileBrowser } from "./components/files/file-browser";
 import { ErrorBoundary } from "./components/ui/error-boundary";
 import { IconButton } from "./components/ui/icon-button";
@@ -234,6 +235,22 @@ function ChatView({
                 />
               </div>
             ))}
+            <TurnStatusLine
+              sessionKey={sessionKey}
+              onStop={onCancel}
+              onRetry={() => {
+                // Stall-retry: cancel the stream, then re-send the last user
+                // message if we can find one. Keeps the flow identical to the
+                // per-message Retry menu action so the backend path is shared.
+                onCancel();
+                for (let i = messages.length - 1; i >= 0; i--) {
+                  if (messages[i].role === "user") {
+                    onRetry(messages[i].id);
+                    return;
+                  }
+                }
+              }}
+            />
             <div ref={endRef} />
           </div>
         </div>
