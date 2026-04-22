@@ -138,12 +138,13 @@ function ChatView({
     return keys?.includes(sk) ?? false;
   });
 
-  // Watch the scroll container to know whether we're at the bottom. A very
-  // small tolerance (4px) because any larger threshold means a casual
-  // wheel/touch scroll that lands within the threshold gets treated as
-  // "still pinned" and the ResizeObserver yanks the user back down on the
-  // next content growth. 4px is enough to forgive sub-pixel rounding from
-  // the clamp but not enough to swallow real user intent.
+  // Watch the scroll container to know whether we're at the bottom. 8px
+  // tolerance — small enough that a casual wheel/touch scroll lifts the
+  // pin immediately (combined with the wheel/touch/keydown listener below,
+  // which zeroes the ref before a scroll event even arrives), but loose
+  // enough that sub-pixel rounding on some display densities doesn't strand
+  // us with `dist = 5` when we're visually at the bottom and refuse to
+  // re-engage the pin.
   //
   // Measurement runs synchronously on every scroll event and writes the ref
   // immediately — any async throttle creates a race where the ResizeObserver
@@ -153,7 +154,7 @@ function ChatView({
     if (!el) return;
     const measure = () => {
       const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
-      const atBottom = dist < 4;
+      const atBottom = dist < 8;
       isAtBottomRef.current = atBottom;
       setIsAtBottom((prev) => (prev === atBottom ? prev : atBottom));
     };
@@ -192,13 +193,12 @@ function ChatView({
   // expanding, image loading) doesn't move scrollTop but does grow scrollHeight,
   // which pushes the old "bottom" offscreen. Observe the content wrapper and
   // re-pin whenever its size changes — but only when the user is already
-  // pinned, so scrolling up to read is not disturbed.
-  //
-  // Small deltas (1–2px per frame, from streaming tokens or animated tool
-  // panel height transitions) pin instantly to stay glued. Large single-shot
-  // deltas (≥ 40px, e.g. an image that just loaded, or a non-animated layout
-  // shift) ease over 150ms so the movement isn't a snap. This makes every
-  // scroll adjustment feel like a deliberate, smooth motion.
+  // pinned, so scrolling up to read is not disturbed. Always snap: smoothness
+  // comes from animating the content itself (e.g. the tool panel's
+  // grid-template-rows transition), not from eased scroll writes. A manual
+  // rAF ease would fight itself — the intermediate scrollTop values fire
+  // scroll events, the measure listener sees dist > tolerance mid-ease, and
+  // flips isAtBottomRef to false, killing the pin for the rest of the turn.
   //
   // No rAF pin loop — the RO fires before paint, so there's no gap frame.
   // An rAF loop makes casual user scroll impossible to escape.
@@ -206,53 +206,12 @@ function ChatView({
     const target = contentRef.current;
     const el = scrollContainerRef.current;
     if (!target || !el) return;
-    let lastScrollHeight = el.scrollHeight;
-    let easeRafId: number | null = null;
-    const cancelEase = () => {
-      if (easeRafId !== null) {
-        cancelAnimationFrame(easeRafId);
-        easeRafId = null;
-      }
-    };
-    const easeTo = (target: number) => {
-      cancelEase();
-      const startTop = el.scrollTop;
-      const startTime = performance.now();
-      const duration = 150;
-      const step = (now: number) => {
-        const t = Math.min(1, (now - startTime) / duration);
-        // ease-out cubic
-        const eased = 1 - Math.pow(1 - t, 3);
-        el.scrollTop = startTop + (target - startTop) * eased;
-        if (t < 1) {
-          easeRafId = requestAnimationFrame(step);
-        } else {
-          easeRafId = null;
-        }
-      };
-      easeRafId = requestAnimationFrame(step);
-    };
     const ro = new ResizeObserver(() => {
-      const nextSH = el.scrollHeight;
-      const delta = nextSH - lastScrollHeight;
-      lastScrollHeight = nextSH;
       if (!isAtBottomRef.current) return;
-      const bottom = nextSH - el.clientHeight;
-      // Per-frame growth during CSS animations or token streams: snap. Any
-      // single delta of 40px+ in a single RO fire came from a non-animated
-      // source (image load, initial layout) — smooth those.
-      if (delta >= 40) {
-        easeTo(bottom);
-      } else {
-        cancelEase();
-        el.scrollTop = bottom;
-      }
+      el.scrollTop = el.scrollHeight;
     });
     ro.observe(target);
-    return () => {
-      ro.disconnect();
-      cancelEase();
-    };
+    return () => ro.disconnect();
   }, []);
 
   // On session switch: reset to the bottom and jump (no smooth animation —
