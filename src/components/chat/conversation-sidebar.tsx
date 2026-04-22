@@ -400,7 +400,9 @@ export function ConversationSidebar({
                                     )}
                                   </div>
                                   <p className="mt-0.5 line-clamp-1 text-[12px] text-zinc-500">
-                                    {(conversation.preview.split("\n").find((line) => line.trim()) || "No messages yet").trim()}
+                                    {conversation.isStreaming
+                                      ? "Working…"
+                                      : (conversation.preview.split("\n").find((line) => line.trim()) || "No messages yet").trim()}
                                   </p>
                                 </div>
                                 {/* Timestamp — hidden when menu trigger visible on hover (desktop) */}

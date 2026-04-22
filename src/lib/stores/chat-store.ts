@@ -352,7 +352,7 @@ function handleClaudeRawEvent(
           ensureConversation(get().conversations, sessionKey),
           sessionKey,
           {
-            preview: buildPreview(m.parts),
+            preview: buildPreview(m),
             updatedAt: now,
           }
         ),
@@ -1039,8 +1039,11 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
         ...get().messagesByConversation,
         [selectedKey]: [...(get().messagesByConversation[selectedKey] ?? []), userMessage, assistantStub]
       },
+      // NOTE: no `preview:` update on the user-send path. The sidebar preview
+      // now reflects the last *assistant* text only; the "Working…" override
+      // in conversation-sidebar.tsx covers the in-flight state. The user's
+      // own outgoing text never belongs in the preview slot.
       conversations: applyConversationUpdate(ensureConversation(get().conversations, selectedKey), selectedKey, {
-        preview: buildPreview(userMessage.parts),
         updatedAt: nowIso(),
         isStreaming: true,
         runId: userMessage.id

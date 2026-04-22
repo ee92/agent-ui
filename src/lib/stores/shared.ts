@@ -207,20 +207,17 @@ export function normalizeSession(entry: SessionsListEntry): Conversation {
   };
 }
 
-export function buildPreview(parts: ChatMessage["parts"]) {
-  return parts
-    .flatMap((part) => {
-      if (part.type === "text") {
-        return part.text;
-      }
-      if (part.type === "attachment") {
-        return `[Attachment] ${part.name}`;
-      }
-      return "[Image]";
-    })
+// Sidebar preview is the last *assistant* text — tool calls, thinking blocks,
+// images, and the user's own last message never belong here. If the message
+// is non-text or not from the assistant, return "" and let the sidebar fall
+// back to its own placeholders / streaming override.
+export function buildPreview(message: ChatMessage | null | undefined): string {
+  if (!message || message.role !== "assistant") return "";
+  const text = message.parts
+    .flatMap((p) => (p.type === "text" ? p.text : ""))
     .join(" ")
-    .trim()
-    .slice(0, 140);
+    .trim();
+  return text.slice(0, 140);
 }
 
 export function ensureConversation(list: Conversation[], key: string, fallbackTitle?: string) {
