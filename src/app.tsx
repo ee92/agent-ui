@@ -231,7 +231,12 @@ function ChatView({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="relative flex min-h-0 flex-1 flex-col">
+      {/* pb-4 here (not on the scroll container) gives a fixed 16px cushion
+          between the last message and the composer's top border. Because the
+          padding is on the *wrapper*, the scroll container itself has no
+          bottom padding — so the pin lands exactly at the last message, with
+          no scroll-reachable dead space below it. */}
+      <div className="relative flex min-h-0 flex-1 flex-col pb-4">
         <div
           ref={scrollContainerRef}
           className="flex min-h-0 flex-1 flex-col scroll-soft overflow-y-auto px-3 xl:px-6"
