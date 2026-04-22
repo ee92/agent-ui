@@ -735,7 +735,9 @@ User feedback after shipping context-bar:
    - Files: `src/components/chat/message-card.tsx`.
    - **Resolution:** collapsed all four actions (Copy / Create task / Retry / Hide) behind a single kebab `⋯` button in the top-right of every bubble. Dropdown opens via portal to escape transcript overflow, closes on outside click or Escape. Kebab is dim-until-hover on desktop, always visible on mobile. Net: bubble footprint dropped by ~44px of chrome per message.
 
-3. **Stop button disappears after page refresh during a run.** If the page reloads mid-stream, the UI has no Stop affordance even though the run is still active on the backend.
+3. **[DONE — verify live test]** **Stop button disappears after page refresh during a run.** If the page reloads mid-stream, the UI has no Stop affordance even though the run is still active on the backend.
+   - Resolution: `onCancel` is wired in `chat-composer.tsx` and the Stop button renders whenever `isStreaming` is true. Hydration path in `claude-code-adapter.ts` emits a synthetic `session.init` from `/history`, and `isStreaming` rides along. Code paths confirmed; worth a manual test (reload mid-stream, Stop button should reappear).
+   - **Original diagnosis (kept for context):**
    - Root cause: the initial SSE/WebSocket connection doesn't reattach to in-flight streams. Streaming state is local-only and gets reset on reload.
    - Options:
      - **Server-side run registry**: on reconnect, query `/api/claude-code/runs/active?sessionKey=...`; if a run is in-flight, hydrate `isStreaming=true` and allow cancel via runId. Requires a small endpoint and that `sdk-runner.mjs` keeps `activeRuns` addressable.
@@ -757,7 +759,9 @@ User feedback after shipping context-bar:
 
 *Top 3 highest-leverage for phone use (per 2026-04-20 discussion): image paste (#8), slash-command menu (#9), edit-last-user-message (#12).*
 
-6. **Scroll-to-bottom button + don't hijack scroll when reading above.** Two related scroll behaviors.
+6. **[DONE]** **Scroll-to-bottom button + don't hijack scroll when reading above.** Two related scroll behaviors.
+   - Resolution: `app.tsx` tracks `isAtBottom` with 40px tolerance; auto-scroll is gated on it. FAB renders when `!isAtBottom && messages.length > 0`, clicking re-arms auto-scroll.
+   - **Original plan (kept for context):**
    - **Don't auto-scroll mid-read.** Currently the transcript pins to the bottom on every incoming event. If the user has scrolled up to read earlier context, new deltas yank them back down.
      - Track `isAtBottom` state by listening to the scroll container's `scroll` event with a small tolerance (~40px from bottom = "at bottom"). Only auto-scroll when `isAtBottom === true`.
      - Reset to true on: user send, explicit scroll-to-bottom click, switching sessions.
@@ -770,7 +774,9 @@ User feedback after shipping context-bar:
 7. **Voice dictation input.** Natural pair with TTS output (#4). Browser `SpeechRecognition` (webkit prefix on Safari). Mic button in composer toggles recording; interim transcript renders in the textarea; submit on explicit send. Big phone win.
    - Files: `src/components/chat/chat-composer.tsx`, new `src/lib/stt.ts`.
 
-8. **Image paste & upload in composer** *(top priority)*. Currently text-only. Support pasting screenshots from clipboard, dragging files onto the window, and a paperclip button for file picker. Attach as base64 image blocks to the Anthropic message content array. Critical for phone (screenshots) and debugging.
+8. **[DONE — `c583436`]** **Image paste & upload in composer** *(top priority)*. Currently text-only. Support pasting screenshots from clipboard, dragging files onto the window, and a paperclip button for file picker. Attach as base64 image blocks to the Anthropic message content array. Critical for phone (screenshots) and debugging.
+   - Resolution: `chat-composer.tsx` handles clipboard paste (image MIME filter, renames unnamed pastes with timestamp), drag-drop, and file picker with multi-select. Images attach as base64 image blocks.
+   - **Original plan (kept for context):**
    - SDK path: user messages can include `{ type: "image", source: { type: "base64", media_type, data } }` blocks alongside text. Needs `sdk-runner.mjs` to accept a `content: Array<Part>` shape instead of just a string prompt.
    - Files: `src/components/chat/chat-composer.tsx` (paste/drop handlers, preview chips), `server/claude/sdk-runner.mjs` (accept multimodal prompt), `serve.mjs` (API change), `src/lib/types.ts` (already has `image` part).
 
@@ -820,13 +826,15 @@ User feedback after shipping context-bar:
 
 ### Mobile polish
 
-21. **Sidebar as bottom sheet / swipe drawer on narrow screens.** Desktop-style sidebar is awkward on phone. Tailwind breakpoint: at `md` and below, collapse sidebar behind a swipe-in drawer with a scrim.
+21. **[DONE — `37aa70e`]** **Sidebar as bottom sheet / swipe drawer on narrow screens.** Desktop-style sidebar is awkward on phone. Tailwind breakpoint: at `md` and below, collapse sidebar behind a swipe-in drawer with a scrim.
+    - Resolution: `app.tsx` renders the sidebar behind an `xl:hidden` fixed overlay + backdrop scrim + slide-in transform, safe-area aware, closes on backdrop click / Escape.
     - Files: `src/app.tsx`, `src/components/sidebar/*`.
 
 22. **iOS viewport / keyboard handling.** Use `visualViewport` API + `env(safe-area-inset-bottom)` so the composer stays above the software keyboard and doesn't get cut off by the home indicator. Known Safari pain point.
     - Files: `src/components/chat/chat-composer.tsx`, `index.css`.
 
-23. **Bigger touch targets on message actions.** Ties into followup #2 (button cleanup). Any button <44x44pt is a miss on mobile. Either enlarge icons or gate them behind an overflow menu with 44pt targets.
+23. **[PARTIAL]** **Bigger touch targets on message actions.** Ties into followup #2 (button cleanup). Any button <44x44pt is a miss on mobile. Either enlarge icons or gate them behind an overflow menu with 44pt targets.
+    - Current state: dropdown menu items hit target (`px-3 py-2.5`), but the kebab trigger button itself is ~24×24 (p-1 + 16px icon) — still under the 44pt guideline. Low-effort fix: bump the trigger padding on mobile.
 
 ### Perf (not urgent)
 
@@ -865,18 +873,21 @@ User feedback after shipping context-bar:
 
 ### Transcript resume fidelity
 
-30. **Empty bubbles on resumed sessions.** Reopening any non-trivial session shows blank user AND assistant message bubbles. Verified on `-home-clawd-projects::e1845fe8-bf3f-4979-97f2-55341616453e`: of 500 messages in `/history`, many have `content: ""` (length 0) — both user turns that consist entirely of `tool_result` blocks and assistant turns that are pure `tool_use` / `thinking` get flattened to empty string.
+30. **[DONE]** **Empty bubbles on resumed sessions.** Reopening any non-trivial session shows blank user AND assistant message bubbles. Verified on `-home-clawd-projects::e1845fe8-bf3f-4979-97f2-55341616453e`: of 500 messages in `/history`, many have `content: ""` (length 0) — both user turns that consist entirely of `tool_result` blocks and assistant turns that are pure `tool_use` / `thinking` get flattened to empty string.
+    - Resolution: `transcript-parser.mjs` folds `tool_result` blocks into their matching `tool_use` parts; user messages containing only `tool_result` get returned with parts folded away. `chat-store.ts` filters out messages with `parts.length === 0` on hydration. No more ghost bubbles.
     - Root cause: `server/claude/transcript-parser.mjs` `extractText` keeps only `.text` blocks and drops everything else. A user `tool_result` turn has no `.text` at all → empty. An assistant turn whose blocks are `[tool_use, thinking]` → empty.
     - Fix direction: return structured `parts: MessageContentPart[]` from `/history` instead of a flat `content: string`. This is the same work as plan Step 13 ("optional history parser upgrade") and is no longer optional — the absence is user-visible as ghost bubbles.
     - Frontend must also stop rendering an empty bubble when a message has zero parts; either hide it or render a compact "(tool call)" placeholder pending the structured parse.
     - Files: `server/claude/transcript-parser.mjs`, `serve.mjs` `/history` response shape, `src/lib/adapters/claude-code-adapter.ts` `history()`, `src/lib/shared.ts` (normalizeHistoryMessage), `src/components/chat/message-card.tsx`.
 
-31. **Assistant tool-use blocks render as plain text on resume.** Even when a message has content, the tool call is serialized as the string `[tool_use:Name] {...json...}` rather than a structured tool_use card. Verified in history payload for the same conversation — `contentPreview: "[tool_use:mcp__playwright__browser_evaluate] {\"function\":\"...\"}"`.
+31. **[DONE]** **Assistant tool-use blocks render as plain text on resume.** Even when a message has content, the tool call is serialized as the string `[tool_use:Name] {...json...}` rather than a structured tool_use card. Verified in history payload for the same conversation — `contentPreview: "[tool_use:mcp__playwright__browser_evaluate] {\"function\":\"...\"}"`.
+    - Resolution: `transcript-parser.mjs` `extractParts()` emits structured `{ type: "tool_use", id, name, input, ... }` parts instead of bracketized strings. `ToolUseCard` renders them as interactive collapsible cards on resume, matching live streaming.
     - Root cause: same `transcript-parser.mjs` flattening — tool blocks get bracketized strings. Live streaming now has `tool_use` cards (per recent work) but resumed history does not.
     - Fix bundled with #30 — structured parts from the parser naturally resolve this; renderer picks `tool_use` variant.
     - Files: same as #30.
 
-32. **Subagent transcript files surface as top-level sessions in the sidebar.** Verified: 64 of the 100 sessions returned by `GET /api/claude-code/sessions` are `agent-*` entries with keys like `-home-clawd/<parent-uuid>/subagents::agent-abc475575063bc180` and `cwd: "-home-clawd/<parent-uuid>/subagents"`. These are Claude Code's sub-agent transcripts written under `<parent>/subagents/agent-*.jsonl`, not independent user sessions.
+32. **[DONE]** **Subagent transcript files surface as top-level sessions in the sidebar.** Verified: 64 of the 100 sessions returned by `GET /api/claude-code/sessions` are `agent-*` entries with keys like `-home-clawd/<parent-uuid>/subagents::agent-abc475575063bc180` and `cwd: "-home-clawd/<parent-uuid>/subagents"`. These are Claude Code's sub-agent transcripts written under `<parent>/subagents/agent-*.jsonl`, not independent user sessions.
+    - Resolution: `session-index.mjs` `walk()` skips any directory named `subagents`. Simplest-fix path from the plan.
     - Root cause: `server/claude/session-index.mjs` (or wherever `/sessions` lists files) is scanning all `.jsonl` under `~/.claude/projects/**/` without excluding `**/subagents/**`.
     - Fix options:
       - **Simplest:** filter out any transcript whose path contains `/subagents/` from the top-level session list.
