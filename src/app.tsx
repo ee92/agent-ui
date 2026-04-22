@@ -111,10 +111,19 @@ function ChatView({
 }) {
   const endRef = useRef<HTMLDivElement | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  // Wraps all message children — a stable element whose height grows when
+  // tokens stream into an existing bubble or a tool card expands. We observe
+  // this with a ResizeObserver so in-place content growth (not just new
+  // messages) keeps the bottom pinned.
+  const contentRef = useRef<HTMLDivElement | null>(null);
   // Track whether the scroll container is pinned near the bottom. Auto-scroll
   // only fires when this is true, so incoming messages don't yank the user
   // back down while they're reading earlier context.
   const [isAtBottom, setIsAtBottom] = useState(true);
+  // Latest `isAtBottom` read by the ResizeObserver, which must not re-subscribe
+  // on every toggle (we'd miss the growth event fired during the re-subscribe).
+  const isAtBottomRef = useRef(true);
+  useEffect(() => { isAtBottomRef.current = isAtBottom; }, [isAtBottom]);
   const lastMessage = messages[messages.length - 1];
 
   // Find linked task for this session
@@ -128,17 +137,45 @@ function ChatView({
 
   // Watch the scroll container to know whether we're at the bottom.
   // ~40px tolerance so a few pixels of drift (or a thin floating element)
-  // doesn't flip the state.
+  // doesn't flip the state. Measurement is rAF-throttled so iOS touch-momentum
+  // scroll (which fires dozens of events per frame) doesn't starve the main
+  // thread.
   useEffect(() => {
     const el = scrollContainerRef.current;
     if (!el) return;
-    const computeAtBottom = () => {
+    let rafId: number | null = null;
+    const measure = () => {
+      rafId = null;
       const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
       setIsAtBottom(dist < 40);
     };
-    el.addEventListener("scroll", computeAtBottom, { passive: true });
-    computeAtBottom();
-    return () => el.removeEventListener("scroll", computeAtBottom);
+    const onScroll = () => {
+      if (rafId !== null) return;
+      rafId = requestAnimationFrame(measure);
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    // Initial measurement — not via rAF, we want the correct value on mount.
+    measure();
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      if (rafId !== null) cancelAnimationFrame(rafId);
+    };
+  }, []);
+
+  // In-place content growth (tokens streaming into a bubble, tool card
+  // expanding, image loading) doesn't move scrollTop but does grow scrollHeight,
+  // which pushes the old "bottom" offscreen. Observe the content wrapper and
+  // re-pin whenever its size changes — but only when the user is already
+  // pinned, so scrolling up to read is not disturbed.
+  useEffect(() => {
+    const target = contentRef.current;
+    if (!target) return;
+    const ro = new ResizeObserver(() => {
+      if (!isAtBottomRef.current) return;
+      endRef.current?.scrollIntoView({ block: "end" });
+    });
+    ro.observe(target);
+    return () => ro.disconnect();
   }, []);
 
   // On session switch: reset to the bottom and jump (no smooth animation —
@@ -170,31 +207,35 @@ function ChatView({
           ref={scrollContainerRef}
           className="flex min-h-0 flex-1 flex-col scroll-soft overflow-y-auto px-3 pb-4 xl:px-6"
         >
-          <div className="flex-1" />
-          {loading && <LoadingSkeleton rows={4} className="h-24 rounded-lg" />}
-          {!loading && messages.length === 0 && linkedTask && (
-            <TaskContextCard task={linkedTask} />
-          )}
-          {!loading && messages.length === 0 && !linkedTask && (
-            <div className="flex flex-col items-center justify-center px-8 py-16 text-center">
-              <p className="text-lg font-medium text-white">Start something new</p>
-              <p className="mt-2 max-w-xs text-sm leading-6 text-zinc-400">
-                Send a message to get started.
-              </p>
-            </div>
-          )}
-          {messages.map((message) => (
-            <div key={message.id} className="mb-4">
-              <MessageCard
-                message={message}
-                onCopy={() => void navigator.clipboard.writeText(extractText(message))}
-                onRetry={() => onRetry(message.id)}
-                onHide={() => onHide(message.id)}
-                onTask={(text) => onTask(text)}
-              />
-            </div>
-          ))}
-          <div ref={endRef} />
+          {/* ResizeObserver target — wraps everything that can grow. Must have
+              no layout effect of its own; purely a handle for RO. */}
+          <div ref={contentRef} className="flex min-h-full flex-col">
+            <div className="flex-1" />
+            {loading && <LoadingSkeleton rows={4} className="h-24 rounded-lg" />}
+            {!loading && messages.length === 0 && linkedTask && (
+              <TaskContextCard task={linkedTask} />
+            )}
+            {!loading && messages.length === 0 && !linkedTask && (
+              <div className="flex flex-col items-center justify-center px-8 py-16 text-center">
+                <p className="text-lg font-medium text-white">Start something new</p>
+                <p className="mt-2 max-w-xs text-sm leading-6 text-zinc-400">
+                  Send a message to get started.
+                </p>
+              </div>
+            )}
+            {messages.map((message) => (
+              <div key={message.id} className="mb-4">
+                <MessageCard
+                  message={message}
+                  onCopy={() => void navigator.clipboard.writeText(extractText(message))}
+                  onRetry={() => onRetry(message.id)}
+                  onHide={() => onHide(message.id)}
+                  onTask={(text) => onTask(text)}
+                />
+              </div>
+            ))}
+            <div ref={endRef} />
+          </div>
         </div>
         {showScrollFab && (
           <button
