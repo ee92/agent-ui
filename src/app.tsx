@@ -121,10 +121,12 @@ function ChatView({
   // only fires when this is true, so incoming messages don't yank the user
   // back down while they're reading earlier context.
   const [isAtBottom, setIsAtBottom] = useState(true);
-  // Latest `isAtBottom` read by the ResizeObserver, which must not re-subscribe
-  // on every toggle (we'd miss the growth event fired during the re-subscribe).
+  // Latest `isAtBottom` read synchronously from async observers (rAF, RO).
+  // Must be updated *inline* with the measurement — a useEffect-based mirror
+  // lags one render behind, which causes a race: if the user scrolls up and
+  // content grows in the same frame, the RO sees a stale `true` and yanks
+  // them back down.
   const isAtBottomRef = useRef(true);
-  useEffect(() => { isAtBottomRef.current = isAtBottom; }, [isAtBottom]);
   const lastMessage = messages[messages.length - 1];
 
   // Find linked task for this session
@@ -138,65 +140,91 @@ function ChatView({
 
   // Watch the scroll container to know whether we're at the bottom.
   // ~40px tolerance so a few pixels of drift (or a thin floating element)
-  // doesn't flip the state. Measurement is rAF-throttled so iOS touch-momentum
-  // scroll (which fires dozens of events per frame) doesn't starve the main
-  // thread.
+  // doesn't flip the state. The measurement runs synchronously on every
+  // scroll event and writes the ref immediately — any async throttle here
+  // creates a race where async observers (RO, rAF) read a stale `true` and
+  // pin the user back down after they scrolled up. `setState` with the same
+  // value is a React no-op, so paying for a per-event setState is fine.
   useEffect(() => {
     const el = scrollContainerRef.current;
     if (!el) return;
-    let rafId: number | null = null;
     const measure = () => {
-      rafId = null;
       const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
-      setIsAtBottom(dist < 40);
+      const atBottom = dist < 40;
+      isAtBottomRef.current = atBottom;
+      setIsAtBottom((prev) => (prev === atBottom ? prev : atBottom));
     };
-    const onScroll = () => {
-      if (rafId !== null) return;
-      rafId = requestAnimationFrame(measure);
-    };
-    el.addEventListener("scroll", onScroll, { passive: true });
-    // Initial measurement — not via rAF, we want the correct value on mount.
+    el.addEventListener("scroll", measure, { passive: true });
     measure();
-    return () => {
-      el.removeEventListener("scroll", onScroll);
-      if (rafId !== null) cancelAnimationFrame(rafId);
-    };
+    return () => el.removeEventListener("scroll", measure);
   }, []);
 
   // In-place content growth (tokens streaming into a bubble, tool card
   // expanding, image loading) doesn't move scrollTop but does grow scrollHeight,
   // which pushes the old "bottom" offscreen. Observe the content wrapper and
   // re-pin whenever its size changes — but only when the user is already
-  // pinned, so scrolling up to read is not disturbed.
+  // pinned, so scrolling up to read is not disturbed. Direct scrollTop
+  // assignment instead of scrollIntoView — no browser variance, no smooth-
+  // scroll interception, no endRef offset math.
   useEffect(() => {
     const target = contentRef.current;
-    if (!target) return;
+    const el = scrollContainerRef.current;
+    if (!target || !el) return;
     const ro = new ResizeObserver(() => {
       if (!isAtBottomRef.current) return;
-      endRef.current?.scrollIntoView({ block: "end" });
+      el.scrollTop = el.scrollHeight;
     });
     ro.observe(target);
     return () => ro.disconnect();
   }, []);
 
+  // Belt-and-suspenders for streaming: as long as the session is actively
+  // streaming and the user is pinned, re-assert `scrollTop = scrollHeight`
+  // every animation frame. Catches any growth the ResizeObserver hasn't
+  // yet noticed (RO fires async, React commits are async, rapid token bursts
+  // can produce a visible un-pinned frame between RO callbacks). The write
+  // is a no-op when already at the bottom — cost is one property assignment
+  // per frame while streaming.
+  useEffect(() => {
+    if (!isStreaming) return;
+    let rafId: number | null = null;
+    const tick = () => {
+      if (isAtBottomRef.current) {
+        const el = scrollContainerRef.current;
+        if (el) el.scrollTop = el.scrollHeight;
+      }
+      rafId = requestAnimationFrame(tick);
+    };
+    rafId = requestAnimationFrame(tick);
+    return () => {
+      if (rafId !== null) cancelAnimationFrame(rafId);
+    };
+  }, [isStreaming]);
+
   // On session switch: reset to the bottom and jump (no smooth animation —
   // we want the new session to open pre-scrolled, not animate there).
   useEffect(() => {
+    isAtBottomRef.current = true;
     setIsAtBottom(true);
     requestAnimationFrame(() => {
-      endRef.current?.scrollIntoView({ block: "end" });
+      const el = scrollContainerRef.current;
+      if (el) el.scrollTop = el.scrollHeight;
     });
   }, [sessionKey]);
 
   // New content auto-scrolls only if the user is already pinned to the bottom.
   useEffect(() => {
     if (!isAtBottom) return;
-    endRef.current?.scrollIntoView({ block: "end" });
+    const el = scrollContainerRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
   }, [lastMessage?.id, lastMessage?.pending, loading, messages.length, isAtBottom]);
 
   const scrollToBottom = useCallback(() => {
+    isAtBottomRef.current = true;
     setIsAtBottom(true);
-    endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   }, []);
 
   const showScrollFab = !isAtBottom && messages.length > 0;
