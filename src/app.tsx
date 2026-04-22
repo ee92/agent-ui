@@ -297,12 +297,16 @@ export function App() {
   const currentPage = route.page;
   const chatSessionKey = currentPage === "chat" ? route.sessionKey : null;
 
-  // When route changes to a chat, select that conversation
+  // When route changes to a chat, select that conversation. Gate on
+  // `adapterConnected` so a mid-stream page refresh — which paints before the
+  // WS finishes connecting — still fetches /history once the adapter is up.
+  // Without this, selectConversation() early-returns on `!adapter.isConnected()`
+  // and the chat area stays empty until the user clicks the sidebar again.
   useEffect(() => {
-    if (chatSessionKey) {
+    if (chatSessionKey && adapterConnected) {
       void selectConversation(chatSessionKey);
     }
-  }, [chatSessionKey, selectConversation]);
+  }, [chatSessionKey, adapterConnected, selectConversation]);
 
   // Swap the composer draft in/out per session so each conversation keeps its
   // own WIP text across switches and reloads.

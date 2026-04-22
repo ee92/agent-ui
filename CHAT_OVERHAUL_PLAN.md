@@ -954,3 +954,23 @@ User feedback after shipping context-bar:
 ### Status pill stale after /compact
 
 36. **[DONE]** Status pill doesn't update when `/compact` runs — stays frozen at the pre-compact token count until the next assistant turn fires a `session.usage`. The `compact_boundary` divider in the transcript shows the correct `pre → post` numbers, so the data is clearly in flight; `sdk-runner` emits `session.compact_boundary` carrying `postTokens`; `chat-store` was explicitly dropping that event ("forwarded for future UI rendering; silently dropped for now"). Fixed by wiring the handler to patch `contextTokens` from `postTokens` immediately. Component sub-totals (input/cache/output) get refreshed on the next assistant turn.
+
+### Concurrent-session cross-contamination (2026-04-22, unresolved)
+
+37. **Two active sessions' histories appear to swap when clicking between them.** Reproduced live: user had two recently-active sessions in the sidebar, both with runs in flight. Clicking back and forth, each conversation showed the *other* session's scrollback — not partial pollution, a full takeover in both directions.
+    - Static analysis came up empty. Audited every write site to `messagesByConversation` in `chat-store.ts` (lines 117–122, 710, 838, 867, 901–906, 944, 1022, 1044, 1065, 1076, 1144) — every assignment is scoped to its own `key`/`sessionKey` function parameter. No cross-key writes. Event routing uses `event.sessionKey` from per-run server state; per-run state is never shared. `/history` reads `session.transcriptPath` which is derived from the file path at index time — no way for one session's key to resolve to another's jsonl.
+    - The render pipeline is direct: `chatSessionKey` from URL via `useSyncExternalStore` → `selectedMessages = messagesByConversation[chatSessionKey]`. No memoization to stale-dep.
+    - Still could be: timing race during concurrent streams (two runs emitting events simultaneously), server-side `rebuildIndex()` cache corruption under concurrent access, transient React render interleaving, or something unexplored.
+    - Needs instrumentation to reproduce with logs at: adapter event emit, store raw-event routing, hydration set, remap merge, sendMessage set. Without logs, more guessing is lies.
+    - Also need from user on next repro: were both runs in-flight, did the swap persist across refresh, same tab or multi-tab, which two session keys.
+    - Files to touch when diagnosing: `src/lib/adapters/claude-code-adapter.ts`, `src/lib/stores/chat-store.ts`, `server/claude/sdk-runner.mjs`, `server/claude/session-index.mjs`, `server/claude/ws-broker.mjs`.
+
+38. **[DONE]** Mid-stream refresh loses session history entirely (2026-04-22, possibly related to #37). Repro: two sessions active, query running in both, refresh the page while viewing one of them. Result: main chat area shows "Start something new / Send a message to get started" empty state — no messages rendered. Server has full history (curl `/api/claude-code/sessions/<key>/history` returns 22 messages), but the browser never fires the `/history` GET after refresh. Zero `claude-code/sessions/<key>/history` requests in the network panel.
+    - Root cause: race in `app.tsx:301-305`. The `useEffect` calls `selectConversation(chatSessionKey)` on mount with deps `[chatSessionKey, selectConversation]`. `selectConversation` (`chat-store.ts:883`) early-returns if `!adapter.isConnected()`. On first paint the adapter is still connecting (sibling effect at `app.tsx:314`). When the WS connects later, nothing re-triggers `selectConversation` for the URL's session, so `/history` is never fetched. `messagesByConversation[sessionKey]` stays undefined/empty forever.
+    - Fix: added `adapterConnected` to the effect's deps and gated the call: `if (chatSessionKey && adapterConnected) void selectConversation(chatSessionKey);`. The effect now re-fires once the WS connects, and `/history` gets fetched exactly once per (session, connection) tuple.
+
+### Tasks polling traffic (2026-04-22, done)
+
+39. **[DONE]** Client hammered `/api/files/read?path=tasks.json` hundreds of times per page load. Two causes in `task-store-v2.ts`:
+    - `loadRemote()` did `files.exists()` *and* `files.read()` on every poll — doubled the request count for no gain, since `/api/files/read` already returns 404 when the file is missing and `loadRemote` already catches that into `null`. Dropped the `exists()` round-trip.
+    - Polling ran unconditionally, including when the tab was hidden. Added a `document.hidden` short-circuit and bumped the default interval from 3s → 5s. Background-tab traffic is now zero; foreground traffic is one request every 5s instead of two every 3s (~6× reduction overall).
