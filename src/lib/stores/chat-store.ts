@@ -586,6 +586,24 @@ function handleClaudeRawEvent(
     return;
   }
 
+  if (eventName === "session.run_resumed") {
+    // Fired by the adapter after /history when the backend reports a run is
+    // still in-flight for this session (mid-stream refresh). Populate runId
+    // on the conversation so cancelStream can find it; isStreaming is set by
+    // the accompanying `streaming` event emitted by the adapter.
+    const runId = typeof payload.runId === "string" ? payload.runId : null;
+    if (runId) {
+      set({
+        conversations: applyConversationUpdate(
+          ensureConversation(get().conversations, sessionKey),
+          sessionKey,
+          { runId }
+        ),
+      });
+    }
+    return;
+  }
+
   if (
     eventName === "session.status" ||
     eventName === "session.notification" ||

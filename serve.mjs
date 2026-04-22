@@ -21,7 +21,7 @@ import { listSessions, getSession, refreshIndex } from "./server/claude/session-
 import { parseTranscript } from "./server/claude/transcript-parser.mjs";
 import { listCodexSessions, getCodexSession } from "./server/codex/session-index.mjs";
 import { parseCodexTranscript } from "./server/codex/transcript-parser.mjs";
-import { startRun, cancelRun, getRunStatus, getConfiguredModel } from "./server/claude/sdk-runner.mjs";
+import { startRun, cancelRun, getRunStatus, getConfiguredModel, getActiveRunIdForSession } from "./server/claude/sdk-runner.mjs";
 import { createBroker } from "./server/claude/ws-broker.mjs";
 import { scanDocker } from "./server/docker-scanner.mjs";
 import { mergeProjects } from "./server/project-merger.mjs";
@@ -692,8 +692,18 @@ const server = createServer(async (req, res) => {
     const limit = Number(url.searchParams.get("limit") || "500");
     const parsed = await parseTranscript(session.transcriptPath, { limit });
 
+    // If a run is still in-flight for this session, surface isStreaming + runId
+    // so a mid-stream page reload repopulates the Stop button. Without this,
+    // the client has no signal that the backend is still generating.
+    const activeRunId = getActiveRunIdForSession(sessionKey);
+    const sessionPayload = applySessionOverrides(session);
+    if (activeRunId) {
+      sessionPayload.isStreaming = true;
+      sessionPayload.runId = activeRunId;
+    }
+
     return jsonResponse(res, {
-      session: applySessionOverrides(session),
+      session: sessionPayload,
       messages: parsed.messages,
       lastUsage: parsed.metadata?.lastUsage ?? null,
       // The runner's configured model including any `[1m]` suffix — the API

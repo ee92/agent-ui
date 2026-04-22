@@ -321,9 +321,31 @@ export class ClaudeCodeAdapter implements BackendAdapter {
   }
 
   private async history(sessionKey: string): Promise<Message[]> {
-    const data = await this.request<{ messages?: unknown[]; lastUsage?: unknown; runnerModel?: unknown }>(
-      `/api/claude-code/sessions/${encodeURIComponent(sessionKey)}/history`
-    );
+    const data = await this.request<{
+      messages?: unknown[];
+      lastUsage?: unknown;
+      runnerModel?: unknown;
+      session?: { isStreaming?: unknown; runId?: unknown };
+    }>(`/api/claude-code/sessions/${encodeURIComponent(sessionKey)}/history`);
+    // If the backend reports a run is still in-flight for this session
+    // (happens when the user refreshes mid-stream), emit a streaming=true
+    // event so the store repopulates isStreaming + runId on the conversation.
+    // Without this, the Stop button stays hidden even though the run can
+    // still be cancelled via /api/claude-code/runs/:runId/cancel.
+    const sessionPayload = data.session;
+    if (sessionPayload && sessionPayload.isStreaming === true) {
+      this.emit({ type: "streaming", sessionKey, isStreaming: true });
+      const runId = typeof sessionPayload.runId === "string" ? sessionPayload.runId : null;
+      if (runId) {
+        this.emit({
+          type: "raw",
+          sessionKey,
+          event: "session.run_resumed",
+          runId,
+          payload: { runId },
+        });
+      }
+    }
     // The server reports the runner's *configured* model (tag intact, e.g.
     // "opus[1m]"). Synthesize a session.init so the store picks the right
     // context window before any live init fires. This is the only signal

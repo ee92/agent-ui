@@ -476,3 +476,18 @@ export function getRunStatus(runId) {
     cwd: state.cwd,
   };
 }
+
+// Returns the runId of an in-flight run for the given sessionKey, or null.
+// Used by /history so the client can repopulate isStreaming + runId after a
+// page reload mid-stream — without this the Stop button vanishes on refresh
+// even though the backend is still generating. Only "running" state counts;
+// completed/aborted/errored runs linger in activeRuns for status lookups.
+export function getActiveRunIdForSession(sessionKey) {
+  if (!sessionKey) return null;
+  for (const state of activeRuns.values()) {
+    if (state.sessionKey === sessionKey && state.status === "running" && !state.finished) {
+      return state.runId;
+    }
+  }
+  return null;
+}
