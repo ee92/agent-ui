@@ -1,54 +1,38 @@
 import { useTurnStatus } from "./use-turn-status";
 
 // Pinned to the tail of the scroll container while the session is streaming.
-// The text mirrors the most-recent activity (Reading/Running/Writing/…); the
-// stall pill appears after ~20s of silence from the backend and exposes
-// Retry/Stop shortcuts so the user isn't stuck guessing whether the agent
-// died.
-export function TurnStatusLine({
-  sessionKey,
-  onRetry,
-  onStop,
-}: {
-  sessionKey: string | null;
-  onRetry: () => void;
-  onStop: () => void;
-}) {
-  const { text, stalled } = useTurnStatus(sessionKey);
+// Shows what Claude is currently doing (Reading/Running/Writing/Thinking/…)
+// plus a live elapsed-seconds counter. No stall threshold — a climbing
+// counter is more honest than an arbitrary "stalled?" verdict.
+export function TurnStatusLine({ sessionKey }: { sessionKey: string | null }) {
+  const { text, elapsedMs } = useTurnStatus(sessionKey);
   if (!text) return null;
-
   return (
-    <div className="mb-3 flex flex-col gap-1.5 px-1">
-      <div className="flex items-center gap-2 text-[11px] italic text-zinc-500">
-        <span className="inline-flex items-center gap-0.5">
-          <Dot delay="0ms" />
-          <Dot delay="150ms" />
-          <Dot delay="300ms" />
+    <div className="mb-3 flex items-center gap-2 px-1 text-[11px] italic text-zinc-500">
+      <span className="inline-flex items-center gap-0.5">
+        <Dot delay="0ms" />
+        <Dot delay="150ms" />
+        <Dot delay="300ms" />
+      </span>
+      <span className="truncate">{text}</span>
+      {elapsedMs >= 2000 ? (
+        <span className="shrink-0 not-italic tabular-nums text-zinc-600">
+          · {formatElapsed(elapsedMs)}
         </span>
-        <span className="truncate">{text}</span>
-      </div>
-      {stalled ? (
-        <div className="flex items-center gap-2 rounded-md border border-amber-400/20 bg-amber-500/5 px-2.5 py-1.5 text-[11px] text-amber-200/80">
-          <span aria-hidden="true">⚠</span>
-          <span className="flex-1">No activity for 60s</span>
-          <button
-            type="button"
-            onClick={onRetry}
-            className="rounded border border-amber-400/30 px-2 py-0.5 text-[11px] text-amber-100 hover:bg-amber-500/10"
-          >
-            Retry
-          </button>
-          <button
-            type="button"
-            onClick={onStop}
-            className="rounded border border-rose-400/30 px-2 py-0.5 text-[11px] text-rose-100 hover:bg-rose-500/10"
-          >
-            Stop
-          </button>
-        </div>
       ) : null}
     </div>
   );
+}
+
+function formatElapsed(ms: number): string {
+  const totalSec = Math.floor(ms / 1000);
+  if (totalSec < 60) return `${totalSec}s`;
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  if (m < 60) return s > 0 ? `${m}m ${s}s` : `${m}m`;
+  const h = Math.floor(m / 60);
+  const rm = m % 60;
+  return rm > 0 ? `${h}h ${rm}m` : `${h}h`;
 }
 
 function Dot({ delay }: { delay: string }) {

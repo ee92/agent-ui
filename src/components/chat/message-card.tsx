@@ -238,11 +238,14 @@ function renderParts(parts: MessageContentPart[]): React.ReactNode[] {
       return;
     }
     if (part.type === "thinking") {
-      // Hide empty thinking blocks — opus[1m] returns signed-but-redacted
-      // thinking (signature present, text ""), and resumed transcripts often
-      // have the same pattern. Show while streaming so the "Thinking…"
-      // indicator still appears for models that emit deltas.
-      if (part.complete && !part.text.trim()) return;
+      // Hide any thinking block whose text is empty — regardless of whether
+      // the block is marked complete. Opus[1m]'s redacted thinking delivers
+      // a signed-but-empty block at stream start and never fills it, which
+      // used to render a permanent ghost "Thinking…" card for the whole
+      // turn. The TurnStatusLine at the tail of the scroll covers the
+      // "thinking is happening" signal during the empty-text phase; we only
+      // render the card once real thinking text has arrived.
+      if (!part.text.trim()) return;
       nodes.push(<ThinkingCard key={`think-${index}`} part={part} />);
       return;
     }

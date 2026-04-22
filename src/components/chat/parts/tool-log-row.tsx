@@ -130,28 +130,41 @@ export function ToolLogRow({
           {isBusy ? <PulseDots /> : status === "error" ? "error" : null}
         </span>
       </button>
-      {expanded ? (
-        <div className="mt-1 mb-1 space-y-2 border-l border-white/[0.06] pl-3 pr-1">
-          <pre className="overflow-x-auto whitespace-pre-wrap break-words text-[11px] text-zinc-400">
-            {part.inputComplete
-              ? formatInputBlock(part.input)
-              : (typeof part.input === "string" && part.input) || "(streaming args…)"}
-          </pre>
-          {part.result ? (
-            <div
-              className={`max-h-96 overflow-y-auto whitespace-pre-wrap rounded bg-black/30 px-2 py-1.5 text-[11px] ${
-                part.result.isError ? "text-rose-300" : "text-zinc-300"
-              }`}
-            >
-              {part.result.content.length > 0 ? (
-                part.result.content.map((c, i) => <div key={i}>{c.text}</div>)
-              ) : (
-                <span className="italic text-zinc-500">(empty result)</span>
-              )}
-            </div>
-          ) : null}
+      {/* Height-animated collapse. grid-template-rows 0fr ↔ 1fr is the
+          modern CSS-animate-auto-height trick: supported in Chrome 123+,
+          Firefox 122+, Safari 17.4+. The inner wrapper has overflow:hidden
+          so clipping during the transition looks clean. The browser
+          auto-clamps the scroll container's scrollTop as scrollHeight
+          changes, so the chat pin follows the animation smoothly with no
+          extra wiring needed — no jarring snap on expand or collapse. */}
+      <div
+        className="grid transition-[grid-template-rows] duration-150 ease-out motion-reduce:duration-0"
+        style={{ gridTemplateRows: expanded ? "1fr" : "0fr" }}
+        aria-hidden={!expanded}
+      >
+        <div className="overflow-hidden">
+          <div className="mt-1 mb-1 space-y-2 border-l border-white/[0.06] pl-3 pr-1">
+            <pre className="overflow-x-auto whitespace-pre-wrap break-words text-[11px] text-zinc-400">
+              {part.inputComplete
+                ? formatInputBlock(part.input)
+                : (typeof part.input === "string" && part.input) || "(streaming args…)"}
+            </pre>
+            {part.result ? (
+              <div
+                className={`max-h-96 overflow-y-auto whitespace-pre-wrap rounded bg-black/30 px-2 py-1.5 text-[11px] ${
+                  part.result.isError ? "text-rose-300" : "text-zinc-300"
+                }`}
+              >
+                {part.result.content.length > 0 ? (
+                  part.result.content.map((c, i) => <div key={i}>{c.text}</div>)
+                ) : (
+                  <span className="italic text-zinc-500">(empty result)</span>
+                )}
+              </div>
+            ) : null}
+          </div>
         </div>
-      ) : null}
+      </div>
     </div>
   );
 }

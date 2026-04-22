@@ -101,7 +101,7 @@ function deriveStatus(message: ChatMessage | undefined): string {
 
 export function useTurnStatus(sessionKey: string | null): {
   text: string | null;
-  stalled: boolean;
+  elapsedMs: number;
 } {
   const isStreaming = useChatStore((s) =>
     sessionKey ? s.conversations.find((c) => c.key === sessionKey)?.isStreaming ?? false : false
@@ -126,20 +126,20 @@ export function useTurnStatus(sessionKey: string | null): {
     sessionKey ? s.lastEventAtBySession[sessionKey] ?? null : null
   );
 
-  // Stall poll — cheap setInterval, only re-renders this hook's consumer.
-  // Re-evaluate every 5s while streaming.
+  // Tick every second so the elapsed counter updates live. Only runs while
+  // the session is streaming, so no wasted work when idle.
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (!isStreaming) return;
-    const id = window.setInterval(() => setNow(Date.now()), 5000);
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);
   }, [isStreaming]);
 
-  if (!isStreaming) return { text: null, stalled: false };
-  // 60s, not 20s — Claude regularly takes 30–45s of silent thinking on
-  // complex prompts, and flagging that as a stall makes the UI feel broken
-  // when it isn't. 60s comfortably clears normal think-time; real hangs
-  // still get caught.
-  const stalled = lastEventAt !== null && now - lastEventAt > 60000;
-  return { text: deriveStatus(lastMessage), stalled };
+  if (!isStreaming) return { text: null, elapsedMs: 0 };
+  // Elapsed time since the backend last emitted any event for this session.
+  // Exposed as a live counter instead of a hard-coded stall threshold —
+  // the user can read "42s" or "2m 15s" and make their own judgment about
+  // whether something's wrong. No arbitrary cutoff to produce false alarms.
+  const elapsedMs = lastEventAt !== null ? Math.max(0, now - lastEventAt) : 0;
+  return { text: deriveStatus(lastMessage), elapsedMs };
 }
