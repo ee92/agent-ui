@@ -234,7 +234,7 @@ function ChatView({
       <div className="relative flex min-h-0 flex-1 flex-col">
         <div
           ref={scrollContainerRef}
-          className="flex min-h-0 flex-1 flex-col scroll-soft overflow-y-auto px-3 pb-4 xl:px-6"
+          className="flex min-h-0 flex-1 flex-col scroll-soft overflow-y-auto px-3 xl:px-6"
         >
           {/* ResizeObserver target — wraps everything that can grow. Must have
               no layout effect of its own; purely a handle for RO. */}
