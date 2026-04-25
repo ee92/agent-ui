@@ -13,7 +13,10 @@ import {
   normalizeSession,
   nowIso,
   persistHiddenMessages,
+  persistPinnedKeys,
   readHiddenMessages,
+  readPinnedKeys,
+  remapPinnedKey,
   type ChatStoreState
 } from "./shared";
 
@@ -722,6 +725,8 @@ function applyRemap(
   get: () => ChatStoreState
 ) {
   if (!fromSessionKey || !toSessionKey || fromSessionKey === toSessionKey) return;
+  // Rewrite localStorage pin entry so a session pinned pre-remap stays pinned.
+  remapPinnedKey(fromSessionKey, toSessionKey);
   const state = get();
   const existsFrom = state.conversations.some((c) => c.key === fromSessionKey);
   const existsTo = state.conversations.some((c) => c.key === toSessionKey);
@@ -839,16 +844,18 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
       return;
     }
     try {
-      const sessions = (await adapter.sessions.list()).map((session) =>
-        normalizeSession({
+      const pinnedKeys = readPinnedKeys();
+      const sessions = (await adapter.sessions.list()).map((session) => {
+        const conversation = normalizeSession({
           key: session.key,
           label: session.title,
           lastMessagePreview: session.preview,
           updatedAt: session.updatedAt,
           createdAt: session.createdAt,
           activeRunId: session.runId,
-        })
-      );
+        });
+        return pinnedKeys[conversation.key] ? { ...conversation, pinned: true } : conversation;
+      });
       const selectedConversationKey = get().selectedConversationKey ?? loadSelectedKey() ?? null;
       saveSelectedKey(selectedConversationKey);
       set({ conversations: sessions, selectedConversationKey, sessionsReady: true });
@@ -1217,5 +1224,22 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
     } catch (error) {
       console.error("quickSend failed:", error);
     }
+  },
+
+  togglePinned: (key) => {
+    const current = readPinnedKeys();
+    const next = { ...current };
+    const isPinned = !!next[key];
+    if (isPinned) {
+      delete next[key];
+    } else {
+      next[key] = true;
+    }
+    persistPinnedKeys(next);
+    set({
+      conversations: get().conversations.map((conversation) =>
+        conversation.key === key ? { ...conversation, pinned: !isPinned } : conversation
+      ),
+    });
   },
 }));

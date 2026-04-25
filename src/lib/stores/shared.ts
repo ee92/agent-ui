@@ -42,6 +42,7 @@ export type ChatStoreState = {
   hideMessage: (messageId: string) => void;
   addTaskFromMessage: (messageId: string) => Promise<void>;
   quickSend: (sessionKey: string, text: string) => Promise<void>;
+  togglePinned: (key: string) => void;
 };
 
 export type FilesStoreState = {
@@ -99,6 +100,7 @@ export type AppStoreState = ChatStoreState &
 export type BoundStore<T> = UseBoundStore<StoreApi<T>>;
 
 const HIDDEN_MESSAGES_KEY = "agent-ui.hidden-messages.v1";
+const PINNED_CONVERSATIONS_KEY = "agent-ui.pinned-conversations.v1";
 
 export const FILE_METHODS: Record<FileMethodKind, MethodVariant[]> = {
   list: [
@@ -249,6 +251,28 @@ export function readHiddenMessages() {
 
 export function persistHiddenMessages(ids: string[]) {
   localStorage.setItem(HIDDEN_MESSAGES_KEY, JSON.stringify(ids));
+}
+
+// Pin state is UI-only metadata — backends (Claude Code / Codex) don't know
+// about it. Stored as a dense map so membership lookup is O(1) during
+// hydration of the sessions list.
+export function readPinnedKeys(): Record<string, true> {
+  return safeJsonParse<Record<string, true>>(localStorage.getItem(PINNED_CONVERSATIONS_KEY), {});
+}
+
+export function persistPinnedKeys(map: Record<string, true>) {
+  localStorage.setItem(PINNED_CONVERSATIONS_KEY, JSON.stringify(map));
+}
+
+// When Claude Code remaps a draft "new" session to its real sessionId (see
+// applyRemap), any pin stored under the old key would orphan. Rewrite it.
+export function remapPinnedKey(from: string, to: string) {
+  const current = readPinnedKeys();
+  if (!current[from]) return;
+  const next = { ...current };
+  delete next[from];
+  next[to] = true;
+  persistPinnedKeys(next);
 }
 
 export async function fileToDraft(file: File): Promise<AttachmentDraft> {

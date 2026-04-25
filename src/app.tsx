@@ -346,6 +346,7 @@ export function App() {
   const selectConversation = useChatStore((s) => s.selectConversation);
   const renameConversation = useChatStore((s) => s.renameConversation);
   const deleteConversation = useChatStore((s) => s.deleteConversation);
+  const togglePinned = useChatStore((s) => s.togglePinned);
   const sendMessage = useChatStore((s) => s.sendMessage);
   const cancelStream = useChatStore((s) => s.cancelStream);
   const flushQueuedMessages = useChatStore((s) => s.flushQueuedMessages);
@@ -531,6 +532,7 @@ export function App() {
       onDelete={(key) => void deleteConversation(key)}
       onRename={(key, title) => void renameConversation(key, title)}
       onExport={(key) => void exportConversation(key)}
+      onTogglePin={togglePinned}
       onNewChat={() => void createConversation()}
       onToggleFilesMode={() => navigate("#/files")}
     />

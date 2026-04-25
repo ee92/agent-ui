@@ -63,17 +63,23 @@ export function groupConversations(conversations: Conversation[]) {
   const yesterdayMs = todayMs - 24 * 60 * 60 * 1000;
   const weekMs = todayMs - 7 * 24 * 60 * 60 * 1000;
 
+  // Pinned items surface into their own bucket at the top and are removed
+  // from the date-based buckets so they don't render twice. Object key order
+  // is preserved in ES2015+ — "Pinned" first means it renders first.
+  const unpinned = conversations.filter((item) => !item.pinned);
+
   return {
-    Today: conversations.filter((item) => Date.parse(item.updatedAt) >= todayMs),
-    Yesterday: conversations.filter((item) => {
+    Pinned: conversations.filter((item) => item.pinned),
+    Today: unpinned.filter((item) => Date.parse(item.updatedAt) >= todayMs),
+    Yesterday: unpinned.filter((item) => {
       const value = Date.parse(item.updatedAt);
       return value >= yesterdayMs && value < todayMs;
     }),
-    "This Week": conversations.filter((item) => {
+    "This Week": unpinned.filter((item) => {
       const value = Date.parse(item.updatedAt);
       return value >= weekMs && value < yesterdayMs;
     }),
-    Older: conversations.filter((item) => Date.parse(item.updatedAt) < weekMs || Number.isNaN(now))
+    Older: unpinned.filter((item) => Date.parse(item.updatedAt) < weekMs || Number.isNaN(now))
   };
 }
 

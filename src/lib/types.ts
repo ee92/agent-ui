@@ -93,6 +93,9 @@ export type Conversation = {
   contextOutputTokens?: number; // last turn only
   // Running cost accumulated across all result messages this session.
   totalCostUsd?: number;
+  // Sticky flag — persisted to localStorage only. Pinned conversations surface
+  // into a dedicated "Pinned" bucket at the top of the sidebar.
+  pinned?: boolean;
 };
 
 export type AgentStatus = "running" | "idle" | "waiting" | "error" | "done";
