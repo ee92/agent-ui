@@ -4,7 +4,6 @@ export type Route =
   | { page: "dashboard" }
   | { page: "chat"; sessionKey: string }
   | { page: "files"; path?: string }
-  | { page: "flow" }
   | { page: "timeline" }
   | { page: "projects" }
   | { page: "system" };
@@ -12,7 +11,6 @@ export type Route =
 function parseHash(hash: string): Route {
   const raw = hash.replace(/^#\/?/, "");
   if (!raw || raw === "dashboard") return { page: "dashboard" };
-  if (raw === "flow") return { page: "flow" };
   if (raw === "timeline") return { page: "timeline" };
   if (raw === "projects") return { page: "projects" };
   if (raw === "system") return { page: "system" };

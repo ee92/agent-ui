@@ -37,7 +37,7 @@ const mockAdapter: BackendAdapter = {
 describe("files store", () => {
   beforeEach(() => {
     useAdapterStore.setState({
-      config: { type: "local", gatewayUrl: "ws://localhost", gatewayToken: "token", workspace: "." },
+      config: { type: "local", workspace: "." },
       adapter: mockAdapter,
       connected: true,
     });

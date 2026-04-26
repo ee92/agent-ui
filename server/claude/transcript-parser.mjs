@@ -19,63 +19,174 @@ function normalizeRole(raw) {
   return null;
 }
 
-function extractToolUse(block) {
-  if (!block || typeof block !== "object") {
-    return null;
-  }
-  if (block.type !== "tool_use") {
-    return null;
-  }
-  const name = typeof block.name === "string" ? block.name : "tool";
-  const input = block.input && typeof block.input === "object" ? JSON.stringify(block.input) : "";
-  return `[tool_use:${name}]${input ? ` ${input}` : ""}`;
+// Harness meta-tags that Claude Code injects into the conversation stream for
+// its own bookkeeping. Two categories:
+//
+// 1. NOISE — tag + content is pure metadata and should be stripped entirely.
+//    (system-reminders, slash-command plumbing, command stdout/stderr).
+// 2. WRAPPER — the tag marks content that the user still wants to read
+//    (bash tool output, paginated output markers). Strip only the tag.
+const NOISE_TAGS = [
+  "system-reminder",
+  "local-command-caveat",
+  "command-name",
+  "command-message",
+  "command-args",
+  "command-stdout",
+  "command-stderr",
+  "local-command-stdout",
+  "local-command-stderr",
+];
+const WRAPPER_TAGS = [
+  "bash-input",
+  "bash-stdout",
+  "bash-stderr",
+  "persisted-output",
+];
+const NOISE_TAG_RE = new RegExp(
+  `<(?:${NOISE_TAGS.join("|")})(?:\\s[^>]*)?>[\\s\\S]*?<\\/(?:${NOISE_TAGS.join("|")})>|<(?:${NOISE_TAGS.join("|")})(?:\\s[^>]*)?\\/>`,
+  "g"
+);
+const WRAPPER_TAG_RE = new RegExp(
+  `<\\/?(?:${WRAPPER_TAGS.join("|")})(?:\\s[^>]*)?\\/?>`,
+  "g"
+);
+
+export function stripHarnessTags(text) {
+  if (typeof text !== "string" || text.length === 0) return text;
+  // Fast path — skip the regex dance if no `<` appears at all.
+  if (!text.includes("<")) return text;
+  return text
+    .replace(NOISE_TAG_RE, "")
+    .replace(WRAPPER_TAG_RE, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
-function extractTextParts(content) {
-  const textParts = [];
-  const thinkingParts = [];
+// The synthetic "continuation" user message Claude Code writes after every
+// compact. We want to drop it from the rendered transcript (replacing it with
+// our own compact boundary marker) rather than show a huge wall of text that
+// looks like the user typed an essay.
+const COMPACT_SUMMARY_PREFIX =
+  "This session is being continued from a previous conversation that ran out of context";
 
-  const consumeBlock = (block) => {
-    if (typeof block === "string") {
-      textParts.push(block);
-      return;
-    }
-    if (!block || typeof block !== "object") {
-      return;
-    }
+function isCompactSummaryText(text) {
+  return typeof text === "string" && text.trimStart().startsWith(COMPACT_SUMMARY_PREFIX);
+}
 
-    if (typeof block.text === "string" && (block.type === "text" || !block.type)) {
-      textParts.push(block.text);
+// Normalize a tool_result block's content into the shape the frontend expects:
+// Array<{ type: "text"; text: string }>. Transcripts store this as either
+// a plain string or an array of typed blocks; we coerce everything to text.
+function normalizeToolResultContent(raw) {
+  if (raw == null) return [];
+  if (typeof raw === "string") {
+    const stripped = stripHarnessTags(raw);
+    return stripped ? [{ type: "text", text: stripped }] : [];
+  }
+  if (Array.isArray(raw)) {
+    const out = [];
+    for (const block of raw) {
+      if (typeof block === "string") {
+        const stripped = stripHarnessTags(block);
+        if (stripped) out.push({ type: "text", text: stripped });
+        continue;
+      }
+      if (!block || typeof block !== "object") continue;
+      if (typeof block.text === "string" && block.text) {
+        const stripped = stripHarnessTags(block.text);
+        if (stripped) out.push({ type: "text", text: stripped });
+      } else if (typeof block.content === "string" && block.content) {
+        const stripped = stripHarnessTags(block.content);
+        if (stripped) out.push({ type: "text", text: stripped });
+      } else {
+        // Fallback: JSON-stringify the block so nothing is silently dropped.
+        try {
+          out.push({ type: "text", text: JSON.stringify(block) });
+        } catch {
+          /* ignore */
+        }
+      }
     }
+    return out;
+  }
+  if (typeof raw === "object") {
+    try {
+      return [{ type: "text", text: JSON.stringify(raw) }];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
 
-    if (typeof block.thinking === "string") {
-      thinkingParts.push(block.thinking);
-    }
-
-    if (typeof block.content === "string" && !block.type) {
-      textParts.push(block.content);
-    }
-
-    const toolUse = extractToolUse(block);
-    if (toolUse) {
-      textParts.push(toolUse);
-    }
-  };
+// Convert one assistant/user message's raw `content` into structured parts that
+// match the frontend MessageContentPart union. Tool_result blocks are returned
+// as a synthetic { type: "tool_result", ... } part so the caller can route them
+// onto the matching tool_use from a prior assistant turn.
+function extractParts(content) {
+  const parts = [];
 
   if (typeof content === "string") {
-    textParts.push(content);
-  } else if (Array.isArray(content)) {
-    for (const block of content) {
-      consumeBlock(block);
+    const stripped = stripHarnessTags(content);
+    if (stripped && stripped.trim()) parts.push({ type: "text", text: stripped });
+    return parts;
+  }
+  if (!Array.isArray(content)) {
+    if (content && typeof content === "object") {
+      return extractParts([content]);
     }
-  } else {
-    consumeBlock(content);
+    return parts;
   }
 
-  return {
-    content: textParts.join("\n").trim(),
-    thinking: thinkingParts.join("\n\n").trim() || undefined,
-  };
+  for (const block of content) {
+    if (typeof block === "string") {
+      const stripped = stripHarnessTags(block);
+      if (stripped && stripped.trim()) parts.push({ type: "text", text: stripped });
+      continue;
+    }
+    if (!block || typeof block !== "object") continue;
+
+    const t = block.type;
+
+    if (t === "text" || (!t && typeof block.text === "string")) {
+      const raw = typeof block.text === "string" ? block.text : "";
+      const text = stripHarnessTags(raw);
+      if (text && text.trim()) parts.push({ type: "text", text });
+      continue;
+    }
+
+    if (t === "thinking") {
+      const text = typeof block.thinking === "string" ? block.thinking : "";
+      if (text.trim()) parts.push({ type: "thinking", text, complete: true });
+      continue;
+    }
+
+    if (t === "tool_use") {
+      parts.push({
+        type: "tool_use",
+        id: typeof block.id === "string" ? block.id : `tu-${parts.length}`,
+        name: typeof block.name === "string" ? block.name : "tool",
+        input: block.input ?? {},
+        inputComplete: true,
+      });
+      continue;
+    }
+
+    if (t === "tool_result") {
+      // Synthetic part — the main loop folds this into the matching tool_use.
+      parts.push({
+        type: "tool_result",
+        toolUseId: typeof block.tool_use_id === "string" ? block.tool_use_id : null,
+        isError: Boolean(block.is_error),
+        content: normalizeToolResultContent(block.content),
+      });
+      continue;
+    }
+
+    // Unknown block type — skip silently.
+  }
+
+  return parts;
 }
 
 function pickTimestamp(record) {
@@ -89,9 +200,44 @@ function pickTimestamp(record) {
   );
 }
 
+// Build the structured message + the raw parts array (which may still include
+// a `tool_result` sentinel that the main loop will fold away).
 function normalizeMessage(record, lineNo) {
   if (!record || typeof record !== "object") {
     return null;
+  }
+
+  // Claude Code writes synthetic transcript-only records that the CLI hides
+  // from the user. `isMeta: true` flags SDK-internal resumption prompts like
+  // "Continue from where you left off." — these fire when a session is
+  // resumed after an aborted turn, and should NOT look like user input.
+  // `isVisibleInTranscriptOnly: true` marks the compact-summary essay
+  // (also caught by COMPACT_SUMMARY_PREFIX below, but the flag is cheaper).
+  if (record.isMeta === true || record.isVisibleInTranscriptOnly === true) {
+    return null;
+  }
+
+  // Claude Code emits a dedicated compact-boundary system record after every
+  // /compact. Render it as a horizontal divider instead of a ghost message.
+  if (record.type === "system" && record.subtype === "compact_boundary") {
+    const meta = record.compactMetadata && typeof record.compactMetadata === "object" ? record.compactMetadata : {};
+    return {
+      id:
+        (typeof record.uuid === "string" && record.uuid) ||
+        (typeof record.id === "string" && record.id) ||
+        `compact-${lineNo}`,
+      role: "system",
+      parts: [
+        {
+          type: "compact_boundary",
+          trigger: typeof meta.trigger === "string" ? meta.trigger : null,
+          preTokens: typeof meta.preTokens === "number" ? meta.preTokens : null,
+          postTokens: typeof meta.postTokens === "number" ? meta.postTokens : null,
+          durationMs: typeof meta.durationMs === "number" ? meta.durationMs : null,
+        },
+      ],
+      timestamp: pickTimestamp(record),
+    };
   }
 
   const role =
@@ -105,7 +251,24 @@ function normalizeMessage(record, lineNo) {
   }
 
   const payload = record.message && typeof record.message === "object" ? record.message : record;
-  const extracted = extractTextParts(payload.content ?? payload.text ?? record.content ?? record.text ?? "");
+  const rawContent = payload.content ?? payload.text ?? record.content ?? record.text ?? "";
+
+  // The continuation essay Claude Code writes right after a compact looks like
+  // a real user turn, complete with tag noise. Drop it — the compact boundary
+  // divider communicates what happened.
+  if (role === "user" && typeof rawContent === "string" && isCompactSummaryText(rawContent)) {
+    return null;
+  }
+  if (role === "user" && Array.isArray(rawContent)) {
+    const firstText = rawContent.find(
+      (b) => b && typeof b === "object" && (b.type === "text" || (!b.type && typeof b.text === "string"))
+    );
+    if (firstText && isCompactSummaryText(typeof firstText.text === "string" ? firstText.text : "")) {
+      return null;
+    }
+  }
+
+  const parts = extractParts(rawContent);
 
   return {
     id:
@@ -113,21 +276,62 @@ function normalizeMessage(record, lineNo) {
       (typeof record.id === "string" && record.id) ||
       `line-${lineNo}`,
     role,
-    content: extracted.content,
+    parts,
     timestamp: pickTimestamp(record),
-    thinking: extracted.thinking,
   };
+}
+
+function extractUsage(record) {
+  const payload = record?.message && typeof record.message === "object" ? record.message : record;
+  const usage = payload?.usage;
+  if (!usage || typeof usage !== "object") return null;
+  return {
+    model: typeof payload?.model === "string" ? payload.model : null,
+    inputTokens: typeof usage.input_tokens === "number" ? usage.input_tokens : 0,
+    outputTokens: typeof usage.output_tokens === "number" ? usage.output_tokens : 0,
+    cacheCreationTokens: typeof usage.cache_creation_input_tokens === "number" ? usage.cache_creation_input_tokens : 0,
+    cacheReadTokens: typeof usage.cache_read_input_tokens === "number" ? usage.cache_read_input_tokens : 0,
+  };
+}
+
+// Collapse an array of parts into a short plain-text preview for the sidebar.
+function previewFromParts(parts) {
+  if (!Array.isArray(parts)) return "";
+  for (const part of parts) {
+    if (part && part.type === "text" && typeof part.text === "string" && part.text.trim()) {
+      return part.text.trim();
+    }
+  }
+  // Fall back to first tool_use name so the preview isn't blank when the final
+  // assistant turn is pure-tool.
+  for (const part of parts) {
+    if (part && part.type === "tool_use" && typeof part.name === "string") {
+      return `[${part.name}]`;
+    }
+  }
+  return "";
+}
+
+function titleFromParts(parts) {
+  if (!Array.isArray(parts)) return "";
+  for (const part of parts) {
+    if (part && part.type === "text" && typeof part.text === "string" && part.text.trim()) {
+      return part.text.trim();
+    }
+  }
+  return "";
 }
 
 export async function parseTranscript(transcriptPath, options = {}) {
   const limit = Number.isFinite(options.limit) && options.limit > 0 ? options.limit : null;
-  const messages = [];
+  const rawMessages = [];
   let malformedLines = 0;
 
   let createdAt = null;
   let updatedAt = null;
   let firstUserText = "";
-  let lastAssistantText = "";
+  let lastAssistantParts = null;
+  let lastUsage = null;
 
   const input = createReadStream(transcriptPath, { encoding: "utf8" });
   const readline = createInterface({ input, crlfDelay: Infinity });
@@ -135,9 +339,7 @@ export async function parseTranscript(transcriptPath, options = {}) {
   let lineNo = 0;
   for await (const line of readline) {
     lineNo += 1;
-    if (!line.trim()) {
-      continue;
-    }
+    if (!line.trim()) continue;
 
     let parsed;
     try {
@@ -148,37 +350,87 @@ export async function parseTranscript(transcriptPath, options = {}) {
     }
 
     const message = normalizeMessage(parsed, lineNo);
-    if (!message) {
+    if (!message) continue;
+
+    if (!createdAt) createdAt = message.timestamp;
+    updatedAt = message.timestamp;
+
+    if (!firstUserText && message.role === "user") {
+      const t = titleFromParts(message.parts);
+      if (t) firstUserText = t;
+    }
+    if (message.role === "assistant") {
+      if (message.parts.length > 0) lastAssistantParts = message.parts;
+      const u = extractUsage(parsed);
+      if (u) lastUsage = u;
+    }
+
+    rawMessages.push(message);
+  }
+
+  // Second pass: fold user `tool_result` parts into the matching `tool_use`
+  // on a prior assistant turn, and drop messages that end up with zero parts.
+  const toolUseMap = new Map();
+  const finalMessages = [];
+  for (const msg of rawMessages) {
+    if (msg.role === "assistant") {
+      for (const part of msg.parts) {
+        if (part && part.type === "tool_use" && typeof part.id === "string") {
+          toolUseMap.set(part.id, part);
+        }
+      }
+      if (msg.parts.length > 0) finalMessages.push(msg);
       continue;
     }
 
-    if (!createdAt) {
-      createdAt = message.timestamp;
+    if (msg.role === "user") {
+      const kept = [];
+      for (const part of msg.parts) {
+        if (part && part.type === "tool_result") {
+          const target = part.toolUseId ? toolUseMap.get(part.toolUseId) : null;
+          if (target) {
+            target.result = {
+              isError: Boolean(part.isError),
+              content: Array.isArray(part.content) ? part.content : [],
+            };
+          }
+          // Drop the tool_result part from the user bubble either way —
+          // if the parent tool_use wasn't captured, the result would still
+          // render as an orphan that the renderer doesn't know how to show.
+          continue;
+        }
+        kept.push(part);
+      }
+      if (kept.length > 0) {
+        finalMessages.push({ ...msg, parts: kept });
+      }
+      continue;
     }
-    updatedAt = message.timestamp;
 
-    if (!firstUserText && message.role === "user" && message.content) {
-      firstUserText = message.content;
-    }
-    if (message.role === "assistant" && message.content) {
-      lastAssistantText = message.content;
-    }
-
-    messages.push(message);
-    if (limit && messages.length > limit) {
-      messages.shift();
-    }
+    // system / other roles — keep only if they have real parts.
+    if (msg.parts.length > 0) finalMessages.push(msg);
   }
 
-  const previewSource = lastAssistantText || messages[messages.length - 1]?.content || "";
+  // Apply `limit` AFTER folding so truncation doesn't orphan a tool_use from
+  // its tool_result.
+  const trimmed = limit && finalMessages.length > limit
+    ? finalMessages.slice(finalMessages.length - limit)
+    : finalMessages;
+
+  const previewSource = lastAssistantParts
+    ? previewFromParts(lastAssistantParts)
+    : previewFromParts(trimmed[trimmed.length - 1]?.parts || []);
 
   return {
-    messages,
+    messages: trimmed,
     metadata: {
       createdAt: createdAt || new Date().toISOString(),
       updatedAt: updatedAt || createdAt || new Date().toISOString(),
       title: firstUserText ? firstUserText.slice(0, 120) : "New Chat",
       preview: previewSource.slice(0, 280),
+      // Latest assistant-turn usage — mirrors the session.usage event emitted
+      // at runtime, so the context bar can render immediately on resume.
+      lastUsage,
     },
     malformedLines,
   };

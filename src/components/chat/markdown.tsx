@@ -15,6 +15,39 @@ const IMAGE_EXTENSIONS = /\.(gif|png|jpe?g|webp|svg)(\?[^\s]*)?$/i;
 const MARKDOWN_IMAGE_RE = /^!\[([^\]]*)\]\(([^)]+)\)$/;
 const STANDALONE_URL_RE = /^https?:\/\/\S+$/;
 
+// Claude Code harness sometimes leaks meta-tags into assistant/user text at
+// runtime. The transcript parser strips these for /history; this is a defense
+// in depth for the live streaming path. Mirrors the same NOISE vs WRAPPER
+// split — see `server/claude/transcript-parser.mjs`.
+const NOISE_TAGS = [
+  "system-reminder",
+  "local-command-caveat",
+  "command-name",
+  "command-message",
+  "command-args",
+  "command-stdout",
+  "command-stderr",
+  "local-command-stdout",
+  "local-command-stderr",
+];
+const WRAPPER_TAGS = ["bash-input", "bash-stdout", "bash-stderr", "persisted-output"];
+const NOISE_TAG_RE = new RegExp(
+  `<(?:${NOISE_TAGS.join("|")})(?:\\s[^>]*)?>[\\s\\S]*?<\\/(?:${NOISE_TAGS.join("|")})>|<(?:${NOISE_TAGS.join("|")})(?:\\s[^>]*)?\\/>`,
+  "g"
+);
+const WRAPPER_TAG_RE = new RegExp(
+  `<\\/?(?:${WRAPPER_TAGS.join("|")})(?:\\s[^>]*)?\\/?>`,
+  "g"
+);
+
+function stripHarnessTags(text: string): string {
+  if (!text || !text.includes("<")) return text;
+  return text
+    .replace(NOISE_TAG_RE, "")
+    .replace(WRAPPER_TAG_RE, "")
+    .replace(/\n{3,}/g, "\n\n");
+}
+
 function isImageUrl(url: string): boolean {
   try {
     return IMAGE_EXTENSIONS.test(new URL(url).pathname);
@@ -225,7 +258,7 @@ function parseBlocks(text: string): Block[] {
 
 export function Markdown({ text }: { text: string }) {
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
-  const blocks = useMemo(() => parseBlocks(text), [text]);
+  const blocks = useMemo(() => parseBlocks(stripHarnessTags(text)), [text]);
 
   return (
     <div className="space-y-3 text-sm leading-relaxed text-zinc-100">

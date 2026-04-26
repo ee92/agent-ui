@@ -39,7 +39,16 @@ export type MessageContentPart =
       result?: ToolResultPayload;
       subAgentParts?: MessageContentPart[];
     }
-  | { type: "thinking"; text: string; complete: boolean };
+  | { type: "thinking"; text: string; complete: boolean }
+  | {
+      // Emitted by Claude Code after every /compact. Rendered as a slim
+      // horizontal divider with the pre/post token counts.
+      type: "compact_boundary";
+      trigger: string | null;
+      preTokens: number | null;
+      postTokens: number | null;
+      durationMs: number | null;
+    };
 
 export type ChatMessage = {
   id: string;
@@ -63,6 +72,7 @@ export type Conversation = {
   createdAt: string;
   isStreaming: boolean;
   runId?: string | null;
+  statusText?: string | null;
   // Session metadata from gateway
   kind?: "direct" | "group" | "global" | "cron" | "agent" | "unknown";
   channel?: string | null;
@@ -72,6 +82,20 @@ export type Conversation = {
   inputTokens?: number;
   outputTokens?: number;
   lastMessageRole?: "user" | "assistant" | "system" | null;
+  // Context window telemetry — latest assistant usage, used for the progress bar.
+  contextTokens?: number; // current prompt size: input + cache_read + cache_creation
+  contextWindow?: number; // tokens the model accepts (200k default, 1M for -1m variants)
+  contextModel?: string | null; // model ID from the most recent assistant usage
+  // Breakdown surfaced in the expanded context-bar panel.
+  contextInputTokens?: number; // fresh input (no cache)
+  contextCacheReadTokens?: number;
+  contextCacheCreationTokens?: number;
+  contextOutputTokens?: number; // last turn only
+  // Running cost accumulated across all result messages this session.
+  totalCostUsd?: number;
+  // Sticky flag — persisted to localStorage only. Pinned conversations surface
+  // into a dedicated "Pinned" bucket at the top of the sidebar.
+  pinned?: boolean;
 };
 
 export type AgentStatus = "running" | "idle" | "waiting" | "error" | "done";

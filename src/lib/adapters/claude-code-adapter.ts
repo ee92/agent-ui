@@ -22,17 +22,81 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
+const SLASH_COMMAND_META: Record<string, string> = {
+  compact: "Compact conversation",
+  context: "Show context usage",
+  cost: "Show session cost",
+  mcp: "MCP server status",
+  review: "Code review",
+  init: "Initialize project",
+  clear: "Clear conversation",
+  help: "Show available commands",
+  model: "Switch model",
+  resume: "Resume a session",
+  status: "System status",
+  agents: "List agents",
+  memory: "Edit memory",
+  pr_comments: "Review PR comments",
+  vim: "Toggle vim mode",
+  terminal: "Terminal setup",
+  bug: "Report a bug",
+};
+
+function formatSlashCommandName(raw: string): string {
+  const trimmed = raw.replace(/^\/+/, "");
+  return trimmed.replace(/[_-]+/g, " ");
+}
+
+function slashCommandsFromStrings(names: string[]): SlashCommandSuggestion[] {
+  const seen = new Set<string>();
+  const out: SlashCommandSuggestion[] = [];
+  for (const raw of names) {
+    if (typeof raw !== "string") continue;
+    const name = raw.startsWith("/") ? raw : `/${raw}`;
+    if (seen.has(name)) continue;
+    seen.add(name);
+    const bare = name.slice(1);
+    const meta = SLASH_COMMAND_META[bare] ?? formatSlashCommandName(bare);
+    out.push({ label: name, insert: name, meta });
+  }
+  return out;
+}
+
+const FALLBACK_SLASH_COMMANDS: SlashCommandSuggestion[] = slashCommandsFromStrings([
+  "compact",
+  "context",
+  "cost",
+  "mcp",
+  "review",
+  "init",
+]);
+
 function normalizeMessage(raw: unknown): Message {
   const source = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  const parts = Array.isArray(source.parts)
+    ? (source.parts as Message["parts"])
+    : undefined;
+  // Derive a flat `content` from text parts so anything that still reads
+  // `message.content` (legacy code, previews, copy-to-clipboard, …) stays
+  // working. Non-text parts are left to the structured-parts consumer.
+  let content = typeof source.content === "string" ? source.content : "";
+  if (!content && parts) {
+    content = parts
+      .filter((p): p is { type: "text"; text: string } => p?.type === "text")
+      .map((p) => p.text)
+      .join("\n")
+      .trim();
+  }
   return {
     id: typeof source.id === "string" ? source.id : crypto.randomUUID(),
     role:
       source.role === "user" || source.role === "assistant" || source.role === "system"
         ? source.role
         : "assistant",
-    content: typeof source.content === "string" ? source.content : "",
+    content,
     timestamp: typeof source.timestamp === "string" ? source.timestamp : nowIso(),
     thinking: typeof source.thinking === "string" ? source.thinking : undefined,
+    parts,
   };
 }
 
@@ -54,6 +118,7 @@ export class ClaudeCodeAdapter implements BackendAdapter {
   private ws: WebSocket | null = null;
   private reconnectTimer: number | null = null;
   private readonly eventSubscribers = new Set<(event: SessionEvent) => void>();
+  private latestSlashCommands: SlashCommandSuggestion[] | null = null;
 
   constructor(private readonly workspace: string = ".") {
     this.sessions = {
@@ -110,12 +175,7 @@ export class ClaudeCodeAdapter implements BackendAdapter {
   }
 
   slashCommands(): SlashCommandSuggestion[] {
-    return [
-      { label: "/compact", insert: "/compact", meta: "Compact conversation" },
-      { label: "/review", insert: "/review", meta: "Code review" },
-      { label: "/cost", insert: "/cost", meta: "Show costs" },
-      { label: "/init", insert: "/init", meta: "Initialize project" },
-    ];
+    return this.latestSlashCommands ?? FALLBACK_SLASH_COMMANDS;
   }
 
   private async request<T>(input: string, init: RequestInit = {}): Promise<T> {
@@ -215,6 +275,14 @@ export class ClaudeCodeAdapter implements BackendAdapter {
       return;
     }
 
+    if (event.event === "session.init") {
+      const raw = event.payload?.slashCommands;
+      if (Array.isArray(raw)) {
+        this.latestSlashCommands = slashCommandsFromStrings(raw as string[]);
+      }
+      // fall through so the store sees it too
+    }
+
     // Forward everything else as a raw event for the store to interpret.
     this.emit({
       type: "raw",
@@ -237,9 +305,11 @@ export class ClaudeCodeAdapter implements BackendAdapter {
   }
 
   private async sendMessage(sessionKey: string, message: string, options?: { cwd?: string }): Promise<Message> {
+    const body: Record<string, unknown> = { message };
+    if (options?.cwd) body.cwd = options.cwd;
     const data = await this.request<{ runId: string }>(`/api/claude-code/sessions/${encodeURIComponent(sessionKey)}/messages`, {
       method: "POST",
-      body: JSON.stringify({ message, cwd: options?.cwd ?? this.workspace }),
+      body: JSON.stringify(body),
     });
 
     return {
@@ -251,9 +321,64 @@ export class ClaudeCodeAdapter implements BackendAdapter {
   }
 
   private async history(sessionKey: string): Promise<Message[]> {
-    const data = await this.request<{ messages?: unknown[] }>(
-      `/api/claude-code/sessions/${encodeURIComponent(sessionKey)}/history`
-    );
+    const data = await this.request<{
+      messages?: unknown[];
+      lastUsage?: unknown;
+      runnerModel?: unknown;
+      session?: { isStreaming?: unknown; runId?: unknown };
+    }>(`/api/claude-code/sessions/${encodeURIComponent(sessionKey)}/history`);
+    // If the backend reports a run is still in-flight for this session
+    // (happens when the user refreshes mid-stream), emit a streaming=true
+    // event so the store repopulates isStreaming + runId on the conversation.
+    // Without this, the Stop button stays hidden even though the run can
+    // still be cancelled via /api/claude-code/runs/:runId/cancel.
+    const sessionPayload = data.session;
+    if (sessionPayload && sessionPayload.isStreaming === true) {
+      this.emit({ type: "streaming", sessionKey, isStreaming: true });
+      const runId = typeof sessionPayload.runId === "string" ? sessionPayload.runId : null;
+      if (runId) {
+        this.emit({
+          type: "raw",
+          sessionKey,
+          event: "session.run_resumed",
+          runId,
+          payload: { runId },
+        });
+      }
+    }
+    // The server reports the runner's *configured* model (tag intact, e.g.
+    // "opus[1m]"). Synthesize a session.init so the store picks the right
+    // context window before any live init fires. This is the only signal
+    // carrying the [1m] suffix on resume — the API strips it from usage.
+    const runnerModel = typeof data.runnerModel === "string" ? data.runnerModel : null;
+    if (runnerModel) {
+      this.emit({
+        type: "raw",
+        sessionKey,
+        event: "session.init",
+        runId: null,
+        payload: { model: runnerModel },
+      });
+    }
+    // Hydrate the context bar from the transcript's final assistant usage —
+    // without this, the bar stays at "—" until the next assistant turn.
+    const u = data.lastUsage;
+    if (u && typeof u === "object") {
+      const usage = u as Record<string, unknown>;
+      this.emit({
+        type: "raw",
+        sessionKey,
+        event: "session.usage",
+        runId: null,
+        payload: {
+          model: typeof usage.model === "string" ? usage.model : null,
+          inputTokens: typeof usage.inputTokens === "number" ? usage.inputTokens : 0,
+          outputTokens: typeof usage.outputTokens === "number" ? usage.outputTokens : 0,
+          cacheCreationTokens: typeof usage.cacheCreationTokens === "number" ? usage.cacheCreationTokens : 0,
+          cacheReadTokens: typeof usage.cacheReadTokens === "number" ? usage.cacheReadTokens : 0,
+        },
+      });
+    }
     const messages = Array.isArray(data.messages) ? data.messages : [];
     return messages.map((message) => normalizeMessage(message));
   }
