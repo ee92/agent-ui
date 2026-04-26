@@ -1,9 +1,8 @@
 import { create } from "zustand";
-import type { ChatMessage, MessageContentPart } from "../types";
+import type { ChatMessage, Conversation, MessageContentPart } from "../types";
 import { getBackendAdapter } from "../adapters";
 import type { SessionEvent } from "../adapters/types";
 import { navigate } from "../use-hash-router";
-import { useSessionFlowStore } from "./session-flow-store";
 import { useTaskStore } from "./task-store-v2";
 import { useUiStore } from "./ui-store";
 import {
@@ -11,16 +10,18 @@ import {
   buildPreview,
   ensureConversation,
   extractMessageText,
-  messageTextFromUnknown,
   normalizeSession,
   nowIso,
   persistHiddenMessages,
+  persistPinnedKeys,
   readHiddenMessages,
+  readPinnedKeys,
+  remapPinnedKey,
   type ChatStoreState
 } from "./shared";
 
 const hiddenMessageIds = readHiddenMessages();
-const SELECTED_KEY = "openclaw-ui-selected-conversation";
+const SELECTED_KEY = "agent-ui.selected-conversation.v1";
 let unsubscribeSessionEvents: (() => void) | null = null;
 let activeSessionAdapterType: string | null = null;
 
@@ -36,12 +37,17 @@ function loadSelectedKey(): string | null {
 type SetFn = (next: Partial<ChatStoreState> | ((state: ChatStoreState) => Partial<ChatStoreState>)) => void;
 type GetFn = () => ChatStoreState;
 
-type PendingSearchResult = {
-  messages: ChatMessage[];
-  messageIndex: number;
-  message: ChatMessage;
-  parentPart?: Extract<MessageContentPart, { type: "tool_use" }>;
-};
+// Detect the 1M-context variant from a model string. Claude Code tags it as
+// "opus[1m]" / "claude-opus-4-7[1m]" on init, but the API strips the suffix
+// on assistant-turn payloads ("claude-opus-4-7"). Only the init / runnerModel
+// hint carries the signal.
+function is1MModel(model: string): boolean {
+  return /\[?1m\]?|-1m\b/i.test(model);
+}
+
+function windowForModel(model: string): number {
+  return is1MModel(model) ? 1_000_000 : 200_000;
+}
 
 function findToolUseAnywhere(
   messages: ChatMessage[],
@@ -87,6 +93,26 @@ function findPendingAssistantStub(
     if (m.role === "assistant" && m.pending) return { message: m, index: i };
   }
   return null;
+}
+
+// An assistant stub is "empty" when nothing interesting has streamed into it:
+// no non-empty text, no tool use, no thinking content, no media. We push an
+// optimistic stub the instant a user sends a message so the UI feels live,
+// but some SDK paths (/compact summarization runs internally, certain
+// local-command turns) never emit streamed content for that stub. Without
+// this check, those stubs become permanent empty bubbles until refresh.
+function isAssistantStubEmpty(m: ChatMessage): boolean {
+  if (m.role !== "assistant") return false;
+  if (!m.parts || m.parts.length === 0) return true;
+  return m.parts.every((p) => {
+    if (p.type === "text") return !p.text || !p.text.trim();
+    if (p.type === "thinking") return !p.text || !p.text.trim();
+    return false; // tool_use, image, attachment, compact_boundary all count as content
+  });
+}
+
+function hasToolUsePart(m: ChatMessage): boolean {
+  return m.parts.some((p) => p.type === "tool_use");
 }
 
 function updateMessagesForConversation(
@@ -140,16 +166,11 @@ function updatePartAtBlockIndex(
 ): ChatMessage {
   const key = message.blockIndexById?.[index];
   if (!key) return message;
-  // Map key "b-<n>" to position = length-ish; we actually track by order of appending.
-  // Find the part whose position matches by scanning: index in parts is (total parts - 1) when added.
-  // Simpler: find the last N-th part recorded. Since we only ever add at end per content_block_start,
-  // `key` -> part is the last one whose position corresponds. We'll store partKey on parts via a map.
-  // Alternative: we re-derive by counting content_blocks. Easiest: scan parts by `key` stored inline.
-  // We use index in parts array matching insertion order — the Nth content block started is the Nth
-  // non-text-or-image streaming part. But for simplicity: we maintain partKey → partIndex via blockIndexById.
-  // blockIndexById maps SDK index → partKey; we can instead make it map SDK index → parts-array index.
-  const partsIndex = Number(key.slice(2));
-  const partPos = findPartPosByBlockOrder(message, partsIndex);
+  // `key` is "b-<N>" where N is the Nth content block started for this message.
+  // Walk the parts array counting text/thinking/tool_use parts (images/attachments
+  // are inserted by the UI, not the SDK stream, so they don't consume a block index).
+  const blockOrder = Number(key.slice(2));
+  const partPos = findPartPosByBlockOrder(message, blockOrder);
   if (partPos < 0) return message;
   const updated = mutator(message.parts[partPos]);
   if (updated === message.parts[partPos]) return message;
@@ -251,8 +272,7 @@ function handleClaudeRawEvent(
             return {
               ...tool,
               subAgentParts: newPart ? [...parts, newPart] : parts,
-              _subBlockIndex: undefined, // unused
-            } as typeof tool;
+            };
           }),
         }))
       );
@@ -339,7 +359,7 @@ function handleClaudeRawEvent(
           ensureConversation(get().conversations, sessionKey),
           sessionKey,
           {
-            preview: buildPreview(m.parts),
+            preview: buildPreview(m),
             updatedAt: now,
           }
         ),
@@ -371,16 +391,41 @@ function handleClaudeRawEvent(
   }
 
   if (eventName === "session.completed") {
+    const turnCost = typeof payload.totalCostUsd === "number" ? payload.totalCostUsd : 0;
+    const existing = get().conversations.find((c) => c.key === sessionKey)?.totalCostUsd ?? 0;
     set({
       conversations: applyConversationUpdate(
         ensureConversation(get().conversations, sessionKey),
         sessionKey,
-        { isStreaming: false, runId: null, updatedAt: now }
+        {
+          isStreaming: false,
+          runId: null,
+          statusText: null,
+          updatedAt: now,
+          totalCostUsd: turnCost > 0 ? existing + turnCost : existing,
+        }
       ),
     });
-    // Safety: any still-pending assistant messages get finalized.
+    // Safety: any still-pending assistant messages get finalized. Three
+    // terminal states depending on what was produced:
+    //   1. True empty stub (no text, thinking, or tool_use ever landed) →
+    //      drop it. Leaving it shows a permanent empty bubble until refresh.
+    //   2. Turn produced a tool_use but no assistant text → append a
+    //      synthesized "✓ Done" text part so the bubble has a visible closing
+    //      signal instead of just a row of tool log rows with nothing after.
+    //   3. Turn produced text → just flip `pending: false`; the text itself
+    //      is the done signal.
     updateMessagesForConversation(set, get, sessionKey, (msgs) =>
-      msgs.map((m) => (m.role === "assistant" && m.pending ? { ...m, pending: false } : m))
+      msgs.flatMap((m) => {
+        if (!(m.role === "assistant" && m.pending)) return m;
+        if (isAssistantStubEmpty(m) && !hasToolUsePart(m)) return []; // drop
+        const hasText = m.parts.some((p) => p.type === "text" && p.text.trim());
+        const needsDoneMark = !hasText && hasToolUsePart(m);
+        const parts = needsDoneMark
+          ? [...m.parts, { type: "text" as const, text: "✓ Done" }]
+          : m.parts;
+        return { ...m, pending: false, parts };
+      })
     );
     return;
   }
@@ -409,7 +454,7 @@ function handleClaudeRawEvent(
       conversations: applyConversationUpdate(
         ensureConversation(get().conversations, sessionKey),
         sessionKey,
-        { isStreaming: false, runId: null, updatedAt: now }
+        { isStreaming: false, runId: null, statusText: null, updatedAt: now }
       ),
     });
     return;
@@ -418,9 +463,170 @@ function handleClaudeRawEvent(
   if (
     eventName === "session.subagent.started" ||
     eventName === "session.subagent.progress" ||
-    eventName === "session.subagent.notification"
+    eventName === "session.subagent.notification" ||
+    eventName === "session.subagent.updated"
   ) {
     // Optional UI hint — not rendered in MVP. Ignored for now.
+    return;
+  }
+
+  if (eventName === "session.message_error") {
+    const messageId = typeof payload.messageId === "string" ? payload.messageId : null;
+    const errCode = typeof payload.error === "string" ? payload.error : "unknown";
+    const stopReason = typeof payload.stopReason === "string" ? payload.stopReason : null;
+    if (!messageId) return;
+    updateMessagesForConversation(set, get, sessionKey, (msgs) => {
+      const hit = findMessageByMessageId(msgs, messageId);
+      if (!hit) return msgs;
+      const label = stopReason ? `${errCode}: ${stopReason}` : errCode;
+      msgs[hit.index] = { ...hit.message, error: label };
+      return msgs;
+    });
+    return;
+  }
+
+  if (eventName === "session.usage") {
+    const usageModel = typeof payload.model === "string" ? payload.model : null;
+    const inputTokens = typeof payload.inputTokens === "number" ? payload.inputTokens : 0;
+    const outputTokens = typeof payload.outputTokens === "number" ? payload.outputTokens : 0;
+    const cacheCreation = typeof payload.cacheCreationTokens === "number" ? payload.cacheCreationTokens : 0;
+    const cacheRead = typeof payload.cacheReadTokens === "number" ? payload.cacheReadTokens : 0;
+    const contextTokens = inputTokens + cacheCreation + cacheRead;
+
+    const patch: Partial<Conversation> = {
+      contextTokens,
+      contextInputTokens: inputTokens,
+      contextCacheReadTokens: cacheRead,
+      contextCacheCreationTokens: cacheCreation,
+      contextOutputTokens: outputTokens,
+    };
+    // Only fill in model/window when nothing is set yet. `session.init` and
+    // the history hydration path (adapter synthesizes a session.init from
+    // `runnerModel`) are authoritative because the API strips the `[1m]`
+    // suffix from usage payloads — we must not overwrite a tagged model
+    // with the truncated one.
+    const priorModel = get().conversations.find((c) => c.key === sessionKey)?.contextModel ?? null;
+    if (!priorModel && usageModel) {
+      patch.contextModel = usageModel;
+      patch.contextWindow = windowForModel(usageModel);
+    }
+    set({
+      conversations: applyConversationUpdate(
+        ensureConversation(get().conversations, sessionKey),
+        sessionKey,
+        patch
+      ),
+    });
+    return;
+  }
+
+  if (eventName === "session.api_retry") {
+    const attempt = typeof payload.attempt === "number" ? payload.attempt : 0;
+    const maxRetries = typeof payload.maxRetries === "number" ? payload.maxRetries : 0;
+    const delayMs = typeof payload.retryDelayMs === "number" ? payload.retryDelayMs : 0;
+    const delaySec = Math.max(1, Math.round(delayMs / 1000));
+    const statusText = `Rate-limited or transient error — retrying in ${delaySec}s (attempt ${attempt}/${maxRetries})`;
+    set({
+      conversations: applyConversationUpdate(
+        ensureConversation(get().conversations, sessionKey),
+        sessionKey,
+        { statusText }
+      ),
+    });
+    return;
+  }
+
+  if (eventName === "session.init") {
+    // Init's `model` carries the CLI's effective model ID including 1M tag,
+    // e.g. "claude-opus-4-7[1m]". Assistant-turn model strings from the API
+    // don't include the tag, so init is the only authoritative source here.
+    const model = typeof payload.model === "string" ? payload.model : null;
+    if (model) {
+      set({
+        conversations: applyConversationUpdate(
+          ensureConversation(get().conversations, sessionKey),
+          sessionKey,
+          { contextModel: model, contextWindow: windowForModel(model) }
+        ),
+      });
+    }
+    return;
+  }
+
+  if (eventName === "session.compact_boundary") {
+    // The SDK doesn't emit a fresh session.usage after /compact, so the
+    // context pill would stay frozen at the pre-compact count until the
+    // next assistant turn. Patch contextTokens from postTokens so the bar
+    // drops immediately. The component totals (input/cache/output) get
+    // refreshed by the next session.usage event.
+    const postTokens = typeof payload.postTokens === "number" ? payload.postTokens : null;
+    if (postTokens != null) {
+      set({
+        conversations: applyConversationUpdate(
+          ensureConversation(get().conversations, sessionKey),
+          sessionKey,
+          {
+            contextTokens: postTokens,
+            contextInputTokens: 0,
+            contextCacheReadTokens: 0,
+            contextCacheCreationTokens: postTokens,
+            contextOutputTokens: 0,
+          }
+        ),
+      });
+    }
+    // Replace the empty optimistic assistant stub with a compact-boundary
+    // divider, matching what transcript-parser.mjs produces on refresh
+    // (see COMPACT_SUMMARY_PREFIX handling there). The SDK doesn't stream an
+    // assistant message for the summary — it's written to the jsonl as an
+    // isVisibleInTranscriptOnly user record — so without this, the stub
+    // hangs around as a permanent empty bubble until refresh.
+    const preTokens = typeof payload.preTokens === "number" ? payload.preTokens : null;
+    const trigger = typeof payload.trigger === "string" ? payload.trigger : null;
+    const durationMs = typeof payload.durationMs === "number" ? payload.durationMs : null;
+    updateMessagesForConversation(set, get, sessionKey, (msgs) => {
+      const dividerMsg: ChatMessage = {
+        id: `compact-${Date.now()}`,
+        role: "system",
+        parts: [{ type: "compact_boundary", trigger, preTokens, postTokens, durationMs }],
+        createdAt: now,
+      };
+      const stub = findPendingAssistantStub(msgs);
+      if (stub && isAssistantStubEmpty(stub.message)) {
+        msgs[stub.index] = dividerMsg;
+        return msgs;
+      }
+      msgs.push(dividerMsg);
+      return msgs;
+    });
+    return;
+  }
+
+  if (eventName === "session.run_resumed") {
+    // Fired by the adapter after /history when the backend reports a run is
+    // still in-flight for this session (mid-stream refresh). Populate runId
+    // on the conversation so cancelStream can find it; isStreaming is set by
+    // the accompanying `streaming` event emitted by the adapter.
+    const runId = typeof payload.runId === "string" ? payload.runId : null;
+    if (runId) {
+      set({
+        conversations: applyConversationUpdate(
+          ensureConversation(get().conversations, sessionKey),
+          sessionKey,
+          { runId }
+        ),
+      });
+    }
+    return;
+  }
+
+  if (
+    eventName === "session.status" ||
+    eventName === "session.notification" ||
+    eventName === "session.memory_recall" ||
+    eventName === "session.mirror_error"
+  ) {
+    // Forwarded for future UI rendering; silently dropped for now.
     return;
   }
 }
@@ -512,9 +718,6 @@ function applyDeltaToSubAgentPartsDeep(
   });
 }
 
-// PendingSearchResult unused — kept for clarity of intent.
-void (null as unknown as PendingSearchResult);
-
 function applyRemap(
   fromSessionKey: string,
   toSessionKey: string,
@@ -522,6 +725,8 @@ function applyRemap(
   get: () => ChatStoreState
 ) {
   if (!fromSessionKey || !toSessionKey || fromSessionKey === toSessionKey) return;
+  // Rewrite localStorage pin entry so a session pinned pre-remap stays pinned.
+  remapPinnedKey(fromSessionKey, toSessionKey);
   const state = get();
   const existsFrom = state.conversations.some((c) => c.key === fromSessionKey);
   const existsTo = state.conversations.some((c) => c.key === toSessionKey);
@@ -562,6 +767,17 @@ function applySessionEventToChatStore(
   set: (next: Partial<ChatStoreState> | ((state: ChatStoreState) => Partial<ChatStoreState>)) => void,
   get: () => ChatStoreState
 ) {
+  // Stall detector input: any signal of life from a session bumps its
+  // timestamp. The hook that polls this treats silence > 20s during streaming
+  // as a hang. "updated" is a pure bookkeeping signal from the adapter —
+  // exclude it so nothing but real session activity counts.
+  if (event.type !== "updated" && "sessionKey" in event && event.sessionKey) {
+    const prev = get().lastEventAtBySession;
+    set({
+      lastEventAtBySession: { ...prev, [event.sessionKey]: Date.now() },
+    });
+  }
+
   if (event.type === "streaming") {
     set({
       conversations: applyConversationUpdate(ensureConversation(get().conversations, event.sessionKey), event.sessionKey, {
@@ -585,37 +801,13 @@ function applySessionEventToChatStore(
     handleClaudeRawEvent(event.event, event.payload, event.sessionKey, event.runId ?? null, set, get);
     return;
   }
+}
 
-  const currentMessages = [...(get().messagesByConversation[event.sessionKey] ?? [])];
-  const pendingAssistantIndex = [...currentMessages]
-    .reverse()
-    .findIndex((message) => message.role === "assistant" && message.pending);
-  const targetIndex = pendingAssistantIndex === -1 ? -1 : currentMessages.length - 1 - pendingAssistantIndex;
-
-  const nextMessage: ChatMessage = {
-    id: event.message.id,
-    role: event.message.role,
-    parts: [{ type: "text", text: event.message.content }],
-    createdAt: event.message.timestamp,
-    pending: false,
-    runId: event.message.id,
-  };
-
-  if (event.message.role === "assistant" && targetIndex >= 0) {
-    currentMessages[targetIndex] = { ...currentMessages[targetIndex], ...nextMessage, pending: false };
-  } else {
-    currentMessages.push(nextMessage);
-  }
-
-  set({
-    messagesByConversation: { ...get().messagesByConversation, [event.sessionKey]: currentMessages },
-    conversations: applyConversationUpdate(ensureConversation(get().conversations, event.sessionKey), event.sessionKey, {
-      preview: buildPreview(nextMessage.parts),
-      updatedAt: nowIso(),
-      isStreaming: false,
-      runId: null,
-    }),
-  });
+// Test-only entry point. Bypasses the adapter subscription so fixtures can
+// drive raw events directly into the store without depending on the module-
+// level subscription cache (`activeSessionAdapterType`).
+export function __dispatchSessionEventForTest(event: SessionEvent) {
+  applySessionEventToChatStore(event, useChatStore.setState, useChatStore.getState);
 }
 
 function ensureSessionSubscription(
@@ -641,6 +833,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
   sessionsReady: false,
   selectedConversationKey: null,
   messagesByConversation: {},
+  lastEventAtBySession: {},
   queuedMessages: [],
   loadingConversationKey: null,
   refreshSessions: async () => {
@@ -651,30 +844,22 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
       return;
     }
     try {
-      const sessions = (await adapter.sessions.list()).map((session) =>
-        normalizeSession({
+      const pinnedKeys = readPinnedKeys();
+      const sessions = (await adapter.sessions.list()).map((session) => {
+        const conversation = normalizeSession({
           key: session.key,
           label: session.title,
           lastMessagePreview: session.preview,
           updatedAt: session.updatedAt,
           createdAt: session.createdAt,
           activeRunId: session.runId,
-        })
-      );
+        });
+        return pinnedKeys[conversation.key] ? { ...conversation, pinned: true } : conversation;
+      });
       const selectedConversationKey = get().selectedConversationKey ?? loadSelectedKey() ?? null;
       saveSelectedKey(selectedConversationKey);
       set({ conversations: sessions, selectedConversationKey, sessionsReady: true });
 
-      // Seed session flow timeline with conversation data
-      useSessionFlowStore.getState().seedFromConversations(
-        sessions.map((s) => ({
-          key: s.key,
-          updatedAt: s.updatedAt,
-          createdAt: s.createdAt,
-          isStreaming: s.isStreaming,
-          runId: s.runId,
-        }))
-      );
       if (selectedConversationKey) {
         await get().selectConversation(selectedConversationKey);
       }
@@ -683,48 +868,34 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
     }
   },
   createConversation: async () => {
-    const adapter = getBackendAdapter();
-    const rawKey = `web-${crypto.randomUUID().slice(0, 8)}`;
-    const now = nowIso();
-    const localConversation = {
-      key: rawKey,
-      title: "New Chat",
-      preview: "",
-      updatedAt: now,
-      createdAt: now,
-      isStreaming: false,
-      runId: null
-    };
-    if (!adapter.isConnected()) {
+    const rawKey = "new";
+    const state = get();
+    const draftExists = state.conversations.some((c) => c.key === rawKey);
+    if (!draftExists) {
+      const now = nowIso();
+      const localConversation = {
+        key: rawKey,
+        title: "New Chat",
+        preview: "",
+        updatedAt: now,
+        createdAt: now,
+        isStreaming: false,
+        runId: null
+      };
       set({
-        conversations: [localConversation, ...get().conversations],
+        conversations: [localConversation, ...state.conversations],
         selectedConversationKey: rawKey,
-        messagesByConversation: { ...get().messagesByConversation, [rawKey]: [] }
+        messagesByConversation: { ...state.messagesByConversation, [rawKey]: [] }
       });
-      useUiStore.getState().closeMobileSidebar();
-      return rawKey;
+    } else {
+      set({ selectedConversationKey: rawKey });
     }
-    try {
-      const created = await adapter.sessions.create(rawKey);
-      const key = created.key || rawKey;
-      set({
-        conversations: [
-          { ...localConversation, key, title: created.title || "New Chat" },
-          ...get().conversations.filter((conversation) => conversation.key !== key)
-        ],
-        selectedConversationKey: key,
-        messagesByConversation: { ...get().messagesByConversation, [key]: [] }
-      });
-      useUiStore.getState().closeMobileSidebar();
-      return key;
-    } catch {
-      set({
-        conversations: [localConversation, ...get().conversations],
-        selectedConversationKey: rawKey,
-        messagesByConversation: { ...get().messagesByConversation, [rawKey]: [] }
-      });
-      return rawKey;
+    saveSelectedKey(rawKey);
+    useUiStore.getState().closeMobileSidebar();
+    if (typeof window !== "undefined") {
+      navigate(`#/chat/${encodeURIComponent(rawKey)}`);
     }
+    return rawKey;
   },
   selectConversation: async (key) => {
     saveSelectedKey(key);
@@ -739,32 +910,47 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
       conversations: ensureConversation(get().conversations, key, taskTitle || undefined)
     });
     useUiStore.getState().closeMobileSidebar();
-    if (!adapter.isConnected() || get().messagesByConversation[key]) {
+    // Keys without `::` are local drafts — no transcript on disk to fetch.
+    const isLocalDraft = !key.includes("::");
+    if (!adapter.isConnected() || isLocalDraft || get().messagesByConversation[key]) {
+      if (isLocalDraft && !get().messagesByConversation[key]) {
+        set({ messagesByConversation: { ...get().messagesByConversation, [key]: [] } });
+      }
       set({ loadingConversationKey: null });
       return;
     }
     try {
-      const messages = (await adapter.sessions.history(key)).map((message) => ({
-        id: message.id,
-        role: message.role,
-        parts: [{ type: "text" as const, text: message.content }],
-        createdAt: message.timestamp,
-        pending: false,
-        hidden: hiddenMessageIds.includes(message.id),
-        runId: message.id,
-      }));
+      const rawMessages = await adapter.sessions.history(key);
+      const messages = rawMessages
+        .map((message) => {
+          // Prefer structured `parts` (Claude Code transcript parser returns
+          // tool_use / thinking / text parts directly). Fall back to wrapping
+          // `content` as a single text part for legacy / other adapters.
+          let parts: ChatMessage["parts"];
+          if (message.parts && message.parts.length > 0) {
+            parts = message.parts;
+          } else if (message.content && message.content.trim()) {
+            parts = [{ type: "text" as const, text: message.content }];
+          } else {
+            parts = [];
+          }
+          return {
+            id: message.id,
+            role: message.role,
+            parts,
+            createdAt: message.timestamp,
+            pending: false,
+            hidden: hiddenMessageIds.includes(message.id),
+            runId: message.id,
+          };
+        })
+        // Drop ghost messages that have no renderable parts — this was the
+        // root cause of empty bubbles on resume.
+        .filter((m) => m.parts.length > 0);
       set({
         messagesByConversation: { ...get().messagesByConversation, [key]: messages },
         loadingConversationKey: null
       });
-
-      // Seed session flow timeline with message history
-      if (messages.length > 0) {
-        useSessionFlowStore.getState().seedFromHistory(
-          key,
-          messages.map((m) => ({ role: m.role, createdAt: m.createdAt }))
-        );
-      }
     } catch {
       set({
         messagesByConversation: { ...get().messagesByConversation, [key]: [] },
@@ -838,7 +1024,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
           lines.push(`[Notes: ${linkedTask.notes.trim()}]`);
         }
         if (linkedTask.sessionKeys && linkedTask.sessionKeys.length > 0) {
-          lines.push(`[Previous sessions: ${linkedTask.sessionKeys.join(", ")} — check transcripts in ~/.openclaw/agents/main/sessions/ for prior work]`);
+          lines.push(`[Previous sessions: ${linkedTask.sessionKeys.join(", ")}]`);
         }
         lines.push(`[Use "task note ${linkedTask.id} ..." to log progress, "task review ${linkedTask.id} ..." when done]`, "---");
         text = lines.join("\n") + "\n" + text;
@@ -871,14 +1057,25 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
       pending: true,
       runId: userMessage.id
     };
-    useUiStore.setState({ draft: "", attachments: [] });
+    // Clear the draft for the current session (both the mirrored `draft`
+    // field and the persisted per-session entry) so it doesn't resurrect on
+    // the next reload.
+    {
+      const uiState = useUiStore.getState();
+      const nextDrafts = { ...uiState.drafts };
+      if (uiState.activeDraftKey) delete nextDrafts[uiState.activeDraftKey];
+      useUiStore.setState({ draft: "", attachments: [], drafts: nextDrafts });
+    }
     set({
       messagesByConversation: {
         ...get().messagesByConversation,
         [selectedKey]: [...(get().messagesByConversation[selectedKey] ?? []), userMessage, assistantStub]
       },
+      // NOTE: no `preview:` update on the user-send path. The sidebar preview
+      // now reflects the last *assistant* text only; the "Working…" override
+      // in conversation-sidebar.tsx covers the in-flight state. The user's
+      // own outgoing text never belongs in the preview slot.
       conversations: applyConversationUpdate(ensureConversation(get().conversations, selectedKey), selectedKey, {
-        preview: buildPreview(userMessage.parts),
         updatedAt: nowIso(),
         isStreaming: true,
         runId: userMessage.id
@@ -1028,100 +1225,21 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
       console.error("quickSend failed:", error);
     }
   },
-  handleChatEvent: (payload) => {
-    if (!payload || typeof payload !== "object") {
-      return;
+
+  togglePinned: (key) => {
+    const current = readPinnedKeys();
+    const next = { ...current };
+    const isPinned = !!next[key];
+    if (isPinned) {
+      delete next[key];
+    } else {
+      next[key] = true;
     }
-    const data = payload as Record<string, unknown>;
-    let sessionKey = typeof data.sessionKey === "string" ? data.sessionKey.replace(/^agent:[^:]+:/, "") : null;
-    const runId = typeof data.runId === "string" ? data.runId : null;
-    const state = typeof data.state === "string" ? data.state : null;
-    if (!sessionKey || !state) {
-      return;
-    }
-    // If no messages exist under the canonical key but a runId matches a pending
-    // assistant stub in a different (local) conversation, remap that conversation
-    // to the canonical key so responses land in the right place.
-    if (runId && !(get().messagesByConversation[sessionKey]?.length)) {
-      const allMessages = get().messagesByConversation;
-      const allConversations = get().conversations;
-      for (const [localKey, msgs] of Object.entries(allMessages)) {
-        if (localKey === sessionKey) continue;
-        const hasPendingRun = msgs.some((m) => m.runId === runId && m.pending);
-        if (hasPendingRun) {
-          // Remap: move messages from localKey to sessionKey and update conversation
-          const updatedMessages = { ...allMessages, [sessionKey]: msgs };
-          delete updatedMessages[localKey];
-          const updatedConversations = allConversations.map((c) =>
-            c.key === localKey ? { ...c, key: sessionKey } : c
-          );
-          const selectedKey = get().selectedConversationKey === localKey ? sessionKey : get().selectedConversationKey;
-          set({
-            messagesByConversation: updatedMessages,
-            conversations: updatedConversations,
-            selectedConversationKey: selectedKey
-          });
-          saveSelectedKey(selectedKey);
-          break;
-        }
-      }
-    }
-    const currentMessages = [...(get().messagesByConversation[sessionKey] ?? [])];
-    const lastAssistantIndex = [...currentMessages]
-      .reverse()
-      .findIndex((message) => message.role === "assistant" && message.pending);
-    const targetIndex = lastAssistantIndex === -1 ? -1 : currentMessages.length - 1 - lastAssistantIndex;
-    const existing = targetIndex >= 0 ? currentMessages[targetIndex] : null;
-    const text = messageTextFromUnknown((data.message as Record<string, unknown> | undefined) ?? payload);
-    const updateMessage = (pending: boolean, error?: string, textValue = text) => ({
-      id: existing?.id ?? crypto.randomUUID(),
-      role: "assistant" as const,
-      parts: [{ type: "text" as const, text: textValue }],
-      createdAt: existing?.createdAt ?? nowIso(),
-      pending,
-      runId,
-      error: error ?? existing?.error ?? null
-    });
-    if (state === "delta") {
-      if (existing) {
-        currentMessages[targetIndex] = updateMessage(true);
-      } else {
-        currentMessages.push(updateMessage(true));
-      }
-    }
-    if (state === "final") {
-      if (existing) {
-        currentMessages[targetIndex] = updateMessage(false);
-      } else {
-        currentMessages.push(updateMessage(false));
-      }
-    }
-    if (state === "error" || state === "aborted") {
-      const messageText =
-        state === "error"
-          ? typeof data.errorMessage === "string"
-            ? data.errorMessage
-            : "Run failed."
-          : "Generation stopped.";
-      if (existing) {
-        currentMessages[targetIndex] = updateMessage(
-          false,
-          state === "error" ? messageText : "Run aborted",
-          messageText
-        );
-      }
-    }
+    persistPinnedKeys(next);
     set({
-      messagesByConversation: {
-        ...get().messagesByConversation,
-        [sessionKey]: currentMessages
-      },
-      conversations: applyConversationUpdate(ensureConversation(get().conversations, sessionKey), sessionKey, {
-        preview: buildPreview((currentMessages[currentMessages.length - 1] ?? existing)?.parts ?? []),
-        updatedAt: nowIso(),
-        isStreaming: state === "delta",
-        runId: state === "delta" ? runId : null
-      })
+      conversations: get().conversations.map((conversation) =>
+        conversation.key === key ? { ...conversation, pinned: !isPinned } : conversation
+      ),
     });
-  }
+  },
 }));

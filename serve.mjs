@@ -21,7 +21,7 @@ import { listSessions, getSession, refreshIndex } from "./server/claude/session-
 import { parseTranscript } from "./server/claude/transcript-parser.mjs";
 import { listCodexSessions, getCodexSession } from "./server/codex/session-index.mjs";
 import { parseCodexTranscript } from "./server/codex/transcript-parser.mjs";
-import { startRun, cancelRun, getRunStatus } from "./server/claude/sdk-runner.mjs";
+import { startRun, cancelRun, getRunStatus, getConfiguredModel, getActiveRunIdForSession } from "./server/claude/sdk-runner.mjs";
 import { createBroker } from "./server/claude/ws-broker.mjs";
 import { scanDocker } from "./server/docker-scanner.mjs";
 import { mergeProjects } from "./server/project-merger.mjs";
@@ -46,8 +46,8 @@ import {
 
 const DIST = resolve(import.meta.dirname, "dist");
 const PORT = Number(process.env.PORT) || 18789;
-const CLAUDE_OVERRIDES_PATH = resolve(homedir(), ".openclaw", "claude-session-overrides.json");
-const CLAUDE_TRASH_DIR = resolve(homedir(), ".openclaw", ".trash", "claude-sessions");
+const CLAUDE_OVERRIDES_PATH = resolve(homedir(), ".mc", "claude-session-overrides.json");
+const CLAUDE_TRASH_DIR = resolve(homedir(), ".mc", ".trash", "claude-sessions");
 
 const broker = createBroker();
 
@@ -135,6 +135,27 @@ const workspaceFromConfig =
   OPENCLAW_CONFIG?.workspace ||
   (detectedAgent === "openclaw" ? resolve(homedir(), ".openclaw", "workspace") : process.cwd());
 const WORKSPACE = resolve(expandHome(workspaceFromConfig));
+
+// Default cwd for fresh chats. Precedence: explicit config → outermost ancestor
+// with a CLAUDE.md → $HOME. Never silently inherits the server's launch dir —
+// that would leak /home/clawd/projects/agent-ui (or wherever serve.mjs lives)
+// into every new session.
+function findOutermostClaudeMd(startDir) {
+  let current = resolve(startDir);
+  let topmost = null;
+  while (true) {
+    if (fileExists(resolve(current, "CLAUDE.md"))) topmost = current;
+    const parent = dirname(current);
+    if (parent === current) break;
+    current = parent;
+  }
+  return topmost;
+}
+const DEFAULT_CHAT_CWD = (() => {
+  const explicit = process.env.MC_WORKSPACE || MC_CONFIG?.workspace || OPENCLAW_CONFIG?.workspace;
+  if (explicit) return resolve(expandHome(explicit));
+  return findOutermostClaudeMd(process.cwd()) || homedir();
+})();
 const TASKS_PATH = join(WORKSPACE, "tasks.json");
 
 // Token only used for gateway connection (OpenClaw mode). No auth needed for local API.
@@ -536,6 +557,7 @@ const server = createServer(async (req, res) => {
       token: TOKEN,
       agent: detectedAgent,
       workspace: WORKSPACE,
+      chatCwd: DEFAULT_CHAT_CWD,
       gateway: GATEWAY ? { host: GATEWAY.host, port: GATEWAY.port, enabled: true } : { enabled: false },
       capabilities: adapterCapabilities(detectedAgent),
       configSource: MC_CONFIG_SOURCE_PATH || "defaults",
@@ -670,9 +692,24 @@ const server = createServer(async (req, res) => {
     const limit = Number(url.searchParams.get("limit") || "500");
     const parsed = await parseTranscript(session.transcriptPath, { limit });
 
+    // If a run is still in-flight for this session, surface isStreaming + runId
+    // so a mid-stream page reload repopulates the Stop button. Without this,
+    // the client has no signal that the backend is still generating.
+    const activeRunId = getActiveRunIdForSession(sessionKey);
+    const sessionPayload = applySessionOverrides(session);
+    if (activeRunId) {
+      sessionPayload.isStreaming = true;
+      sessionPayload.runId = activeRunId;
+    }
+
     return jsonResponse(res, {
-      session: applySessionOverrides(session),
+      session: sessionPayload,
       messages: parsed.messages,
+      lastUsage: parsed.metadata?.lastUsage ?? null,
+      // The runner's configured model including any `[1m]` suffix — the API
+      // strips it from assistant-turn payloads, so the client needs this hint
+      // to pick the right context window on resume before a live init arrives.
+      runnerModel: getConfiguredModel(),
     });
   }
 
@@ -728,7 +765,7 @@ const server = createServer(async (req, res) => {
     try {
       const body = await parseJsonBody(req);
       const message = typeof body.message === "string" ? body.message : "";
-      const cwd = typeof body.cwd === "string" && body.cwd.trim() ? body.cwd.trim() : undefined;
+      const cwd = typeof body.cwd === "string" && body.cwd.trim() ? body.cwd.trim() : DEFAULT_CHAT_CWD;
       if (!message.trim()) {
         return jsonResponse(res, { error: "message required" }, 400);
       }

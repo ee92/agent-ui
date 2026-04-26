@@ -12,6 +12,16 @@ const cache = {
   sessionsSorted: [],
 };
 
+export function encodeCwd(absPath) {
+  if (typeof absPath !== "string" || !absPath) return "";
+  // Inverse of decodeCwd: `/.` → `--`, then remaining `/` → `-`.
+  const placeholder = "\x00";
+  return absPath
+    .replace(/\/\./g, placeholder)
+    .replace(/\//g, "-")
+    .replace(new RegExp(placeholder, "g"), "--");
+}
+
 function decodeCwd(encoded) {
   if (!encoded) {
     return "";
@@ -63,6 +73,11 @@ async function scanJsonlFiles(rootDir) {
     for (const entry of entries) {
       const fullPath = join(current, entry.name);
       if (entry.isDirectory()) {
+        // Claude Code writes sub-agent transcripts under a `subagents/`
+        // subdirectory of the parent session's project folder. These files
+        // are not independent user sessions — skip them so they don't
+        // pollute the sidebar.
+        if (entry.name === "subagents") continue;
         await walk(fullPath);
         continue;
       }

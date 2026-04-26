@@ -422,7 +422,7 @@ export function TimelinePage() {
       <div className="min-h-0 flex-1 overflow-y-auto pb-[calc(env(safe-area-inset-bottom)+1rem)]">
         {!cronsAvailable && activeTab !== "activity" && (
           <div className="flex min-h-40 items-center justify-center rounded-lg border border-dashed border-white/[0.06] text-sm text-zinc-500">
-            Cron jobs require OpenClaw gateway.
+            Cron jobs aren't supported by this backend.
           </div>
         )}
         {loading && <div className="flex min-h-40 items-center justify-center text-sm text-zinc-500">Loading cron jobs...</div>}

@@ -51,10 +51,19 @@
     box-sizing: border-box;
   }
 
+  html,
   body {
     margin: 0;
     min-width: 320px;
     background: var(--color-canvas);
+    /* Kill iOS Safari's pull-to-refresh and vertical bounce so users don't
+       accidentally reload while scrolling a chat transcript. */
+    overscroll-behavior-y: none;
+    /* Prevent double-tap zoom (and the legacy 300ms click delay). "manipulation"
+       keeps pan + pinch — users who WANT to zoom still can via pinch. Effective
+       touch-action is the intersection along the ancestor chain, so descendants
+       can only restrict further, never re-enable double-tap zoom. */
+    touch-action: manipulation;
   }
 
   button,
@@ -65,6 +74,8 @@
 
   button {
     cursor: pointer;
+    /* No grey tap flash on iOS — we already style :active/:focus ourselves. */
+    -webkit-tap-highlight-color: transparent;
   }
 
   img {
@@ -168,4 +179,18 @@
 @keyframes subtle-pulse {
   0%, 100% { opacity: 0.6; }
   50% { opacity: 1; }
+}
+
+/* Kill iOS Safari's auto-zoom on input focus. Safari zooms the viewport
+   whenever a user taps an input whose computed font-size is < 16px. We use
+   tight 13-14px inputs on desktop for density, so this media query only
+   bumps the minimum on touch devices. Unlayered (outside @layer) so it
+   beats Tailwind's text-[13px] / text-sm utilities, which live in the
+   utilities cascade layer. */
+@media (pointer: coarse) {
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
 }

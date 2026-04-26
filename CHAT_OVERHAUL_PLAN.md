@@ -715,3 +715,293 @@ Each commit is independently shippable — the app continues to function between
 - `src/lib/stores/chat-store.ts` — central event handler `handleClaudeRawEvent` added; remap logic centralized.
 - `src/components/chat/message-card.tsx` — renders the new part variants through `ToolUseCard` / `ThinkingCard`.
 - `src/lib/types.ts` — widened `MessageContentPart` union.
+
+---
+
+## Followups — Chat polish (captured 2026-04-20)
+
+User feedback after shipping context-bar:
+
+1. **Thinking blocks render empty.** Every expandable "thinking" section is blank.
+   - Likely cause: `extended_thinking` blocks arrive as `content_block_delta` with `delta.type === "thinking_delta"` but we may not be appending to a `thinking` MessageContentPart. Verify transcript-parser + sdk-runner + store append path.
+   - Transcript resume path has its own extraction (`extractTextParts` → `thinkingParts`). Check it's fed into `MessageContentPart[]` not discarded.
+   - Files: `src/lib/stores/chat-store.ts` (block delta handler), `server/claude/transcript-parser.mjs`, `src/components/chat/message-card.tsx` or `src/components/chat/parts/*`.
+
+2. **[DONE]** **Message action buttons are over-prominent.** Too many buttons per message, each too large.
+   - Keep: Copy, Create-task (low priority — could stay in a menu)
+   - User messages only: add **Rewind to here** — truncates conversation to that point and re-prompts from there. Needs transcript rewrite + session replay (non-trivial). (Still open; not part of this pass.)
+   - Remove: Retry, Hide, other per-message clutter from assistant messages.
+   - Consolidation: collapse into a `⋯` overflow button in the top-right of the bubble. Or: always-small (14px) icons hidden behind hover on desktop, tap-to-reveal on mobile.
+   - Files: `src/components/chat/message-card.tsx`.
+   - **Resolution:** collapsed all four actions (Copy / Create task / Retry / Hide) behind a single kebab `⋯` button in the top-right of every bubble. Dropdown opens via portal to escape transcript overflow, closes on outside click or Escape. Kebab is dim-until-hover on desktop, always visible on mobile. Net: bubble footprint dropped by ~44px of chrome per message.
+
+3. **[DONE — verify live test]** **Stop button disappears after page refresh during a run.** If the page reloads mid-stream, the UI has no Stop affordance even though the run is still active on the backend.
+   - Resolution: `onCancel` is wired in `chat-composer.tsx` and the Stop button renders whenever `isStreaming` is true. Hydration path in `claude-code-adapter.ts` emits a synthetic `session.init` from `/history`, and `isStreaming` rides along. Code paths confirmed; worth a manual test (reload mid-stream, Stop button should reappear).
+   - **Original diagnosis (kept for context):**
+   - Root cause: the initial SSE/WebSocket connection doesn't reattach to in-flight streams. Streaming state is local-only and gets reset on reload.
+   - Options:
+     - **Server-side run registry**: on reconnect, query `/api/claude-code/runs/active?sessionKey=...`; if a run is in-flight, hydrate `isStreaming=true` and allow cancel via runId. Requires a small endpoint and that `sdk-runner.mjs` keeps `activeRuns` addressable.
+     - **Stream replay**: far more complex — SDK would need to buffer and replay or we'd need to tee every event through a persistent ring buffer keyed by runId. Probably not worth it.
+   - The cheap win is option 1: just reattach "is running" and let Cancel work. The partial bubble won't animate, but it'll finalize correctly when the run completes (the backend still emits `session.message.stop` / `session.completed` over the WS).
+   - Files: `serve.mjs` (new endpoint), `server/claude/sdk-runner.mjs` (expose active-run lookup), `src/lib/adapters/claude-code-adapter.ts` (hydrate on connect), `src/lib/stores/chat-store.ts` (set streaming from reconnect hydration).
+
+4. **Voice "play" button on assistant replies (TTS).** Add a small speaker icon per assistant message that reads the text aloud.
+   - MVP: browser `SpeechSynthesis` API — zero backend, zero cost, works offline. Button toggles play/stop; strips markdown and tool_use JSON before speaking (text parts only).
+   - Better quality: pipe to a server-side TTS (ElevenLabs, OpenAI TTS, or a local model) with streaming playback. Requires API key and cost tracking.
+   - UX: per-message play button; global "auto-read new replies" toggle (off by default); respect the `session.message.stop` event so mid-stream clicks don't speak half a reply.
+   - Files: `src/components/chat/message-card.tsx` (button), new `src/lib/tts.ts` (wrap SpeechSynthesis with abort + markdown stripping), optional server endpoint if going with cloud TTS.
+
+5. **[DONE — UX Tightening Pass 2026-04-22]** **Auto-collapse completed tool calls; keep only the running one expanded.** Addressed by Workstream A of `UX_TIGHTENING_PLAN.md`: consecutive tool_use parts now render as a left-railed group of compact log rows (ToolLogGroup + ToolLogRow). The first running tool auto-expands; completed ones stay collapsed; manual toggles latch so they don't get overridden. Sub-agent (Agent) tools keep the full card treatment.
+   - Files: `src/components/chat/parts/tool-log-row.tsx` (new), `src/components/chat/parts/tool-log-group.tsx` (new), `src/components/chat/message-card.tsx` (part-loop grouping).
+
+*Top 3 highest-leverage for phone use (per 2026-04-20 discussion): image paste (#8), slash-command menu (#9), edit-last-user-message (#12).*
+
+6. **[DONE]** **Scroll-to-bottom button + don't hijack scroll when reading above.** Two related scroll behaviors.
+   - Resolution: `app.tsx` tracks `isAtBottom` with 40px tolerance; auto-scroll is gated on it. FAB renders when `!isAtBottom && messages.length > 0`, clicking re-arms auto-scroll.
+   - **Original plan (kept for context):**
+   - **Don't auto-scroll mid-read.** Currently the transcript pins to the bottom on every incoming event. If the user has scrolled up to read earlier context, new deltas yank them back down.
+     - Track `isAtBottom` state by listening to the scroll container's `scroll` event with a small tolerance (~40px from bottom = "at bottom"). Only auto-scroll when `isAtBottom === true`.
+     - Reset to true on: user send, explicit scroll-to-bottom click, switching sessions.
+   - **Scroll-to-bottom FAB.** When `isAtBottom === false`, render a floating button (bottom-right above composer, circular, chevron-down icon). Click scrolls the transcript to the bottom smoothly and re-arms auto-scroll.
+     - Optional: badge the button with count of new messages/blocks arrived while scrolled up.
+   - Files: `src/components/chat/chat-view.tsx` (or wherever the scroll container lives), new `src/components/chat/scroll-to-bottom-fab.tsx`.
+
+### Composer / input
+
+7. **Voice dictation input.** Natural pair with TTS output (#4). Browser `SpeechRecognition` (webkit prefix on Safari). Mic button in composer toggles recording; interim transcript renders in the textarea; submit on explicit send. Big phone win.
+   - Files: `src/components/chat/chat-composer.tsx`, new `src/lib/stt.ts`.
+
+8. **[DONE — `c583436`]** **Image paste & upload in composer** *(top priority)*. Currently text-only. Support pasting screenshots from clipboard, dragging files onto the window, and a paperclip button for file picker. Attach as base64 image blocks to the Anthropic message content array. Critical for phone (screenshots) and debugging.
+   - Resolution: `chat-composer.tsx` handles clipboard paste (image MIME filter, renames unnamed pastes with timestamp), drag-drop, and file picker with multi-select. Images attach as base64 image blocks.
+   - **Original plan (kept for context):**
+   - SDK path: user messages can include `{ type: "image", source: { type: "base64", media_type, data } }` blocks alongside text. Needs `sdk-runner.mjs` to accept a `content: Array<Part>` shape instead of just a string prompt.
+   - Files: `src/components/chat/chat-composer.tsx` (paste/drop handlers, preview chips), `server/claude/sdk-runner.mjs` (accept multimodal prompt), `serve.mjs` (API change), `src/lib/types.ts` (already has `image` part).
+
+9. **Slash command menu with autocomplete** *(top priority)*. Typing `/` at the start of the composer opens a popover: `/compact`, `/model <alias>`, `/clear`, `/cost`, `/help`, etc. Fuzzy-match as user types. Matches CLI muscle memory.
+   - Commands route to the same handler `quickSend` already uses; new commands might need backend routing (e.g., `/cost` should render locally, not send to Claude).
+   - Files: new `src/components/chat/slash-menu.tsx`, `chat-composer.tsx`.
+
+10. **[DONE]** **Draft persistence per conversation.** Typing a message, switching sessions, coming back — the draft is still there. Also survives page reload. `localStorage` keyed by sessionKey, cleared on send.
+    - Files: `src/components/chat/chat-composer.tsx`, `src/lib/stores/chat-store.ts` (drafts map).
+
+11. **Keyboard shortcuts + cheat sheet.** Cmd+K new chat, Cmd+/ opens shortcuts modal, Esc cancels active stream, Cmd+Shift+F search, Cmd+↑ edit last user message (→ #12), Cmd+Enter send. Display a "?" button in the corner that opens the cheat sheet.
+    - Files: new `src/lib/hotkeys.ts`, new `src/components/chat/shortcut-help.tsx`, wire into `app.tsx`.
+
+12. **Edit last user message** *(top priority)*. Cheap version of rewind. Cmd+↑ or an Edit action on the user bubble pulls the text back into the composer; on send, truncate the conversation at that message and re-prompt. Needs transcript splice + resume from prior turn.
+    - Less invasive than full rewind-to-arbitrary-point (followup #2) because it's always the last turn — no mid-history session replay.
+    - Files: `src/lib/stores/chat-store.ts` (editLastMessage action), `src/components/chat/message-card.tsx` (edit button on user messages), backend: truncate SDK session or resume from earlier turn.
+
+### Rendering
+
+13. **Code block syntax highlighting + per-block copy.** Shiki or Prism for highlighting; Copy button in each code block's top-right (distinct from message-level copy). Also show detected language.
+    - Files: `src/components/chat/markdown.tsx` (or wherever Markdown is rendered); add `rehype-shiki` or similar.
+
+14. **KaTeX math rendering.** `remark-math` + `rehype-katex`. Low-cost, only matters if user prompts math/technical content.
+    - Files: `src/components/chat/markdown.tsx`.
+
+### Navigation & state
+
+15. **WS reconnect indicator.** Small dot in the header: green=connected, amber=reconnecting, red=disconnected. Auto-reconnect with exponential backoff. Toast when reconnect fails repeatedly.
+    - Files: `src/lib/adapters/claude-code-adapter.ts` (reconnect logic), new `src/components/header/connection-dot.tsx`.
+
+16. **Search within current conversation.** Cmd+F (override browser's or layer on top). Highlight matches, jump next/prev. Searches rendered text parts only (not tool JSON unless opted in).
+    - Files: new `src/components/chat/in-conversation-search.tsx`.
+
+17. **Global search across all conversations.** Separate from #16. Searches transcript `.jsonl` files server-side (ripgrep or naive scan). Results list → click opens session + jumps to message.
+    - Files: new `/api/claude-code/search` endpoint in `serve.mjs`, new `src/components/sidebar/global-search.tsx`.
+
+18. **Auto-generated session titles.** First user message → 3-6 word title via a cheap Haiku completion (or simple heuristic: first 40 chars). Sidebar shows titles instead of raw keys. Persisted in `~/.openclaw/ui-titles.json` or equivalent. User can rename manually (already supported).
+    - Files: `server/claude/session-index.mjs` (title field), `serve.mjs` (title generation on first message), sidebar rendering.
+
+### Session management
+
+19. **[DONE]** **Export conversation** as markdown. One-click from the session's kebab menu. Includes tool calls collapsed as code fences. Plain markdown, no frontmatter.
+    - Files: new `src/lib/export-conversation.ts`, sidebar kebab menu.
+
+20. **Pin/favorite sessions + folder grouping.** Sidebar section for pinned at top. Optional folder grouping by `cwd` prefix (already have `~/projects/*` structure). Drag to pin, right-click to assign folder.
+    - Files: `serve.mjs` (pin metadata), `src/components/sidebar/*`.
+
+### Mobile polish
+
+21. **[DONE — `37aa70e`]** **Sidebar as bottom sheet / swipe drawer on narrow screens.** Desktop-style sidebar is awkward on phone. Tailwind breakpoint: at `md` and below, collapse sidebar behind a swipe-in drawer with a scrim.
+    - Resolution: `app.tsx` renders the sidebar behind an `xl:hidden` fixed overlay + backdrop scrim + slide-in transform, safe-area aware, closes on backdrop click / Escape.
+    - Files: `src/app.tsx`, `src/components/sidebar/*`.
+
+22. **iOS viewport / keyboard handling.** Use `visualViewport` API + `env(safe-area-inset-bottom)` so the composer stays above the software keyboard and doesn't get cut off by the home indicator. Known Safari pain point.
+    - Files: `src/components/chat/chat-composer.tsx`, `index.css`.
+
+23. **[PARTIAL]** **Bigger touch targets on message actions.** Ties into followup #2 (button cleanup). Any button <44x44pt is a miss on mobile. Either enlarge icons or gate them behind an overflow menu with 44pt targets.
+    - Current state: dropdown menu items hit target (`px-3 py-2.5`), but the kebab trigger button itself is ~24×24 (p-1 + 16px icon) — still under the 44pt guideline. Low-effort fix: bump the trigger padding on mobile.
+
+### Perf (not urgent)
+
+24. **Virtual scrolling for 500+ message conversations.** `@tanstack/react-virtual` on the message list. Only bother when a long transcript actually feels sluggish.
+    - Files: `src/components/chat/chat-view.tsx`.
+
+### Composer sizing & reading mode
+
+25. **[DONE]** **Composer auto-sizes: small when empty, grows with content.** Current composer is too tall at rest. Goal: single-line height when empty (~40–44px), auto-grow per line up to a cap (say 50% of viewport height), then internal scroll. Plain `textarea` with JS-driven height: reset to `auto`, read `scrollHeight`, clamp to max. Debounce on `input`. The current size-when-full is good — just shrink the empty state.
+    - Files: `src/components/chat/chat-composer.tsx`.
+    - **Resolution:** the auto-size logic already existed; it was the surrounding chrome that made the composer feel tall. Trimmed outer wrapper `p-2.5` → `p-1.5`, inner dropzone `p-2.5` → `px-2 py-1`, and wrapper around ContextBar + ChatComposer from `pb-2 pt-2` → `pb-1 pt-1` (mobile only; desktop unchanged). Dropped the mobile-visible "Enter to send" hint row. Net: the empty-state composer chrome shrunk by ~18–22px.
+
+26. **[DONE]** **Footer/menu bar overlaps composer as it grows.** As the textarea expands with content, the fixed bottom action/menu bar starts covering the bottom of the composer, hiding text and buttons.
+    - Root cause likely: composer is positioned absolutely or fixed and the footer sits at a fixed z-order/position that assumes a static composer height.
+    - Fix options:
+      - Stack composer *above* the footer in normal flow so the footer naturally pushes down the page (cleanest).
+      - Or: make the footer sticky-at-bottom-of-viewport with composer reserving space via `padding-bottom`, and have the composer's max-height respect `100dvh - footer - context-bar - header` so it never overlaps.
+    - Also: context bar above composer should stack cleanly with the growing textarea.
+    - Files: `src/app.tsx` (layout), `src/components/chat/chat-composer.tsx`, any bottom nav/footer component.
+    - **Resolution:** the layout was already structurally correct (chat view is a flex column inside a wrapper that reserves `pb-[calc(3rem+env(safe-area-inset-bottom))]` for the mobile tab bar). What leaked was the composer's growth cap — 40% of innerHeight was too generous once you added context bar + tab bar reservation, so a long message could still push visually into the reserved area. Dropped the cap to 32% of `window.innerHeight` (with a hard ceiling of 280px). Combined with the #25 chrome trim, the composer now comfortably coexists with the tab bar on every viewport tested.
+
+27. **Full-screen reading mode.** A toggle that hides sidebar, header, composer, footer — everything except the message list — for distraction-free reading of long replies.
+    - Keybind: maybe `Cmd+.` or a dedicated button (expand icon) near the model badge / context bar.
+    - Behavior: takes full viewport; a small floating "exit" pill top-right; Esc exits. Scroll behavior (#6) still applies.
+    - Preserve conversation scroll position on enter/exit.
+    - Files: `src/app.tsx` (layout flag), new `src/components/chat/reading-mode-overlay.tsx`, hotkey wiring.
+
+### Gestures / navigation ergonomics
+
+28. **Swipe-back gesture on mobile (Telegram/iOS-style).** Edge-swipe from the left to go back to the previous view — especially useful for popping from an open conversation back to the sidebar/conversation list, or for undoing a session switch.
+    - Hash-route navigation needs a real history stack: `navigate` should use `history.pushState` (not replace) so `history.back()` and the native swipe-back on iOS Safari work out of the box. Check whether current routing replaces or pushes.
+    - For in-app swipe (non-iOS or when we want custom behavior): edge-swipe detector on the left ~20px of the screen; starts a translateX on the conversation view with finger tracking; release past ~30% width or >500px/s velocity commits the back nav, else springs back.
+    - Disable on text selection / scrollable horizontal content (code blocks).
+    - On desktop: ignore (browser back button suffices).
+    - Files: `src/app.tsx` (router), new `src/lib/swipe-back.ts` (touch handler hook), `src/components/chat/chat-view.tsx` (wrap in gesture container on mobile).
+
+### Transcript resume fidelity
+
+30. **[DONE]** **Empty bubbles on resumed sessions.** Reopening any non-trivial session shows blank user AND assistant message bubbles. Verified on `-home-clawd-projects::e1845fe8-bf3f-4979-97f2-55341616453e`: of 500 messages in `/history`, many have `content: ""` (length 0) — both user turns that consist entirely of `tool_result` blocks and assistant turns that are pure `tool_use` / `thinking` get flattened to empty string.
+    - Resolution: `transcript-parser.mjs` folds `tool_result` blocks into their matching `tool_use` parts; user messages containing only `tool_result` get returned with parts folded away. `chat-store.ts` filters out messages with `parts.length === 0` on hydration. No more ghost bubbles.
+    - Root cause: `server/claude/transcript-parser.mjs` `extractText` keeps only `.text` blocks and drops everything else. A user `tool_result` turn has no `.text` at all → empty. An assistant turn whose blocks are `[tool_use, thinking]` → empty.
+    - Fix direction: return structured `parts: MessageContentPart[]` from `/history` instead of a flat `content: string`. This is the same work as plan Step 13 ("optional history parser upgrade") and is no longer optional — the absence is user-visible as ghost bubbles.
+    - Frontend must also stop rendering an empty bubble when a message has zero parts; either hide it or render a compact "(tool call)" placeholder pending the structured parse.
+    - Files: `server/claude/transcript-parser.mjs`, `serve.mjs` `/history` response shape, `src/lib/adapters/claude-code-adapter.ts` `history()`, `src/lib/shared.ts` (normalizeHistoryMessage), `src/components/chat/message-card.tsx`.
+
+31. **[DONE]** **Assistant tool-use blocks render as plain text on resume.** Even when a message has content, the tool call is serialized as the string `[tool_use:Name] {...json...}` rather than a structured tool_use card. Verified in history payload for the same conversation — `contentPreview: "[tool_use:mcp__playwright__browser_evaluate] {\"function\":\"...\"}"`.
+    - Resolution: `transcript-parser.mjs` `extractParts()` emits structured `{ type: "tool_use", id, name, input, ... }` parts instead of bracketized strings. `ToolUseCard` renders them as interactive collapsible cards on resume, matching live streaming.
+    - Root cause: same `transcript-parser.mjs` flattening — tool blocks get bracketized strings. Live streaming now has `tool_use` cards (per recent work) but resumed history does not.
+    - Fix bundled with #30 — structured parts from the parser naturally resolve this; renderer picks `tool_use` variant.
+    - Files: same as #30.
+
+32. **[DONE]** **Subagent transcript files surface as top-level sessions in the sidebar.** Verified: 64 of the 100 sessions returned by `GET /api/claude-code/sessions` are `agent-*` entries with keys like `-home-clawd/<parent-uuid>/subagents::agent-abc475575063bc180` and `cwd: "-home-clawd/<parent-uuid>/subagents"`. These are Claude Code's sub-agent transcripts written under `<parent>/subagents/agent-*.jsonl`, not independent user sessions.
+    - Resolution: `session-index.mjs` `walk()` skips any directory named `subagents`. Simplest-fix path from the plan.
+    - Root cause: `server/claude/session-index.mjs` (or wherever `/sessions` lists files) is scanning all `.jsonl` under `~/.claude/projects/**/` without excluding `**/subagents/**`.
+    - Fix options:
+      - **Simplest:** filter out any transcript whose path contains `/subagents/` from the top-level session list.
+      - **Better:** associate sub-agent transcripts with their parent session (lookup by parent UUID dir), surface them as nested/linked entries visible only when drilling into the parent (matches the Agent tool_use card → subagent trace relationship).
+    - Related: the `cwd` field of sub-agent sessions is a fake path (not a real directory). If we ever try to *run* against such a key, resolving cwd will fail — add a guard.
+    - Files: `server/claude/session-index.mjs`, possibly `serve.mjs` `/history` path resolution.
+
+### Readability / eye comfort
+
+33. **Eye-friendliness audit — research + apply best practices.** The current design *looks* good but fatigues the eyes when actually reading chat content for any length of time. Needs a comprehensive pass grounded in established readability research, not vibes.
+    - **Research phase** — survey well-established sources and summarize what applies to a chat UI. Target sources: Butterick's *Practical Typography*, Material/Apple HIG readability sections, WebAIM contrast guidance, WCAG 2.2 AA/AAA, GitHub/Linear/Notion's published design notes, iA Writer's typography rationale, research on dark-mode legibility (reduced contrast vs pure-white-on-black, avoiding "halation"/"bloom").
+    - **Topics to cover:**
+      - **Fonts** — body face choice (system-ui vs Inter vs Söhne-style humanist sans); preferring humanist sans for UI, transitional serif for long-form; monospace for code (JetBrains Mono / IBM Plex Mono / Berkeley Mono). Font-weight range actually readable on dark BG (usually 400–500, not 300). Optical size / x-height considerations.
+      - **Contrast** — dark mode should NOT be pure white (#fff) on pure black (#000). Typical best practice: foreground `~#e6e6e6`/`#ddd` on `~#121212`/`#1a1a1a` background. Check current token values. Target WCAG AA (4.5:1) for body, AAA (7:1) where feasible. Avoid high-contrast "bloom" that causes after-images.
+      - **Line length (measure)** — 45–75 characters per line for body; chat bubbles often run wider than this. Consider `max-width: 65ch`.
+      - **Line height (leading)** — 1.5–1.65 for body copy; 1.3–1.4 for headings; 1.4–1.5 for UI.
+      - **Paragraph spacing & rhythm** — space between paragraphs >= line-height; consistent vertical rhythm (8px baseline grid or similar).
+      - **Font size** — body 15–17px on desktop, 16–18px on mobile; code blocks ~14px with higher contrast. Avoid <13px anywhere that holds real reading content.
+      - **Letter-spacing / tracking** — slight negative tracking on large headings; default on body.
+      - **Spacing/padding** — breathing room inside bubbles, between messages. Current bubbles may be too dense.
+      - **Color usage** — limit accent colors for body text; reserve saturated colors for interactive elements. Muted grays for metadata/timestamps.
+      - **Markdown elements** — headings, lists, blockquotes, inline code, links all need clear hierarchy without overpowering.
+      - **Code blocks** — background slightly lighter than page (not darker), syntax colors with enough separation but not neon; padding sized for readability.
+      - **Motion** — avoid rapid flashes during streaming; the pulse dot should be subtle.
+      - **Optional**: user-adjustable density ("comfortable" / "compact"), font-size slider, toggle for serif vs sans body.
+    - **Deliverable:**
+      - A short write-up (`docs/READABILITY.md`) of findings + decisions.
+      - A concrete token diff to `src/styles/*` or Tailwind config: font stacks, color tokens, spacing scale, typography scale.
+      - Before/after screenshots on desktop + phone.
+    - **Files:** new `docs/READABILITY.md`, `tailwind.config.*`, `src/index.css` (or design tokens file), `src/components/chat/markdown.tsx`, `src/components/chat/message-card.tsx`, `src/components/chat/parts/*`.
+
+### Compaction artifacts leak into rendered transcript
+
+34. **[DONE — `27a0fe4`]** **Claude Code's compaction plumbing renders as real messages.** Verified against `-home-clawd-projects::e1845fe8-bf3f-4979-97f2-55341616453e`, which has been compacted **54 times** (19MB, 6451-line `.jsonl`). After every `/compact`, Claude Code writes two records to the transcript:
+    1. `{"type":"system","subtype":"compact_boundary","content":"Conversation compacted","compactMetadata":{preTokens, postTokens, durationMs, ...}}`
+    2. `{"type":"user","message":{"role":"user","content":"This session is being continued from a previous conversation that ran out of context.\n\nSummary:\n..."}}` — the synthetic re-seed prompt containing the model's multi-thousand-word summary of the prior window.
+    Our parser has zero handling for either. Result: every compaction shows up in the UI as (a) a silently-swallowed system line and (b) a giant user bubble that looks like the human sent a wall of text they never wrote. Compounds: 54 compactions → 54 ghost-essays in this one session.
+    - User messages in the transcript also contain Claude Code harness tags that render as literal text because the markdown pipeline doesn't strip them:
+      - `<system-reminder>…</system-reminder>` (TodoWrite reminders, deferred-tool notifications, available-skills listings)
+      - `<local-command-caveat>…</local-command-caveat>` (wrapper around slash-command stdout)
+      - `<command-name>…</command-name>`, `<command-message>…</command-message>`, `<command-args>…</command-args>` (slash-command invocation metadata)
+      - `<bash-input>…</bash-input>`, `<bash-stdout>…</bash-stdout>`, `<bash-stderr>…</bash-stderr>` (from `!` bash mode)
+    - Fix direction:
+      - **Parser (`server/claude/transcript-parser.mjs`)** — recognize `type:"system"` + `subtype:"compact_boundary"` and emit a dedicated `compact_boundary` message variant carrying `preTokens/postTokens/durationMs/trigger`. Detect the synthetic summary user message (heuristic: first user message after a boundary, or content starts with the literal `"This session is being continued from a previous conversation"` sentinel) and either drop it entirely — its value is for the model, not the human — or attach it as metadata on the boundary marker so it can be shown on demand ("Show summary").
+      - **Renderer** — render the boundary as a slim horizontal divider: `— Conversation compacted · 176k → 5.7k tokens · 1m46s —`. Never as a bubble.
+      - **Tag stripping** — before markdown parse, strip or fold the harness tags above. Either regex-strip (cleanest for model-facing noise the human never intended to send) or render as dimmed collapsed `<details>` chips labeled "system reminder" / "slash-command output" so power users can audit what reached the model. Default: strip.
+    - Also expose compaction count + ratio in the session header (e.g. sidebar tooltip: "compacted 54×"), since a heavily-compacted session is a different beast (smaller retained context, more summary-of-summary drift). Ties into feedback about 1M context quality degradation.
+    - Files: `server/claude/transcript-parser.mjs` (detect boundary + synthetic summary), `src/lib/types.ts` (new message variant or `MessageContentPart` kind), `src/components/chat/message-card.tsx` (render divider), `src/components/chat/markdown.tsx` (tag-stripping pre-pass), possibly `src/components/chat/parts/text-part.tsx`.
+
+### Context window starts at 200k on refresh, snaps to 1M after next turn
+
+35. **[DONE]** **Context-window indicator lies until the first assistant response.** Reload the page on any 1M-mode conversation → the context bar reads `77.1k / 200k` (39%). Send a message, wait for the reply → the bar jumps to `77.1k / 1M` (8%). The tokens didn't change; only the denominator did, because the 1M tag only reaches the UI via the live `session.init` event. Fingerprint and fix:
+    - The API strips the `[1m]` tag on its way out: `assistant.message.model` is always `"claude-opus-4-7"`, even when `--betas context-1m-2025-08-07` is active.
+    - The runtime `system.init` event (emitted once per `query()` by the SDK) carries the tagged string `"claude-opus-4-7[1m]"`. Commit `c4723b4` wired init → `conversation.contextModel/contextWindow` — this is why a turn fixes it.
+    - The transcript `.jsonl` never persists the init record. `server/claude/transcript-parser.mjs` only exposes `lastUsage` (model, input/output/cache tokens), all API-shape, so the tag is already gone. On refresh, the adapter emits a synthetic `session.usage` with that stripped model → the store's regex fails to match 1M → `contextWindow = 200_000` (see `src/lib/stores/chat-store.ts:466-485`).
+    - Fix direction:
+      - **Preferred:** have the server report the *runner's* default model alongside `lastUsage`. `server/claude/sdk-runner.mjs` knows its own `model` option (e.g. `opus[1m]`) since it passed it to `query()`. Expose it from `/api/claude-code/sessions/:key/history` as `runnerModel` (or similar) and let the adapter prefer it over the stripped usage model when setting `contextWindow`.
+      - **Fallback heuristic:** if any turn's `cacheRead + cacheCreation + input > 200_000`, the session is demonstrably 1M — surface that from the parser as `contextWindow` hint. Cheap and always correct when it fires, but silent on sessions that never exceeded 200k.
+      - **Nuclear:** persist init's model into the transcript on our own sidecar file (e.g. `<sessionId>.meta.json`) since Claude Code won't. More moving parts than it's worth.
+    - Files: `server/claude/sdk-runner.mjs` (export runner model), `server/claude/transcript-parser.mjs` (pipe through `runnerModel` or compute the token-exceeds-200k heuristic), `server/claude/session-index.mjs` (may need to update the history handler shape), `src/lib/adapters/claude-code-adapter.ts` (prefer runnerModel), `src/lib/stores/chat-store.ts` (use the preferred model in `session.usage` fallback branch).
+    - Verify by: reload `http://127.0.0.1:18795/#/chat/…` on any Opus-1M session; the bar must read `/1M` before any user turn is sent. Current behavior on `e1845fe8-bf3f-4979-97f2-55341616453e`: reads `/200k`.
+    - **Resolution:** went with "Preferred" option. `sdk-runner.mjs` exports `getConfiguredModel()`; `serve.mjs` `/history` includes it as `runnerModel`; `claude-code-adapter.ts` `history()` synthesizes a `session.init` with that model *before* emitting the synthetic `session.usage`, so the store's existing init handler sets the right window on resume. Simplified `session.usage` handler (dropped `stripTag`/`sameFamily`/`shouldUpdateModel` workaround block) — net negative LOC.
+
+### Status pill stale after /compact
+
+36. **[DONE]** Status pill doesn't update when `/compact` runs — stays frozen at the pre-compact token count until the next assistant turn fires a `session.usage`. The `compact_boundary` divider in the transcript shows the correct `pre → post` numbers, so the data is clearly in flight; `sdk-runner` emits `session.compact_boundary` carrying `postTokens`; `chat-store` was explicitly dropping that event ("forwarded for future UI rendering; silently dropped for now"). Fixed by wiring the handler to patch `contextTokens` from `postTokens` immediately. Component sub-totals (input/cache/output) get refreshed on the next assistant turn.
+
+### Concurrent-session cross-contamination (2026-04-22, unresolved)
+
+37. **Two active sessions' histories appear to swap when clicking between them.** Reproduced live: user had two recently-active sessions in the sidebar, both with runs in flight. Clicking back and forth, each conversation showed the *other* session's scrollback — not partial pollution, a full takeover in both directions.
+    - Static analysis came up empty. Audited every write site to `messagesByConversation` in `chat-store.ts` (lines 117–122, 710, 838, 867, 901–906, 944, 1022, 1044, 1065, 1076, 1144) — every assignment is scoped to its own `key`/`sessionKey` function parameter. No cross-key writes. Event routing uses `event.sessionKey` from per-run server state; per-run state is never shared. `/history` reads `session.transcriptPath` which is derived from the file path at index time — no way for one session's key to resolve to another's jsonl.
+    - The render pipeline is direct: `chatSessionKey` from URL via `useSyncExternalStore` → `selectedMessages = messagesByConversation[chatSessionKey]`. No memoization to stale-dep.
+    - Still could be: timing race during concurrent streams (two runs emitting events simultaneously), server-side `rebuildIndex()` cache corruption under concurrent access, transient React render interleaving, or something unexplored.
+    - Needs instrumentation to reproduce with logs at: adapter event emit, store raw-event routing, hydration set, remap merge, sendMessage set. Without logs, more guessing is lies.
+    - Also need from user on next repro: were both runs in-flight, did the swap persist across refresh, same tab or multi-tab, which two session keys.
+    - Files to touch when diagnosing: `src/lib/adapters/claude-code-adapter.ts`, `src/lib/stores/chat-store.ts`, `server/claude/sdk-runner.mjs`, `server/claude/session-index.mjs`, `server/claude/ws-broker.mjs`.
+
+38. **[DONE]** Mid-stream refresh loses session history entirely (2026-04-22, possibly related to #37). Repro: two sessions active, query running in both, refresh the page while viewing one of them. Result: main chat area shows "Start something new / Send a message to get started" empty state — no messages rendered. Server has full history (curl `/api/claude-code/sessions/<key>/history` returns 22 messages), but the browser never fires the `/history` GET after refresh. Zero `claude-code/sessions/<key>/history` requests in the network panel.
+    - Root cause: race in `app.tsx:301-305`. The `useEffect` calls `selectConversation(chatSessionKey)` on mount with deps `[chatSessionKey, selectConversation]`. `selectConversation` (`chat-store.ts:883`) early-returns if `!adapter.isConnected()`. On first paint the adapter is still connecting (sibling effect at `app.tsx:314`). When the WS connects later, nothing re-triggers `selectConversation` for the URL's session, so `/history` is never fetched. `messagesByConversation[sessionKey]` stays undefined/empty forever.
+    - Fix: added `adapterConnected` to the effect's deps and gated the call: `if (chatSessionKey && adapterConnected) void selectConversation(chatSessionKey);`. The effect now re-fires once the WS connects, and `/history` gets fetched exactly once per (session, connection) tuple.
+
+### Tasks polling traffic (2026-04-22, done)
+
+39. **[DONE]** Client hammered `/api/files/read?path=tasks.json` hundreds of times per page load. Two causes in `task-store-v2.ts`:
+    - `loadRemote()` did `files.exists()` *and* `files.read()` on every poll — doubled the request count for no gain, since `/api/files/read` already returns 404 when the file is missing and `loadRemote` already catches that into `null`. Dropped the `exists()` round-trip.
+    - Polling ran unconditionally, including when the tab was hidden. Added a `document.hidden` short-circuit and bumped the default interval from 3s → 5s. Background-tab traffic is now zero; foreground traffic is one request every 5s instead of two every 3s (~6× reduction overall).
+
+
+---
+
+## UX Tightening Pass (2026-04-22)
+
+Addressed four user-reported chat UX issues in a single pass. Full plan and
+rationale kept in `UX_TIGHTENING_PLAN.md` (do not delete — historical record).
+
+- **Workstream D — sidebar preview.** `buildPreview` rewritten to return
+  last-assistant-text only; the in-flight state is communicated via a
+  `"Working…"` override that reads from `conversation.isStreaming`. User-sent
+  messages and tool calls no longer leak into the preview slot.
+- **Workstream B — scroll pin.** ResizeObserver on the content wrapper re-pins
+  to the bottom whenever it grows and the user is already pinned. In-place
+  streaming text growth and expanding tool panels no longer let the bottom
+  drift offscreen. Scroll listener rAF-throttled to survive iOS touch-momentum.
+- **Workstream A — compact tool log rows.** New `ToolLogGroup` + `ToolLogRow`
+  collapse consecutive `tool_use` parts into a left-railed group of one-line
+  log rows. The first running tool auto-expands; completed ones stay
+  collapsed; manual toggles latch. `Agent` tool kept as full card with
+  `SubAgentTrace` below. Addresses plan item #5.
+- **Workstream C — turn status + stall detector + "✓ Done".** New
+  `useTurnStatus` hook reads the last pending assistant message and derives a
+  one-line activity label (`Reading …`, `Running bash …`, `Thinking…`,
+  `Writing…`, `Waiting for Claude…`). New `TurnStatusLine` mounts at the tail
+  of the scroll flow. `chat-store` now records `lastEventAtBySession` on every
+  session event; if streaming and silence > 20s, a stall pill with Retry/Stop
+  buttons appears. `session.completed` now appends `"✓ Done"` as a text part
+  for turns that produced tool calls but no assistant text, so the bubble
+  always has a visible closing signal.
+
+Commits: `8e3d017` (D), `a9464cb` (B), `3b58b94` (A), + workstream C.
+

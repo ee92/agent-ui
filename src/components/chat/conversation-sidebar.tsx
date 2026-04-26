@@ -1,4 +1,4 @@
-import { useDeferredValue, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useDeferredValue, useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import type { AgentRun, Conversation } from "../../lib/types";
 import { useAdapterStore } from "../../lib/adapters";
@@ -103,6 +103,34 @@ function PencilIcon() {
   );
 }
 
+function DownloadIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="7 10 12 15 17 10" />
+      <line x1="12" y1="15" x2="12" y2="3" />
+    </svg>
+  );
+}
+
+function PinIcon({ size = 14, filled = false }: { size?: number; filled?: boolean }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill={filled ? "currentColor" : "none"}
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M12 17v5" />
+      <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1Z" />
+    </svg>
+  );
+}
+
 /** Check if a conversation matches a filter tab */
 function matchesTab(conversation: Conversation, tab: FilterTab): boolean {
   const kind = conversation.kind || "unknown";
@@ -137,6 +165,8 @@ export function ConversationSidebar({
   onSelect,
   onDelete,
   onRename,
+  onExport,
+  onTogglePin,
   onNewChat,
   onToggleFilesMode,
 }: {
@@ -150,6 +180,8 @@ export function ConversationSidebar({
   onSelect: (key: string) => void;
   onDelete: (key: string) => void;
   onRename: (key: string, title: string) => void;
+  onExport: (key: string) => void;
+  onTogglePin: (key: string) => void;
   onNewChat: () => void;
   onToggleFilesMode: () => void;
 }) {
@@ -162,8 +194,6 @@ export function ConversationSidebar({
   const adapter = useAdapterStore((state) => state.adapter);
   const adapterType = useAdapterStore((state) => state.config.type);
   const setAdapterType = useAdapterStore((state) => state.setAdapterType);
-  const revealTimerRef = useRef<number | null>(null);
-  const longPressKeyRef = useRef<string | null>(null);
 
   const availableChannels = useMemo(() => {
     const channels = new Map<string, number>();
@@ -206,12 +236,6 @@ export function ConversationSidebar({
     input?.select();
   }, [focusSearchVersion]);
 
-  useEffect(() => () => {
-    if (revealTimerRef.current) {
-      window.clearTimeout(revealTimerRef.current);
-    }
-  }, []);
-
   const commitRename = useCallback(() => {
     if (!editingKey) {
       return;
@@ -219,25 +243,6 @@ export function ConversationSidebar({
     onRename(editingKey, titleDraft);
     setEditingKey(null);
   }, [editingKey, titleDraft, onRename]);
-
-  const startRevealTimer = (key: string, target: HTMLElement) => {
-    if (revealTimerRef.current) {
-      window.clearTimeout(revealTimerRef.current);
-    }
-    revealTimerRef.current = window.setTimeout(() => {
-      longPressKeyRef.current = key;
-      const rect = target.getBoundingClientRect();
-      setMenuPos({ top: rect.top + 40, left: Math.max(8, rect.right - 148) });
-      setMenuKey(key);
-    }, 420);
-  };
-
-  const clearRevealTimer = () => {
-    if (revealTimerRef.current) {
-      window.clearTimeout(revealTimerRef.current);
-      revealTimerRef.current = null;
-    }
-  };
 
   const caps = adapter.capabilities();
   const TABS: { key: FilterTab; label: string }[] = [
@@ -256,11 +261,10 @@ export function ConversationSidebar({
             aria-label="Adapter type"
             value={adapterType}
             onChange={(event) => {
-              void setAdapterType(event.target.value as "openclaw" | "claude-code" | "codex" | "local");
+              void setAdapterType(event.target.value as "claude-code" | "codex" | "local");
             }}
             className="h-8 rounded-lg border border-white/[0.08] bg-white/[0.03] px-2 text-[13px] text-zinc-300 outline-none transition hover:border-white/[0.14] hover:bg-white/[0.05]"
           >
-            <option value="openclaw">OpenClaw</option>
             <option value="claude-code">Claude Code</option>
             <option value="codex">Codex</option>
           </select>
@@ -345,17 +349,10 @@ export function ConversationSidebar({
                             <button
                               type="button"
                               onClick={() => {
-                                if (longPressKeyRef.current === conversation.key) {
-                                  longPressKeyRef.current = null;
-                                  return;
-                                }
                                 if (isEditing) return;
                                 onSelect(conversation.key);
                               }}
-                              onTouchStart={(e) => startRevealTimer(conversation.key, e.currentTarget)}
-                              onTouchEnd={clearRevealTimer}
-                              onTouchMove={clearRevealTimer}
-                              className="w-full min-w-0 px-2.5 py-2 text-left"
+                              className="w-full min-w-0 select-none px-2.5 py-2 text-left [-webkit-touch-callout:none]"
                             >
                               <div className="flex items-start justify-between gap-2">
                                 <div className="min-w-0 flex-1">
@@ -383,23 +380,31 @@ export function ConversationSidebar({
                                         className="h-8 w-full rounded-lg bg-surface-1 px-2 text-sm font-medium text-white outline-none"
                                       />
                                     ) : (
-                                      <span className="truncate text-[13px] font-semibold text-white">
-                                        {conversation.title}
+                                      <span className="flex min-w-0 items-center gap-1.5 truncate text-[13px] font-semibold text-white">
+                                        <span className="truncate">{conversation.title}</span>
+                                        {conversation.pinned ? (
+                                          <span className="shrink-0 text-blue-300/80" aria-label="Pinned">
+                                            <PinIcon size={11} filled />
+                                          </span>
+                                        ) : null}
                                       </span>
                                     )}
                                   </div>
                                   <p className="mt-0.5 line-clamp-1 text-[12px] text-zinc-500">
-                                    {(conversation.preview.split("\n").find((line) => line.trim()) || "No messages yet").trim()}
+                                    {conversation.isStreaming
+                                      ? "Working…"
+                                      : (conversation.preview.split("\n").find((line) => line.trim()) || "No messages yet").trim()}
                                   </p>
                                 </div>
                                 {/* Timestamp — hidden when menu trigger visible on hover (desktop) */}
                                 <span className="shrink-0 pt-0.5 text-[10px] font-medium text-zinc-500 xl:group-hover/conv:hidden">
                                   {formatRelative(conversation.updatedAt)}
                                 </span>
-                                {/* ⋯ menu trigger — only on desktop hover */}
+                                {/* ⋯ menu trigger — always visible on mobile, hover-only on desktop. */}
                                 <button
                                   ref={(el) => { if (el && isMenuOpen) el.dataset.menuAnchor = conversation.key; }}
                                   type="button"
+                                  aria-label="Conversation options"
                                   onClick={(event) => {
                                     event.stopPropagation();
                                     if (isMenuOpen) {
@@ -410,7 +415,7 @@ export function ConversationSidebar({
                                       setMenuKey(conversation.key);
                                     }
                                   }}
-                                  className={`hidden shrink-0 rounded-lg p-1 text-zinc-500 transition hover:bg-white/10 hover:text-zinc-300 xl:group-hover/conv:block ${isMenuOpen ? "xl:!block bg-white/10 text-zinc-300" : ""}`}
+                                  className={`block shrink-0 rounded-lg p-1 text-zinc-500 transition hover:bg-white/10 hover:text-zinc-300 xl:hidden xl:group-hover/conv:block ${isMenuOpen ? "xl:!block bg-white/10 text-zinc-300" : ""}`}
                                 >
                                   <EllipsisIcon />
                                 </button>
@@ -427,10 +432,6 @@ export function ConversationSidebar({
                                     </span>
                                   ) : null}
                                 </div>
-                                {/* Mobile hint */}
-                                <span className="text-[10px] text-zinc-600 xl:hidden">
-                                  Hold for options
-                                </span>
                               </div>
                             </button>
 
@@ -455,6 +456,18 @@ export function ConversationSidebar({
                                         type="button"
                                         onClick={(event) => {
                                           event.stopPropagation();
+                                          onTogglePin(conversation.key);
+                                          setMenuKey(null);
+                                        }}
+                                        className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm text-zinc-300 hover:bg-white/[0.06]"
+                                      >
+                                        <PinIcon filled={!conversation.pinned} />
+                                        {conversation.pinned ? "Unpin" : "Pin"}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={(event) => {
+                                          event.stopPropagation();
                                           setEditingKey(conversation.key);
                                           setTitleDraft(conversation.title);
                                           setMenuKey(null);
@@ -463,6 +476,18 @@ export function ConversationSidebar({
                                       >
                                         <PencilIcon />
                                         Rename
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          onExport(conversation.key);
+                                          setMenuKey(null);
+                                        }}
+                                        className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm text-zinc-300 hover:bg-white/[0.06]"
+                                      >
+                                        <DownloadIcon />
+                                        Export markdown
                                       </button>
                                       <button
                                         type="button"
@@ -506,7 +531,7 @@ export function ConversationSidebar({
             <div className="space-y-2">
               {!capabilities.agents ? (
                 <div className="rounded-lg border border-dashed border-white/[0.06] px-3 py-4 text-sm text-zinc-500">
-                  Agent monitoring requires OpenClaw gateway.
+                  Agent monitoring isn't supported by this backend.
                 </div>
               ) : null}
               {capabilities.agents && agents.length === 0 ? (

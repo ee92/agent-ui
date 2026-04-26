@@ -95,9 +95,12 @@ async function saveRemote(tasks: TaskNode[]): Promise<boolean> {
 }
 
 async function loadRemote(): Promise<TaskNode[] | null> {
+  // Previously we called files.exists() followed by files.read() — two
+  // requests per poll cycle, and the poll interval is aggressive. The
+  // server's /api/files/read already returns 404 when the file is missing,
+  // which the adapter turns into a throw, which we catch here — so the
+  // exists() round-trip was pure overhead. One request per poll now.
   try {
-    const exists = await getBackendAdapter().files.exists(TASKS_PATH);
-    if (!exists) return null;
     const content = await getBackendAdapter().files.read(TASKS_PATH);
     return deserialize(content);
   } catch {
@@ -191,12 +194,16 @@ export const useTaskStore = create<TaskStoreState>((set, get) => {
 
     setFocus: (id) => set({ focusedId: id }),
     setStatusFilter: (statuses) => set({ statusFilter: statuses }),
-    startPolling: (intervalMs = 3000) => {
+    startPolling: (intervalMs = 5000) => {
       if (taskPollingInterval) {
         clearInterval(taskPollingInterval);
       }
 
       const poll = async () => {
+        // Skip when the tab is hidden — no one's looking, and the OS may
+        // throttle the timer anyway. Cuts background-tab traffic to zero.
+        if (typeof document !== "undefined" && document.hidden) return;
+
         const remote = await loadRemote();
         if (remote === null) return;
 
