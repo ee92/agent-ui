@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { AgentRun, ActivityEvent, Conversation } from "../../lib/types";
 import { useAgentsStore } from "../../lib/store";
 import { useActivityStore } from "../../lib/stores/activity-store";
@@ -12,11 +12,6 @@ import { StatsBar } from "./stats-bar";
 import { TaskPipeline } from "./task-pipeline";
 
 type DashboardTab = "tasks" | "stats" | "activity";
-
-type DispatchStatusPayload = {
-  config?: { enabled?: boolean };
-  report?: { at?: string; picked?: unknown[] } | null;
-};
 
 function TabButton({ label, active, count, onClick }: { label: string; active: boolean; count?: number; onClick: () => void }) {
   return (
@@ -66,42 +61,8 @@ export function WorkflowDashboard({
   const activityItems = activities ?? liveActivities;
 
   const [activeTab, setActiveTab] = useState<DashboardTab>("tasks");
-  const [dispatchEnabled, setDispatchEnabled] = useState(false);
-  const [dispatchLastRunAt, setDispatchLastRunAt] = useState<string | null>(null);
-  const [dispatchPicked, setDispatchPicked] = useState(0);
 
   const activeTaskCount = taskItems.filter((t) => t.status !== "done").length;
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const load = async () => {
-      try {
-        const configRes = await fetch("/api/config");
-        if (!configRes.ok) return;
-        const configJson = await configRes.json() as { token?: string };
-        if (!configJson.token) return;
-
-        const statusRes = await fetch("/api/dispatch/status", {
-          headers: { Authorization: `Bearer ${configJson.token}` },
-        });
-        if (!statusRes.ok || cancelled) return;
-        const data = await statusRes.json() as DispatchStatusPayload;
-        setDispatchEnabled(Boolean(data.config?.enabled));
-        setDispatchLastRunAt(data.report?.at ?? null);
-        setDispatchPicked(Array.isArray(data.report?.picked) ? data.report.picked.length : 0);
-      } catch {
-        // Keep prior status
-      }
-    };
-
-    void load();
-    const handle = window.setInterval(() => { void load(); }, 5000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(handle);
-    };
-  }, []);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-3 pt-3 xl:px-5">
