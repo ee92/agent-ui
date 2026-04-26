@@ -46,8 +46,8 @@ import {
 
 const DIST = resolve(import.meta.dirname, "dist");
 const PORT = Number(process.env.PORT) || 18789;
-const CLAUDE_OVERRIDES_PATH = resolve(homedir(), ".openclaw", "claude-session-overrides.json");
-const CLAUDE_TRASH_DIR = resolve(homedir(), ".openclaw", ".trash", "claude-sessions");
+const CLAUDE_OVERRIDES_PATH = resolve(homedir(), ".mc", "claude-session-overrides.json");
+const CLAUDE_TRASH_DIR = resolve(homedir(), ".mc", ".trash", "claude-sessions");
 
 const broker = createBroker();
 
