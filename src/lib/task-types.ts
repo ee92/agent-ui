@@ -81,7 +81,7 @@ export const TASK_STATUS_META: Record<
 
 /** Valid status transitions */
 export const TASK_TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
-  todo: ["active", "plan", "done"],
+  todo: ["active", "plan", "blocked", "done"],
   plan: ["active", "todo"],
   active: ["review", "blocked", "done"],
   review: ["active", "done"],
